@@ -1,7 +1,10 @@
 import express from "express";
 
-import { createTmuxService, type TmuxService } from "./services/tmux/createTmuxService";
-import { createSessionRoutes } from "./routes/sessionRoutes";
+import {
+  createTmuxService,
+  type TmuxService
+} from "./services/tmux/createTmuxService.js";
+import { createSessionRoutes } from "./routes/sessionRoutes.js";
 
 export function createApp(tmuxService: TmuxService = createTmuxService()) {
   const app = express();

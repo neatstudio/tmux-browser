@@ -1,6 +1,6 @@
 import { Router } from "express";
 
-import type { TmuxService } from "../services/tmux/createTmuxService";
+import type { TmuxService } from "../services/tmux/createTmuxService.js";
 
 type SessionRoutesDeps = Pick<
   TmuxService,

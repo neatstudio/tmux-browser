@@ -1,8 +1,8 @@
 import {
   parseTmuxListOutput,
   type TmuxSessionSummary
-} from "./parseTmuxListOutput";
-import { runTmuxCommand, type RunTmuxCommand } from "./runTmuxCommand";
+} from "./parseTmuxListOutput.js";
+import { runTmuxCommand, type RunTmuxCommand } from "./runTmuxCommand.js";
 
 const SESSION_NAME_PATTERN = /^[A-Za-z0-9._-]+$/;
 
