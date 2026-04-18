@@ -1,4 +1,6 @@
 import express from "express";
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 
 import {
   createTmuxService,
@@ -6,8 +8,13 @@ import {
 } from "./services/tmux/createTmuxService.js";
 import { createSessionRoutes } from "./routes/sessionRoutes.js";
 
-export function createApp(tmuxService: TmuxService = createTmuxService()) {
+export function createApp(options: {
+  tmuxService?: TmuxService;
+  killSession?: (name: string) => Promise<void>;
+} = {}) {
+  const tmuxService = options.tmuxService ?? createTmuxService();
   const app = express();
+  const clientDistDir = resolve(process.cwd(), "dist/client");
 
   app.use(express.json());
 
@@ -15,7 +22,27 @@ export function createApp(tmuxService: TmuxService = createTmuxService()) {
     res.json({ ok: true });
   });
 
-  app.use("/api/sessions", createSessionRoutes(tmuxService));
+  app.use(
+    "/api/sessions",
+    createSessionRoutes({
+      listSessions: tmuxService.listSessions,
+      createSession: tmuxService.createSession,
+      killSession: options.killSession ?? tmuxService.killSession
+    })
+  );
+
+  if (existsSync(clientDistDir)) {
+    app.use(express.static(clientDistDir));
+
+    app.get("/{*path}", (_req, res, next) => {
+      if (_req.path.startsWith("/api/") || _req.path.startsWith("/ws/")) {
+        next();
+        return;
+      }
+
+      res.sendFile(resolve(clientDistDir, "index.html"));
+    });
+  }
 
   app.use(
     (

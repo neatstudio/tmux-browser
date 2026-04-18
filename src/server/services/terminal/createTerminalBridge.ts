@@ -1,4 +1,4 @@
-import pty from "node-pty";
+import { spawn } from "node:child_process";
 
 export type TerminalBridge = {
   onData: (listener: (data: string) => void) => void;
@@ -16,32 +16,42 @@ export type CreateTerminalBridge = (options: {
 
 export const createTerminalBridge: CreateTerminalBridge = ({
   sessionName,
-  cols,
-  rows
+  cols: _cols,
+  rows: _rows
 }) => {
-  const ptyProcess = pty.spawn("tmux", ["attach-session", "-t", sessionName], {
-    cols,
-    rows,
-    name: "xterm-256color",
-    cwd: globalThis.process.cwd(),
-    env: globalThis.process.env as Record<string, string>
-  });
+  const bridgeProcess = spawn(
+    "script",
+    ["-q", "/dev/null", "tmux", "attach-session", "-t", sessionName],
+    {
+      cwd: globalThis.process.cwd(),
+      env: {
+        ...globalThis.process.env,
+        TERM: "xterm-256color"
+      },
+      stdio: "pipe"
+    }
+  );
 
   return {
     onData(listener) {
-      ptyProcess.onData(listener);
+      bridgeProcess.stdout.on("data", (chunk: Buffer | string) => {
+        listener(chunk.toString());
+      });
+      bridgeProcess.stderr.on("data", (chunk: Buffer | string) => {
+        listener(chunk.toString());
+      });
     },
     onExit(listener) {
-      ptyProcess.onExit(() => listener());
+      bridgeProcess.on("close", () => listener());
     },
     write(data) {
-      ptyProcess.write(data);
+      bridgeProcess.stdin.write(data);
     },
-    resize(nextCols, nextRows) {
-      ptyProcess.resize(nextCols, nextRows);
+    resize(_nextCols, _nextRows) {
+      return undefined;
     },
     kill() {
-      ptyProcess.kill();
+      bridgeProcess.kill();
     }
   };
 };

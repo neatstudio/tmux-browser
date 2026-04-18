@@ -1,3 +1,151 @@
+:root {
+  color: #dce6ef;
+  background: radial-gradient(circle at top, #16314b, #08131d 55%);
+  font-family: "Iosevka Etoile", "IBM Plex Sans", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
 body {
-  font-family: sans-serif;
+  margin: 0;
+  min-height: 100vh;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-height: 100vh;
+}
+
+.tabs-root {
+  border-bottom: 1px solid rgba(220, 230, 239, 0.12);
+  background: rgba(5, 10, 16, 0.82);
+  backdrop-filter: blur(18px);
+}
+
+.tab-strip {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
+}
+
+.tab-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border: 1px solid rgba(220, 230, 239, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.tab-item.is-active {
+  border-color: rgba(133, 215, 255, 0.55);
+  background: rgba(133, 215, 255, 0.12);
+}
+
+.tab-item button {
+  border: 0;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+  padding: 0.45rem 0.8rem;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(280px, 380px) 1fr;
+  min-height: 0;
+}
+
+.dashboard-root {
+  border-right: 1px solid rgba(220, 230, 239, 0.12);
+  background: rgba(5, 10, 16, 0.5);
+  padding: 1.25rem;
+}
+
+.dashboard h1 {
+  margin-top: 0;
+}
+
+.session-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.session-form input {
+  border: 1px solid rgba(220, 230, 239, 0.18);
+  border-radius: 0.75rem;
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  padding: 0.75rem 0.9rem;
+}
+
+.session-form button,
+.session-table button {
+  border: 1px solid rgba(220, 230, 239, 0.15);
+  border-radius: 0.75rem;
+  background: rgba(133, 215, 255, 0.12);
+  color: inherit;
+  cursor: pointer;
+  padding: 0.55rem 0.9rem;
+}
+
+.session-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.session-table td {
+  border-bottom: 1px solid rgba(220, 230, 239, 0.08);
+  padding: 0.75rem 0.25rem;
+  vertical-align: middle;
+}
+
+.session-table td:last-child {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.panels-root {
+  min-width: 0;
+  min-height: 0;
+}
+
+.terminal-panel {
+  height: calc(100vh - 58px);
+  padding: 0.5rem;
+}
+
+.error {
+  color: #ff9c88;
+}
+
+@media (max-width: 900px) {
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-root {
+    border-right: 0;
+    border-bottom: 1px solid rgba(220, 230, 239, 0.12);
+  }
+
+  .terminal-panel {
+    height: 60vh;
+  }
 }
