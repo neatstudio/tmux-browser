@@ -15,6 +15,12 @@ Build a HarmonyOS-first native mobile client for the existing `gemm4` tmux manag
 
 The first version should be implemented with HarmonyOS ArkTS and ArkUI. Android reuse should remain possible through clean module boundaries, but it is not part of the first delivery.
 
+## Implementation Location
+
+The first-version mobile client should be built as a new project under `/Users/gouki/server/tools/tmux`. The existing `/Users/gouki/server/wwwroot/gemm4` project remains the reference backend and web client. The mobile app may read protocol types and behavior from `gemm4`, but it must not require changes to `gemm4` for the first version.
+
+If a full HarmonyOS build toolchain is unavailable in the local environment, the implementation should still create the ArkTS project source, terminal core, protocol clients, and tests that can be opened in DevEco Studio later. Verification should then focus on source-level tests and static checks available locally.
+
 ## Product Scope
 
 ### In Scope
