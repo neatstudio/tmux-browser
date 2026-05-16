@@ -45,6 +45,15 @@ describe("run release scripts", () => {
     expect(packScript).toContain('rm -rf "$APP_HOME"');
   });
 
+  it("stops legacy gemm4-node processes before restarting tmux-ui", () => {
+    expect(packScript).toContain('LEGACY_APP_HOME="\\${TMUX_UI_LEGACY_HOME:-$HOME/.local/share/gemm4-node}"');
+    expect(packScript).toContain("stop_legacy_app_processes()");
+    expect(packScript).toContain('pgrep -f "node dist/server/index.js"');
+    expect(packScript).toContain('readlink "/proc/$pid/cwd"');
+    expect(packScript).toContain("stop_port_processes()");
+    expect(packScript).toContain('lsof -nP -iTCP:"$port" -sTCP:LISTEN -t');
+  });
+
   it("keeps Tailscale-first host defaults with explicit HOST override", () => {
     expect(packScript).toContain("detect_tailscale_host");
     expect(packScript).toContain("100\\\\.");

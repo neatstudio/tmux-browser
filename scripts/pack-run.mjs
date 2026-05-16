@@ -171,6 +171,7 @@ set -euo pipefail
 APP_HOME="\${TMUX_UI_HOME:-$HOME/.tmux-ui}"
 APP_SESSION="\${TMUX_UI_SESSION:-tmux-ui}"
 PID_FILE="\${APP_HOME}/tmux-ui.pid"
+LEGACY_APP_HOME="\${TMUX_UI_LEGACY_HOME:-$HOME/.local/share/gemm4-node}"
 COMMAND="\${1:-help}"
 MARKER="${payloadMarker}"
 
@@ -256,6 +257,48 @@ stop_pid_file_process() {
   rm -f "$PID_FILE"
 }
 
+stop_legacy_app_processes() {
+  if [[ "$LEGACY_APP_HOME" == "$APP_HOME" ]]; then
+    return
+  fi
+
+  if [[ ! -d "$LEGACY_APP_HOME" ]]; then
+    return
+  fi
+
+  local pid
+  while IFS= read -r pid; do
+    [[ -n "$pid" ]] || continue
+
+    local cwd
+    cwd="$(readlink "/proc/$pid/cwd" 2>/dev/null || true)"
+
+    if [[ "$cwd" == "$LEGACY_APP_HOME" ]]; then
+      kill "$pid" 2>/dev/null || true
+    fi
+  done < <(pgrep -f "node dist/server/index.js" 2>/dev/null || true)
+}
+
+stop_port_processes() {
+  local port="\${PORT:-3000}"
+
+  if ! command -v lsof >/dev/null 2>&1; then
+    return
+  fi
+
+  local pid
+  while IFS= read -r pid; do
+    [[ -n "$pid" ]] || continue
+
+    local command_line
+    command_line="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+
+    if [[ "$command_line" == *"node dist/server/index.js"* ]]; then
+      kill "$pid" 2>/dev/null || true
+    fi
+  done < <(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null || true)
+}
+
 ensure_tmux_session() {
   if tmux has-session -t "$APP_SESSION" 2>/dev/null; then
     return
@@ -270,6 +313,9 @@ stop_server() {
   fi
 
   stop_pid_file_process
+  stop_legacy_app_processes
+  stop_port_processes
+  sleep 1
 }
 
 restart_server() {
