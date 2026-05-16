@@ -8,6 +8,9 @@ export type SessionStatusBarActions = {
   onClear?: () => void;
   onRedraw?: () => void;
   onRefresh?: () => void;
+  onConfig?: () => void;
+  onRename?: () => void;
+  onKill?: () => void;
 };
 
 function formatWindowPaneSummary(
@@ -101,7 +104,10 @@ function renderStatusActions(
     createActionButton("refresh", "refresh", () => {
       actions.onRefresh?.();
       renderSessionStatusBar(root, session, actions);
-    })
+    }),
+    createActionButton("config", "config", () => actions.onConfig?.(), !actions.onConfig),
+    createActionButton("rename", "rename", () => actions.onRename?.(), !actions.onRename),
+    createActionButton("kill", "kill", () => actions.onKill?.(), !actions.onKill)
   );
 
   return actionsRoot;

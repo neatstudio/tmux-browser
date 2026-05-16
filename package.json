@@ -1,5 +1,5 @@
 {
-  "name": "browser-tmux-dashboard",
+  "name": "tmux-ui",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -7,6 +7,8 @@
     "dev:server": "tsx watch src/server/index.ts",
     "dev:client": "vite",
     "build": "tsc -p tsconfig.server.json && vite build",
+    "pack:run": "node scripts/pack-run.mjs",
+    "publish": "node scripts/publish-run.mjs",
     "start": "node dist/server/index.js",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest"

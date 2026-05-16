@@ -1,0 +1,74 @@
+import { readFileSync } from "node:fs";
+
+import { describe, expect, it } from "vitest";
+
+const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
+  name: string;
+  scripts: Record<string, string>;
+};
+const packScript = readFileSync("scripts/pack-run.mjs", "utf8");
+const publishScript = readFileSync("scripts/publish-run.mjs", "utf8");
+const workflow = readFileSync(".github/workflows/release.yml", "utf8");
+
+describe("run release scripts", () => {
+  it("uses tmux-ui as the public package identity", () => {
+    expect(packageJson.name).toBe("tmux-ui");
+  });
+
+  it("splits pack and publish commands", () => {
+    expect(packageJson.scripts["pack:run"]).toBe("node scripts/pack-run.mjs");
+    expect(packageJson.scripts.publish).toBe("node scripts/publish-run.mjs");
+    expect(packageJson.scripts.release).toBeUndefined();
+  });
+
+  it("packs stable and timestamped run files without remote deployment", () => {
+    expect(packScript).toContain("`${projectName}-${version}-${stamp}.run`");
+    expect(packScript).toContain('join(releaseDir, `${projectName}.run`)');
+    expect(packScript).toContain('join(releaseDir, "tmux.run")');
+    expect(packScript).not.toContain("scp");
+    expect(packScript).not.toContain("deployTargets");
+  });
+
+  it("uses ~/.tmux-ui and a dedicated tmux-ui tmux session", () => {
+    expect(packScript).toContain('APP_HOME="\\${TMUX_UI_HOME:-$HOME/.tmux-ui}"');
+    expect(packScript).toContain('APP_SESSION="\\${TMUX_UI_SESSION:-tmux-ui}"');
+    expect(packScript).toContain('tmux has-session -t "$APP_SESSION"');
+    expect(packScript).toContain('tmux new-session -d -s "$APP_SESSION"');
+    expect(packScript).not.toContain("tmux has-session -t tmux");
+    expect(packScript).not.toContain('lsof -tiTCP:"$port"');
+  });
+
+  it("supports uninstall and does not default to starting the server", () => {
+    expect(packScript).toContain('COMMAND="\\${1:-help}"');
+    expect(packScript).toContain("uninstall    Stop tmux-ui and remove the install directory");
+    expect(packScript).toContain("uninstall_server()");
+    expect(packScript).toContain('rm -rf "$APP_HOME"');
+  });
+
+  it("keeps Tailscale-first host defaults with explicit HOST override", () => {
+    expect(packScript).toContain("detect_tailscale_host");
+    expect(packScript).toContain("100\\\\.");
+    expect(packScript).toContain('export HOST="\\${HOST:-$(detect_tailscale_host)}"');
+    expect(packScript).toContain("No Tailscale 100.x address found");
+  });
+
+  it("publishes only when targets are explicitly provided or configured locally", () => {
+    expect(publishScript).toContain(".tmux-ui.publish.json");
+    expect(publishScript).toContain('const defaultRunFile = join(rootDir, "release", "tmux.run")');
+    expect(publishScript).toContain('options.targets.push(parseTarget(argv[++index] ?? ""))');
+    expect(publishScript).toContain("ssh");
+    expect(publishScript).toContain("scp");
+    expect(publishScript).toContain("--install");
+    expect(publishScript).toContain("--restart");
+    expect(publishScript).not.toContain('host: "tw0"');
+    expect(publishScript).not.toContain('host: "tw1"');
+    expect(publishScript).not.toContain('host: "vn"');
+  });
+
+  it("builds GitHub Release artifacts from pack:run", () => {
+    expect(workflow).toContain("npm run pack:run");
+    expect(workflow).toContain("release/tmux.run");
+    expect(workflow).toContain("release/tmux-ui.run");
+    expect(workflow).toContain("release/tmux-ui-*.run");
+  });
+});

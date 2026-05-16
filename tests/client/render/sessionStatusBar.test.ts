@@ -113,11 +113,17 @@ describe("sessionStatusBar", () => {
     const onRefresh = vi.fn();
     const onClear = vi.fn();
     const onRedraw = vi.fn();
+    const onConfig = vi.fn();
+    const onRename = vi.fn();
+    const onKill = vi.fn();
 
     renderSessionStatusBar(root, SESSION, {
       onRefresh,
       onClear,
-      onRedraw
+      onRedraw,
+      onConfig,
+      onRename,
+      onKill
     });
 
     expect(root.querySelector("[data-action='split-horizontal']")).toBeNull();
@@ -128,9 +134,31 @@ describe("sessionStatusBar", () => {
     root.querySelector<HTMLButtonElement>("[data-action='clear']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='redraw']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='refresh']")?.click();
+    root.querySelector<HTMLButtonElement>("[data-action='config']")?.click();
+    root.querySelector<HTMLButtonElement>("[data-action='rename']")?.click();
+    root.querySelector<HTMLButtonElement>("[data-action='kill']")?.click();
 
     expect(onClear).toHaveBeenCalledOnce();
     expect(onRedraw).toHaveBeenCalledOnce();
     expect(onRefresh).toHaveBeenCalledOnce();
+    expect(onConfig).toHaveBeenCalledOnce();
+    expect(onRename).toHaveBeenCalledOnce();
+    expect(onKill).toHaveBeenCalledOnce();
+  });
+
+  it("disables session management actions when handlers are missing", () => {
+    const root = document.createElement("div");
+
+    renderSessionStatusBar(root, SESSION);
+
+    expect(
+      root.querySelector<HTMLButtonElement>("[data-action='config']")?.disabled
+    ).toBe(true);
+    expect(
+      root.querySelector<HTMLButtonElement>("[data-action='rename']")?.disabled
+    ).toBe(true);
+    expect(
+      root.querySelector<HTMLButtonElement>("[data-action='kill']")?.disabled
+    ).toBe(true);
   });
 });

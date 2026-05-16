@@ -7,7 +7,6 @@ export default defineConfig({
       "**/dist/**",
       ".worktrees/**",
       "release/**",
-      "tests/scripts/**",
     ],
   },
 });

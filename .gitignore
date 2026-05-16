@@ -4,7 +4,6 @@ dist/
 release/
 .deepseek/
 .playwright-mcp/
-scripts/package-node-release.mjs
-tests/scripts/
+.tmux-ui.publish.json
 .env
 .superpowers/

@@ -3,6 +3,7 @@ import "@xterm/xterm/css/xterm.css";
 import { createSessionApi } from "./api/sessionApi";
 import { renderDashboard } from "./render/renderDashboard";
 import { createAnimationFrameScheduler } from "./render/renderScheduler";
+import { renderSessionConfigModal } from "./render/sessionConfigModal";
 import { renderSessionStatusBar } from "./render/sessionStatusBar";
 import { renderTabs, updateActiveTabItem } from "./render/renderTabs";
 import { createDashboardStore } from "./state/dashboardStore";
@@ -131,7 +132,7 @@ function ensureTerminal(tab: BrowserTab) {
     }
   });
 
-  mountedTerminals.set(tab.id, {
+  const mountedTerminal: MountedTerminal = {
     destroy: mounted.destroy,
     sendInput: mounted.sendInput,
     clear: mounted.clear,
@@ -142,21 +143,12 @@ function ensureTerminal(tab: BrowserTab) {
     setLineHeight: mounted.setLineHeight,
     panel,
     statusBar: panel
-  });
+  };
+  mountedTerminals.set(tab.id, mountedTerminal);
   renderSessionStatusBar(
     panel,
     store.getState().sessions.find((session) => session.name === tab.sessionName),
-    {
-      onRefresh: () => {
-        void store.refresh();
-      },
-      onClear: () => {
-        mounted.clear();
-      },
-      onRedraw: () => {
-        mounted.redraw();
-      }
-    }
+    createSessionStatusActions(tab, mountedTerminal)
   );
   panel.style.background = getTheme(
     sessionSettings.get(tab.sessionName).themeId
@@ -175,17 +167,11 @@ function syncTerminalStatusBars() {
       return;
     }
 
-    renderSessionStatusBar(mounted.panel, sessionsByName.get(tab.sessionName), {
-      onRefresh: () => {
-        void store.refresh();
-      },
-      onClear: () => {
-        mounted.clear();
-      },
-      onRedraw: () => {
-        mounted.redraw();
-      }
-    });
+    renderSessionStatusBar(
+      mounted.panel,
+      sessionsByName.get(tab.sessionName),
+      createSessionStatusActions(tab, mounted)
+    );
   });
 }
 
@@ -295,6 +281,62 @@ async function renameSession(fromName: string, toName: string) {
   scheduleRender();
 }
 
+function promptRenameSession(sessionName: string) {
+  const nextName = window.prompt("Rename session", sessionName)?.trim();
+
+  if (!nextName || nextName === sessionName) {
+    return;
+  }
+
+  void renameSession(sessionName, nextName);
+}
+
+function closeTabsForSession(sessionName: string) {
+  tabState
+    .getTabs()
+    .filter((tab) => tab.sessionName === sessionName)
+    .forEach((tab) => closeTab(tab.id, { force: true }));
+}
+
+function killSession(sessionName: string, options: { confirm?: boolean } = {}) {
+  if (options.confirm) {
+    const confirmed = window.confirm(`Kill tmux session "${sessionName}"?`);
+
+    if (!confirmed) {
+      return;
+    }
+  }
+
+  if (activeConfigSessionName === sessionName) {
+    activeConfigSessionName = null;
+  }
+
+  closeTabsForSession(sessionName);
+  void store.killSession(sessionName).then(() => {
+    scheduleRender();
+  });
+}
+
+function createSessionStatusActions(tab: BrowserTab, mounted: MountedTerminal) {
+  return {
+    onRefresh: () => {
+      void store.refresh();
+    },
+    onClear: () => {
+      mounted.clear();
+    },
+    onRedraw: () => {
+      mounted.redraw();
+    },
+    onConfig: () => {
+      activeConfigSessionName = tab.sessionName;
+      scheduleRender();
+    },
+    onRename: () => promptRenameSession(tab.sessionName),
+    onKill: () => killSession(tab.sessionName, { confirm: true })
+  };
+}
+
 function render() {
   const tabs = tabState.getTabs();
   const activeTabId = tabState.getActiveTabId();
@@ -334,11 +376,7 @@ function render() {
         scheduleRender();
       },
       onKillSession: (name) => {
-        if (activeConfigSessionName === name) {
-          activeConfigSessionName = null;
-        }
-
-        void store.killSession(name);
+        killSession(name);
       },
       onRenameSession: (fromName, toName) => {
         void renameSession(fromName, toName);
@@ -370,6 +408,30 @@ function render() {
   dashboardRoot.style.display = activeTabId === null ? "block" : "none";
   panelsRoot.style.display = activeTabId === null ? "none" : "block";
   syncPanels();
+  panelsRoot.querySelector(".session-config-backdrop")?.remove();
+
+  if (activeTabId !== null && activeConfigSessionName) {
+    const activeSession = store
+      .getState()
+      .sessions.find((session) => session.name === activeConfigSessionName);
+
+    if (activeSession) {
+      panelsRoot.append(
+        renderSessionConfigModal(activeSession.name, {
+          getSessionSettings: (name) => sessionSettings.get(name),
+          onSessionFontSizeChange: setSessionFontSize,
+          onSessionFontFamilyChange: setSessionFontFamily,
+          onSessionLineHeightChange: setSessionLineHeight,
+          onSessionThemeChange: setSessionTheme,
+          onCloseSessionConfig: () => {
+            activeConfigSessionName = null;
+            scheduleRender();
+          },
+          themes: THEMES
+        })
+      );
+    }
+  }
 }
 
 store.subscribe(() => {
