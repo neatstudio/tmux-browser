@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const rootDir = resolve(scriptDir, "..");
-const defaultRunFile = join(rootDir, "release", "tmux.run");
+const defaultRunFile = join(rootDir, "release", "release.run");
 const defaultConfigFile = join(rootDir, ".tmux-ui.publish.json");
 
 function parseArgs(argv) {
@@ -123,7 +123,7 @@ Usage:
 
 Options:
   --target host:/dir       Upload target. Can be repeated.
-  --run-file path          Run file to upload. Default: release/tmux.run
+  --run-file path          Run file to upload. Default: release/release.run
   --remote-name name       Remote filename. Default: tmux.run
   --install                Run <remote>/tmux.run install after upload
   --restart                Run <remote>/tmux.run restart after upload

@@ -21,10 +21,8 @@ const releaseDir = join(rootDir, "release");
 const packageJson = JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8"));
 const projectName = "tmux-ui";
 const version = packageJson.version ?? "0.0.0";
-const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..+/, "Z");
-const outputFile = join(releaseDir, `${projectName}-${version}-${stamp}.run`);
-const latestOutputFile = join(releaseDir, `${projectName}.run`);
-const tmuxCompatOutputFile = join(releaseDir, "tmux.run");
+const versionOutputFile = join(releaseDir, `${projectName}-${version}.run`);
+const releaseOutputFile = join(releaseDir, "release.run");
 const payloadMarker = "__TMUX_UI_PAYLOAD_BELOW__";
 
 function run(command, args, options = {}) {
@@ -373,17 +371,14 @@ try {
     }
   });
 
-  writeFileSync(outputFile, createStub(), "utf8");
-  appendFileSync(outputFile, readFileSync(payloadArchive));
-  chmodSync(outputFile, 0o755);
-  copyFileSync(outputFile, latestOutputFile);
-  chmodSync(latestOutputFile, 0o755);
-  copyFileSync(outputFile, tmuxCompatOutputFile);
-  chmodSync(tmuxCompatOutputFile, 0o755);
+  writeFileSync(versionOutputFile, createStub(), "utf8");
+  appendFileSync(versionOutputFile, readFileSync(payloadArchive));
+  chmodSync(versionOutputFile, 0o755);
+  copyFileSync(versionOutputFile, releaseOutputFile);
+  chmodSync(releaseOutputFile, 0o755);
 
-  console.log(`Created ${outputFile}`);
-  console.log(`Updated ${latestOutputFile}`);
-  console.log(`Updated ${tmuxCompatOutputFile}`);
+  console.log(`Created ${versionOutputFile}`);
+  console.log(`Updated ${releaseOutputFile}`);
 } finally {
   rmSync(stageDir, { recursive: true, force: true });
 }

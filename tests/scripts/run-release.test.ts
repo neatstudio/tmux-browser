@@ -21,10 +21,10 @@ describe("run release scripts", () => {
     expect(packageJson.scripts.release).toBeUndefined();
   });
 
-  it("packs stable and timestamped run files without remote deployment", () => {
-    expect(packScript).toContain("`${projectName}-${version}-${stamp}.run`");
-    expect(packScript).toContain('join(releaseDir, `${projectName}.run`)');
-    expect(packScript).toContain('join(releaseDir, "tmux.run")');
+  it("packs stable and versioned run files without remote deployment", () => {
+    expect(packScript).toContain("`${projectName}-${version}.run`");
+    expect(packScript).toContain('join(releaseDir, "release.run")');
+    expect(packScript).not.toContain("stamp");
     expect(packScript).not.toContain("scp");
     expect(packScript).not.toContain("deployTargets");
   });
@@ -54,7 +54,7 @@ describe("run release scripts", () => {
 
   it("publishes only when targets are explicitly provided or configured locally", () => {
     expect(publishScript).toContain(".tmux-ui.publish.json");
-    expect(publishScript).toContain('const defaultRunFile = join(rootDir, "release", "tmux.run")');
+    expect(publishScript).toContain('const defaultRunFile = join(rootDir, "release", "release.run")');
     expect(publishScript).toContain('options.targets.push(parseTarget(argv[++index] ?? ""))');
     expect(publishScript).toContain("ssh");
     expect(publishScript).toContain("scp");
@@ -67,8 +67,10 @@ describe("run release scripts", () => {
 
   it("builds GitHub Release artifacts from pack:run", () => {
     expect(workflow).toContain("npm run pack:run");
-    expect(workflow).toContain("release/tmux.run");
-    expect(workflow).toContain("release/tmux-ui.run");
-    expect(workflow).toContain("release/tmux-ui-*.run");
+    expect(workflow).toContain("release/release.run");
+    expect(workflow).toContain("release/tmux-ui-${VERSION}.run");
+    expect(workflow).toContain('TAG="v${VERSION}"');
+    expect(workflow).toContain("gh release create \"$TAG\"");
+    expect(workflow).toContain("--target \"$GITHUB_SHA\"");
   });
 });

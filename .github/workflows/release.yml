@@ -3,6 +3,8 @@ name: Release
 on:
   workflow_dispatch:
   push:
+    branches:
+      - main
     tags:
       - "v*"
 
@@ -16,6 +18,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -32,17 +36,37 @@ jobs:
       - name: Pack run file
         run: npm run pack:run
 
+      - name: Read package version
+        id: version
+        run: echo "version=$(node -p \"require('./package.json').version\")" >> "$GITHUB_OUTPUT"
+
       - name: Upload run artifact
         uses: actions/upload-artifact@v4
         with:
-          name: tmux.run
-          path: release/tmux.run
+          name: release.run
+          path: release/release.run
 
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            release/tmux.run
-            release/tmux-ui.run
-            release/tmux-ui-*.run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            TAG="v${VERSION}"
+          fi
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "$TAG already has a GitHub Release; skip publishing"
+            exit 0
+          fi
+
+          gh release create "$TAG" \
+            release/release.run \
+            "release/tmux-ui-${VERSION}.run" \
+            --target "$GITHUB_SHA" \
+            --title "$TAG" \
+            --notes "tmux-ui ${VERSION}"
