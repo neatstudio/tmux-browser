@@ -171,6 +171,9 @@ set -euo pipefail
 APP_HOME="\${TMUX_UI_HOME:-$HOME/.tmux-ui}"
 APP_SESSION="\${TMUX_UI_SESSION:-tmux-ui}"
 PID_FILE="\${APP_HOME}/tmux-ui.pid"
+APP_BIN_DIR="$APP_HOME/bin"
+USER_BIN_DIR="\${TMUX_UI_USER_BIN:-$HOME/.local/bin}"
+CLI_NAME="\${TMUX_UI_CLI_NAME:-tmux-ui}"
 LEGACY_APP_HOME="\${TMUX_UI_LEGACY_HOME:-$HOME/.local/share/gemm4-node}"
 COMMAND="\${1:-help}"
 MARKER="${payloadMarker}"
@@ -194,6 +197,35 @@ extract_payload() {
   rm -f "$APP_HOME/start.sh" "$APP_HOME/install.sh" "$APP_HOME/README_DEPLOY.md"
   tail -n +"$line" "$0" | tar -xzf - -C "$APP_HOME"
   chmod +x "$APP_HOME/start.sh" "$APP_HOME/install.sh" 2>/dev/null || true
+}
+
+ensure_user_bin_on_path() {
+  local profile
+  local path_line='export PATH="$HOME/.local/bin:$PATH"'
+  local profiles=("$HOME/.zprofile" "$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.bashrc" "$HOME/.profile")
+
+  for profile in "\${profiles[@]}"; do
+    if [[ -f "$profile" ]] && grep -F '$HOME/.local/bin' "$profile" >/dev/null 2>&1; then
+      return
+    fi
+  done
+
+  for profile in "\${profiles[@]}"; do
+    if [[ -f "$profile" ]]; then
+      printf '\\n# Added by tmux-ui installer\\n%s\\n' "$path_line" >> "$profile"
+      return
+    fi
+  done
+
+  printf '# Added by tmux-ui installer\\n%s\\n' "$path_line" > "$HOME/.profile"
+}
+
+install_cli_entrypoint() {
+  mkdir -p "$APP_BIN_DIR" "$USER_BIN_DIR"
+  cp "$0" "$APP_BIN_DIR/$CLI_NAME"
+  chmod +x "$APP_BIN_DIR/$CLI_NAME"
+  ln -sfn "$APP_BIN_DIR/$CLI_NAME" "$USER_BIN_DIR/$CLI_NAME"
+  ensure_user_bin_on_path
 }
 
 require_command() {
@@ -336,6 +368,9 @@ restart_server() {
 
 uninstall_server() {
   stop_server
+  if [[ -L "$USER_BIN_DIR/$CLI_NAME" ]] && [[ "$(readlink "$USER_BIN_DIR/$CLI_NAME" 2>/dev/null || true)" == "$APP_BIN_DIR/$CLI_NAME" ]]; then
+    rm -f "$USER_BIN_DIR/$CLI_NAME"
+  fi
   rm -rf "$APP_HOME"
   echo "Removed $APP_HOME"
 }
@@ -345,6 +380,7 @@ case "$COMMAND" in
     load_node_runtime
     require_command npm
     extract_payload
+    install_cli_entrypoint
     "$APP_HOME/install.sh"
     ;;
   start)
@@ -353,6 +389,7 @@ case "$COMMAND" in
     require_command npm
     require_command tmux
     extract_payload
+    install_cli_entrypoint
 
     if [[ ! -d "$APP_HOME/node_modules" ]]; then
       "$APP_HOME/install.sh"
@@ -362,6 +399,7 @@ case "$COMMAND" in
     ;;
   restart)
     load_node_runtime
+    install_cli_entrypoint
     restart_server
     ;;
   stop)
@@ -372,6 +410,7 @@ case "$COMMAND" in
     ;;
   extract)
     extract_payload
+    install_cli_entrypoint
     ;;
   dir)
     echo "$APP_HOME"

@@ -45,6 +45,23 @@ describe("run release scripts", () => {
     expect(packScript).toContain('rm -rf "$APP_HOME"');
   });
 
+  it("installs a stable tmux-ui command into the user bin directory", () => {
+    expect(packScript).toContain('APP_BIN_DIR="$APP_HOME/bin"');
+    expect(packScript).toContain('USER_BIN_DIR="\\${TMUX_UI_USER_BIN:-$HOME/.local/bin}"');
+    expect(packScript).toContain('CLI_NAME="\\${TMUX_UI_CLI_NAME:-tmux-ui}"');
+    expect(packScript).toContain("install_cli_entrypoint()");
+    expect(packScript).toContain('cp "$0" "$APP_BIN_DIR/$CLI_NAME"');
+    expect(packScript).toContain('ln -sfn "$APP_BIN_DIR/$CLI_NAME" "$USER_BIN_DIR/$CLI_NAME"');
+  });
+
+  it("adds the user bin directory to common shell profile files", () => {
+    expect(packScript).toContain("ensure_user_bin_on_path()");
+    expect(packScript).toContain(".bash_profile");
+    expect(packScript).toContain(".bashrc");
+    expect(packScript).toContain(".zprofile");
+    expect(packScript).toContain('export PATH="$HOME/.local/bin:$PATH"');
+  });
+
   it("stops legacy gemm4-node processes before restarting tmux-ui", () => {
     expect(packScript).toContain('LEGACY_APP_HOME="\\${TMUX_UI_LEGACY_HOME:-$HOME/.local/share/gemm4-node}"');
     expect(packScript).toContain("stop_legacy_app_processes()");
