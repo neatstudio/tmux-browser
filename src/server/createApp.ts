@@ -7,12 +7,18 @@ import {
   type TmuxService
 } from "./services/tmux/createTmuxService.js";
 import { createSessionRoutes } from "./routes/sessionRoutes.js";
+import {
+  getServerStatus,
+  type ServerStatus
+} from "./services/serverStatus/getServerStatus.js";
 
 export function createApp(options: {
   tmuxService?: TmuxService;
   killSession?: (name: string) => Promise<void>;
+  getServerStatus?: () => ServerStatus;
 } = {}) {
   const tmuxService = options.tmuxService ?? createTmuxService();
+  const readServerStatus = options.getServerStatus ?? getServerStatus;
   const app = express();
   const clientDistDir = resolve(process.cwd(), "dist/client");
 
@@ -22,11 +28,16 @@ export function createApp(options: {
     res.json({ ok: true });
   });
 
+  app.get("/api/server-status", (_req, res) => {
+    res.json(readServerStatus());
+  });
+
   app.use(
     "/api/sessions",
     createSessionRoutes({
       listSessions: tmuxService.listSessions,
       createSession: tmuxService.createSession,
+      renameSession: tmuxService.renameSession,
       killSession: options.killSession ?? tmuxService.killSession
     })
   );

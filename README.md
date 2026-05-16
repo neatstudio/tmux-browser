@@ -7,7 +7,6 @@ Lightweight browser dashboard for listing tmux sessions, opening browser termina
 - Node.js 20+
 - npm 11+
 - `tmux` installed and available on `PATH`
-- `script` available on `PATH` for the terminal PTY bridge
 
 ## Scripts
 
@@ -33,7 +32,9 @@ npm run build
 npm run start
 ```
 
-This serves the built dashboard at `http://127.0.0.1:3000`.
+This serves the built dashboard on all interfaces at `http://0.0.0.0:3000`,
+so it can be reached through LAN or Tailscale using the machine's reachable IP
+or MagicDNS name. To bind to localhost only, run `HOST=127.0.0.1 npm run start`.
 
 For split development:
 

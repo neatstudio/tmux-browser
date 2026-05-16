@@ -10,9 +10,21 @@ export type RunTmuxCommand = (
   args: string[]
 ) => Promise<TmuxCommandResult>;
 
+export function createTmuxCommandEnv(
+  baseEnv: NodeJS.ProcessEnv = process.env
+): NodeJS.ProcessEnv {
+  return {
+    ...baseEnv,
+    LANG: baseEnv.LANG ?? "en_US.UTF-8",
+    LC_CTYPE: baseEnv.LC_CTYPE ?? "UTF-8"
+  };
+}
+
 export const runTmuxCommand: RunTmuxCommand = (command, args) =>
   new Promise((resolve, reject) => {
-    const child = spawn("tmux", [command, ...args]);
+    const child = spawn("tmux", [command, ...args], {
+      env: createTmuxCommandEnv()
+    });
 
     let stdout = "";
     let stderr = "";

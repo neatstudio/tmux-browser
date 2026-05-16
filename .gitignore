@@ -1,5 +1,10 @@
 .worktrees/
 node_modules/
 dist/
+release/
+.deepseek/
+.playwright-mcp/
+scripts/package-node-release.mjs
+tests/scripts/
 .env
 .superpowers/

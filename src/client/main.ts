@@ -1,16 +1,36 @@
-import "xterm/css/xterm.css";
+import "@xterm/xterm/css/xterm.css";
 
 import { createSessionApi } from "./api/sessionApi";
 import { renderDashboard } from "./render/renderDashboard";
-import { renderTabs } from "./render/renderTabs";
+import { createAnimationFrameScheduler } from "./render/renderScheduler";
+import { renderSessionStatusBar } from "./render/sessionStatusBar";
+import { renderTabs, updateActiveTabItem } from "./render/renderTabs";
 import { createDashboardStore } from "./state/dashboardStore";
+import { createSessionSettingsStore } from "./state/sessionSettings";
 import { createTabState, type BrowserTab } from "./state/tabState";
 import { createTerminalTab } from "./terminal/createTerminalTab";
+import { syncTerminalPanelVisibility } from "./terminal/panelVisibility";
+import {
+  applyTheme,
+  getTheme,
+  loadThemeId,
+  saveThemeId,
+  THEMES,
+  type AppTheme
+} from "./theme/themeState";
 import "./styles.css";
 
 type MountedTerminal = {
   destroy: () => void;
+  sendInput: (data: string) => void;
+  clear: () => void;
+  redraw: () => void;
+  setTheme: (theme: AppTheme["terminalTheme"]) => void;
+  setFontSize: (fontSize: number) => void;
+  setFontFamily: (fontFamily: string) => void;
+  setLineHeight: (lineHeight: number) => void;
   panel: HTMLElement;
+  statusBar: HTMLElement;
 };
 
 const app = document.querySelector<HTMLElement>("#app");
@@ -22,7 +42,7 @@ if (!app) {
 app.innerHTML = `
   <div class="app-shell">
     <div class="tabs-root"></div>
-    <div class="workspace">
+    <div class="content-root">
       <div class="dashboard-root"></div>
       <div class="panels-root"></div>
     </div>
@@ -33,13 +53,28 @@ const tabsRoot = app.querySelector<HTMLElement>(".tabs-root")!;
 const dashboardRoot = app.querySelector<HTMLElement>(".dashboard-root")!;
 const panelsRoot = app.querySelector<HTMLElement>(".panels-root")!;
 
+let activeTheme = getTheme(loadThemeId());
+let draftSessionName = "";
+let activeConfigSessionName: string | null = null;
 const tabState = createTabState();
+const sessionSettings = createSessionSettingsStore();
 const store = createDashboardStore({
   api: createSessionApi(),
   pollMs: 3000,
   pruneTabs: (validSessionNames) => tabState.pruneTabs(validSessionNames)
 });
 const mountedTerminals = new Map<string, MountedTerminal>();
+let lastRenderedTabListSignature = "";
+let lastRenderedActiveTabId: string | null | undefined;
+let visibleTerminalPanelId: string | null = null;
+
+applyTheme(activeTheme);
+
+const renderScheduler = createAnimationFrameScheduler(render);
+
+function scheduleRender() {
+  renderScheduler.schedule();
+}
 
 function getOrOpenTab(sessionName: string) {
   const existing = tabState
@@ -48,19 +83,25 @@ function getOrOpenTab(sessionName: string) {
 
   if (existing) {
     tabState.setActiveTab(existing.id);
-    render();
+    scheduleRender();
     return existing;
   }
 
   return tabState.openTab(sessionName);
 }
 
-function closeTab(tabId: string) {
+function closeTab(tabId: string, options: { force?: boolean } = {}) {
   mountedTerminals.get(tabId)?.destroy();
   mountedTerminals.get(tabId)?.panel.remove();
   mountedTerminals.delete(tabId);
-  tabState.closeTab(tabId);
-  render();
+
+  if (options.force) {
+    tabState.forceCloseTab(tabId);
+  } else {
+    tabState.closeTab(tabId);
+  }
+
+  scheduleRender();
 }
 
 function ensureTerminal(tab: BrowserTab) {
@@ -70,21 +111,81 @@ function ensureTerminal(tab: BrowserTab) {
 
   const panel = document.createElement("div");
   panel.className = "terminal-panel";
+  const frame = document.createElement("div");
+  frame.className = "terminal-frame";
+  panel.append(frame);
   panelsRoot.append(panel);
 
   const mounted = createTerminalTab({
-    container: panel,
+    container: frame,
+    rendererStatusElement: panel,
     tabId: tab.id,
     sessionName: tab.sessionName,
+    fontSize: sessionSettings.get(tab.sessionName).fontSize,
+    fontFamily: sessionSettings.get(tab.sessionName).fontFamily,
+    lineHeight: sessionSettings.get(tab.sessionName).lineHeight,
+    terminalTheme: getTheme(sessionSettings.get(tab.sessionName).themeId).terminalTheme,
     onClosed: () => {
-      closeTab(tab.id);
+      closeTab(tab.id, { force: true });
       void store.refresh();
     }
   });
 
   mountedTerminals.set(tab.id, {
     destroy: mounted.destroy,
-    panel
+    sendInput: mounted.sendInput,
+    clear: mounted.clear,
+    redraw: mounted.redraw,
+    setTheme: mounted.setTheme,
+    setFontSize: mounted.setFontSize,
+    setFontFamily: mounted.setFontFamily,
+    setLineHeight: mounted.setLineHeight,
+    panel,
+    statusBar: panel
+  });
+  renderSessionStatusBar(
+    panel,
+    store.getState().sessions.find((session) => session.name === tab.sessionName),
+    {
+      onRefresh: () => {
+        void store.refresh();
+      },
+      onClear: () => {
+        mounted.clear();
+      },
+      onRedraw: () => {
+        mounted.redraw();
+      }
+    }
+  );
+  panel.style.background = getTheme(
+    sessionSettings.get(tab.sessionName).themeId
+  ).terminalTheme.background;
+}
+
+function syncTerminalStatusBars() {
+  const sessionsByName = new Map(
+    store.getState().sessions.map((session) => [session.name, session])
+  );
+
+  tabState.getTabs().forEach((tab) => {
+    const mounted = mountedTerminals.get(tab.id);
+
+    if (!mounted) {
+      return;
+    }
+
+    renderSessionStatusBar(mounted.panel, sessionsByName.get(tab.sessionName), {
+      onRefresh: () => {
+        void store.refresh();
+      },
+      onClear: () => {
+        mounted.clear();
+      },
+      onRedraw: () => {
+        mounted.redraw();
+      }
+    });
   });
 }
 
@@ -93,12 +194,6 @@ function syncPanels() {
   const activeTabId = tabState.getActiveTabId();
   const validIds = new Set(tabs.map((tab) => tab.id));
 
-  tabs.forEach((tab) => {
-    ensureTerminal(tab);
-    const mounted = mountedTerminals.get(tab.id)!;
-    mounted.panel.style.display = tab.id === activeTabId ? "block" : "none";
-  });
-
   [...mountedTerminals.keys()].forEach((tabId) => {
     if (!validIds.has(tabId)) {
       mountedTerminals.get(tabId)?.destroy();
@@ -106,41 +201,182 @@ function syncPanels() {
       mountedTerminals.delete(tabId);
     }
   });
+
+  const activeTab = tabs.find((tab) => tab.id === activeTabId);
+  const nextVisiblePanelId = activeTab?.id ?? null;
+
+  if (activeTab) {
+    ensureTerminal(activeTab);
+  }
+
+  visibleTerminalPanelId = syncTerminalPanelVisibility(
+    mountedTerminals,
+    visibleTerminalPanelId,
+    nextVisiblePanelId
+  );
+  syncTerminalStatusBars();
+}
+
+function setActiveTheme(themeId: string) {
+  activeTheme = getTheme(themeId);
+  applyTheme(activeTheme);
+  saveThemeId(activeTheme.id);
+
+  scheduleRender();
+}
+
+function setSessionFontSize(sessionName: string, fontSize: number) {
+  const nextSettings = sessionSettings.setFontSize(sessionName, fontSize);
+
+  tabState
+    .getTabs()
+    .filter((tab) => tab.sessionName === sessionName)
+    .forEach((tab) => {
+      mountedTerminals.get(tab.id)?.setFontSize(nextSettings.fontSize);
+    });
+
+  scheduleRender();
+}
+
+function setSessionFontFamily(sessionName: string, fontFamily: string) {
+  const nextSettings = sessionSettings.setFontFamily(sessionName, fontFamily);
+
+  tabState
+    .getTabs()
+    .filter((tab) => tab.sessionName === sessionName)
+    .forEach((tab) => {
+      mountedTerminals.get(tab.id)?.setFontFamily(nextSettings.fontFamily);
+    });
+
+  scheduleRender();
+}
+
+function setSessionLineHeight(sessionName: string, lineHeight: number) {
+  const nextSettings = sessionSettings.setLineHeight(sessionName, lineHeight);
+
+  tabState
+    .getTabs()
+    .filter((tab) => tab.sessionName === sessionName)
+    .forEach((tab) => {
+      mountedTerminals.get(tab.id)?.setLineHeight(nextSettings.lineHeight);
+    });
+
+  scheduleRender();
+}
+
+function setSessionTheme(sessionName: string, themeId: string) {
+  const nextSettings = sessionSettings.setThemeId(sessionName, themeId);
+  const theme = getTheme(nextSettings.themeId);
+
+  tabState
+    .getTabs()
+    .filter((tab) => tab.sessionName === sessionName)
+    .forEach((tab) => {
+      const mounted = mountedTerminals.get(tab.id);
+      mounted?.setTheme(theme.terminalTheme);
+
+      if (mounted) {
+        mounted.panel.style.background = theme.terminalTheme.background;
+      }
+    });
+
+  scheduleRender();
+}
+
+async function renameSession(fromName: string, toName: string) {
+  tabState.renameSession(fromName, toName);
+  sessionSettings.renameSession(fromName, toName);
+
+  if (activeConfigSessionName === fromName) {
+    activeConfigSessionName = toName;
+  }
+
+  await store.renameSession(fromName, toName);
+  scheduleRender();
 }
 
 function render() {
-  renderTabs(tabsRoot, tabState.getTabs(), tabState.getActiveTabId(), {
-    onSelectTab: (tabId) => {
-      tabState.setActiveTab(tabId);
-      render();
-    },
-    onCloseTab: (tabId) => closeTab(tabId)
-  });
+  const tabs = tabState.getTabs();
+  const activeTabId = tabState.getActiveTabId();
+  const tabListSignature = tabs
+    .map((tab) => `${tab.id}:${tab.title}:${tab.pinned ? "pinned" : "free"}`)
+    .join("|");
 
-  renderDashboard(dashboardRoot, store.getState(), {
-    onCreateSession: (name) => {
-      void store.createSession(name).then(() => {
+  if (tabListSignature !== lastRenderedTabListSignature) {
+    renderTabs(tabsRoot, tabs, activeTabId, {
+      onSelectTab: (tabId) => {
+        tabState.setActiveTab(tabId === "__dashboard__" ? null : tabId);
+        scheduleRender();
+      },
+      onCloseTab: (tabId) => closeTab(tabId),
+      onTogglePin: (tabId) => {
+        tabState.togglePinned(tabId);
+        scheduleRender();
+      }
+    });
+    lastRenderedTabListSignature = tabListSignature;
+    lastRenderedActiveTabId = activeTabId;
+  } else if (activeTabId !== lastRenderedActiveTabId) {
+    updateActiveTabItem(tabsRoot, activeTabId);
+    lastRenderedActiveTabId = activeTabId;
+  }
+
+  if (activeTabId === null) {
+    renderDashboard(dashboardRoot, store.getState(), {
+      onCreateSession: (name) => {
+        void store.createSession(name).then(() => {
+          getOrOpenTab(name);
+          scheduleRender();
+        });
+      },
+      onOpenSession: (name) => {
         getOrOpenTab(name);
-        render();
-      });
-    },
-    onOpenSession: (name) => {
-      getOrOpenTab(name);
-      render();
-    },
-    onKillSession: (name) => {
-      void store.killSession(name);
-    }
-  });
+        scheduleRender();
+      },
+      onKillSession: (name) => {
+        if (activeConfigSessionName === name) {
+          activeConfigSessionName = null;
+        }
 
+        void store.killSession(name);
+      },
+      onRenameSession: (fromName, toName) => {
+        void renameSession(fromName, toName);
+      },
+      getSessionSettings: (name) => sessionSettings.get(name),
+      onSessionFontSizeChange: setSessionFontSize,
+      onSessionFontFamilyChange: setSessionFontFamily,
+      onSessionLineHeightChange: setSessionLineHeight,
+      onSessionThemeChange: setSessionTheme,
+      activeConfigSessionName,
+      onOpenSessionConfig: (name) => {
+        activeConfigSessionName = name;
+        scheduleRender();
+      },
+      onCloseSessionConfig: () => {
+        activeConfigSessionName = null;
+        scheduleRender();
+      },
+      draftSessionName,
+      onDraftChange: (value) => {
+        draftSessionName = value;
+      },
+      themes: THEMES,
+      activeThemeId: activeTheme.id,
+      onThemeChange: setActiveTheme
+    });
+  }
+
+  dashboardRoot.style.display = activeTabId === null ? "block" : "none";
+  panelsRoot.style.display = activeTabId === null ? "none" : "block";
   syncPanels();
 }
 
 store.subscribe(() => {
-  render();
+  scheduleRender();
 });
 
 void store.refresh().then(() => {
-  render();
+  scheduleRender();
   store.startPolling();
 });

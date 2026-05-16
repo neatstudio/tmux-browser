@@ -4,7 +4,7 @@ import type { TmuxService } from "../services/tmux/createTmuxService.js";
 
 type SessionRoutesDeps = Pick<
   TmuxService,
-  "listSessions" | "createSession" | "killSession"
+  "listSessions" | "createSession" | "renameSession" | "killSession"
 >;
 
 export function createSessionRoutes(deps: SessionRoutesDeps): Router {
@@ -22,6 +22,15 @@ export function createSessionRoutes(deps: SessionRoutesDeps): Router {
     try {
       await deps.createSession(req.body.name);
       res.status(201).json({ ok: true });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.patch("/:name", async (req, res, next) => {
+    try {
+      await deps.renameSession(req.params.name, req.body.name);
+      res.json({ ok: true });
     } catch (error) {
       next(error);
     }

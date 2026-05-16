@@ -1,4 +1,184 @@
 import type { DashboardState } from "../state/dashboardStore";
+import {
+  FONT_FAMILY_OPTIONS,
+  type SessionSettings
+} from "../state/sessionSettings";
+import type { AppTheme } from "../theme/themeState";
+
+function formatPercent(value: number | null | undefined) {
+  return typeof value === "number" ? `${value}%` : "n/a";
+}
+
+function formatBytes(value: number | null | undefined) {
+  if (!value || value <= 0) {
+    return "n/a";
+  }
+
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let unitIndex = 0;
+  let nextValue = value;
+
+  while (nextValue >= 1024 && unitIndex < units.length - 1) {
+    nextValue /= 1024;
+    unitIndex += 1;
+  }
+
+  return `${nextValue >= 10 ? Math.round(nextValue) : nextValue.toFixed(1)} ${
+    units[unitIndex]
+  }`;
+}
+
+function formatUptime(seconds: number | null | undefined) {
+  if (!seconds || seconds <= 0) {
+    return "n/a";
+  }
+
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+
+  if (days > 0) {
+    return `${days}d ${hours}h`;
+  }
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+
+  return `${minutes}m`;
+}
+
+function preventWheelNumberChange(input: HTMLInputElement) {
+  input.addEventListener(
+    "wheel",
+    (event) => {
+      event.preventDefault();
+      input.blur();
+    },
+    { passive: false }
+  );
+}
+
+function padDatePart(value: number) {
+  return String(value).padStart(2, "0");
+}
+
+export function formatDateTime(date: Date) {
+  return `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(
+    date.getDate()
+  )} ${padDatePart(date.getHours())}:${padDatePart(date.getMinutes())}`;
+}
+
+export function formatCompactDateTime(date: Date) {
+  return `${padDatePart(date.getMonth() + 1)}-${padDatePart(
+    date.getDate()
+  )} ${padDatePart(date.getHours())}:${padDatePart(date.getMinutes())}`;
+}
+
+function formatRelativeActivity(
+  lastActivityAt: number | null | undefined,
+  nowMs = Date.now()
+) {
+  if (!lastActivityAt) {
+    return null;
+  }
+
+  const elapsedSeconds = Math.max(0, Math.floor(nowMs / 1000 - lastActivityAt));
+
+  if (elapsedSeconds < 10) {
+    return "active now";
+  }
+
+  if (elapsedSeconds < 60) {
+    return `idle ${elapsedSeconds}s`;
+  }
+
+  if (elapsedSeconds < 3600) {
+    return `idle ${Math.floor(elapsedSeconds / 60)}m`;
+  }
+
+  if (elapsedSeconds < 86400) {
+    return `idle ${Math.floor(elapsedSeconds / 3600)}h`;
+  }
+
+  return `idle ${Math.floor(elapsedSeconds / 86400)}d`;
+}
+
+export function formatSessionActivity(
+  lastActivityAt: number | null | undefined,
+  nowMs = Date.now()
+) {
+  if (!lastActivityAt) {
+    return null;
+  }
+
+  const relativeActivity = formatRelativeActivity(lastActivityAt, nowMs);
+  const activityDateTime = formatDateTime(new Date(lastActivityAt * 1000));
+
+  return relativeActivity
+    ? `${relativeActivity} · ${activityDateTime}`
+    : activityDateTime;
+}
+
+export function formatDashboardSessionActivity(
+  lastActivityAt: number | null | undefined,
+  nowMs = Date.now()
+) {
+  if (!lastActivityAt) {
+    return null;
+  }
+
+  const relativeActivity = formatRelativeActivity(lastActivityAt, nowMs);
+  const activityDateTime = formatCompactDateTime(new Date(lastActivityAt * 1000));
+
+  return relativeActivity
+    ? `${relativeActivity} · ${activityDateTime}`
+    : activityDateTime;
+}
+
+export function formatDisplayPath(
+  path: string | null | undefined,
+  homeDirectory: string | null | undefined
+) {
+  if (!path) {
+    return "path unavailable";
+  }
+
+  if (!homeDirectory || homeDirectory === "/") {
+    return path;
+  }
+
+  const normalizedHome =
+    homeDirectory.endsWith("/") && homeDirectory !== "/"
+      ? homeDirectory.slice(0, -1)
+      : homeDirectory;
+
+  if (path === normalizedHome) {
+    return "~";
+  }
+
+  if (path.startsWith(`${normalizedHome}/`)) {
+    return `~${path.slice(normalizedHome.length)}`;
+  }
+
+  return path;
+}
+
+function appendMetaItem(
+  parent: HTMLElement,
+  text: string | null | undefined,
+  className = ""
+) {
+  if (!text) {
+    return;
+  }
+
+  const item = document.createElement("span");
+  item.className = `session-meta-item${className ? ` ${className}` : ""}`;
+  item.textContent = text;
+  item.title = text;
+  parent.append(item);
+}
 
 export function renderDashboard(
   root: HTMLElement,
@@ -7,23 +187,119 @@ export function renderDashboard(
     onCreateSession: (name: string) => void;
     onOpenSession: (name: string) => void;
     onKillSession: (name: string) => void;
+    onRenameSession: (fromName: string, toName: string) => void;
+    getSessionSettings: (name: string) => SessionSettings;
+    onSessionFontSizeChange: (name: string, fontSize: number) => void;
+    onSessionFontFamilyChange: (name: string, fontFamily: string) => void;
+    onSessionLineHeightChange: (name: string, lineHeight: number) => void;
+    onSessionThemeChange: (name: string, themeId: string) => void;
+    activeConfigSessionName: string | null;
+    onOpenSessionConfig: (name: string) => void;
+    onCloseSessionConfig: () => void;
+    draftSessionName: string;
+    onDraftChange: (value: string) => void;
+    themes: AppTheme[];
+    activeThemeId: string;
+    onThemeChange: (themeId: string) => void;
   }
 ) {
+  const previousInput = root.querySelector<HTMLInputElement>(
+    "input[name='sessionName']"
+  );
+  const shouldRestoreFocus = previousInput === document.activeElement;
+  const previousSelectionStart = previousInput?.selectionStart ?? null;
+  const previousSelectionEnd = previousInput?.selectionEnd ?? null;
+
   root.innerHTML = "";
 
   const section = document.createElement("section");
   section.className = "dashboard";
 
+  const header = document.createElement("div");
+  header.className = "dashboard-header";
+
   const heading = document.createElement("h1");
-  heading.textContent = "Tmux Sessions";
-  section.append(heading);
+  heading.textContent = "Tmux";
+
+  const titleGroup = document.createElement("div");
+  titleGroup.className = "dashboard-title-group";
+
+  const serverStatus = document.createElement("div");
+  serverStatus.className = "server-status";
+
+  if (state.serverStatus) {
+    const loadLabel =
+      state.serverStatus.platform === "win32" ? "cpu" : "load";
+    const memoryUsedBytes = Math.max(
+      0,
+      state.serverStatus.memoryTotalBytes - state.serverStatus.memoryFreeBytes
+    );
+
+    appendMetaItem(serverStatus, state.serverStatus.platform);
+    appendMetaItem(
+      serverStatus,
+      `${loadLabel} ${formatPercent(state.serverStatus.loadPercent)}`
+    );
+    appendMetaItem(
+      serverStatus,
+      `mem ${formatPercent(state.serverStatus.memoryUsedPercent)} (${formatBytes(
+        memoryUsedBytes
+      )}/${formatBytes(state.serverStatus.memoryTotalBytes)})`
+    );
+    appendMetaItem(serverStatus, `up ${formatUptime(state.serverStatus.uptimeSeconds)}`);
+  } else {
+    appendMetaItem(serverStatus, "server status pending");
+  }
+
+  const themeMenu = document.createElement("details");
+  themeMenu.className = "dashboard-theme-menu";
+
+  const themeSummary = document.createElement("summary");
+  themeSummary.textContent = "Theme";
+  themeMenu.append(themeSummary);
+
+  const themeToolbar = document.createElement("div");
+  themeToolbar.className = "dashboard-theme-toolbar";
+  themeToolbar.setAttribute("aria-label", "Theme");
+
+  actions.themes.forEach((theme) => {
+    const swatchButton = document.createElement("button");
+    swatchButton.type = "button";
+    swatchButton.className = `theme-swatch${
+      theme.id === actions.activeThemeId ? " is-active" : ""
+    }`;
+    swatchButton.title = theme.label;
+    swatchButton.setAttribute("aria-label", theme.label);
+    swatchButton.setAttribute(
+      "aria-pressed",
+      theme.id === actions.activeThemeId ? "true" : "false"
+    );
+    swatchButton.addEventListener("click", () => actions.onThemeChange(theme.id));
+
+    theme.swatches.forEach((color) => {
+      const colorChip = document.createElement("span");
+      colorChip.style.background = color;
+      swatchButton.append(colorChip);
+    });
+
+    themeToolbar.append(swatchButton);
+  });
+
+  themeMenu.append(themeToolbar);
+  titleGroup.append(heading, serverStatus);
+  header.append(titleGroup, themeMenu);
+  section.append(header);
 
   const createRow = document.createElement("form");
   createRow.className = "session-form";
 
   const input = document.createElement("input");
   input.name = "sessionName";
-  input.placeholder = "new-session";
+  input.placeholder = "name";
+  input.value = actions.draftSessionName;
+  input.addEventListener("input", () => {
+    actions.onDraftChange(input.value);
+  });
 
   const button = document.createElement("button");
   button.type = "submit";
@@ -38,6 +314,7 @@ export function renderDashboard(
     }
 
     actions.onCreateSession(name);
+    actions.onDraftChange("");
     input.value = "";
   });
 
@@ -60,12 +337,116 @@ export function renderDashboard(
     const row = document.createElement("tr");
 
     const nameCell = document.createElement("td");
-    nameCell.textContent = session.name;
+    nameCell.className = "session-name-cell";
 
-    const windowsCell = document.createElement("td");
-    windowsCell.textContent = `${session.windows} windows`;
+    const sessionName = document.createElement("span");
+    sessionName.className = "session-name";
+    sessionName.textContent = session.name;
+
+    const sessionStatus = document.createElement("span");
+    sessionStatus.className = `session-status is-${session.status}`;
+    sessionStatus.textContent = session.status;
+
+    const sessionTitleCluster = document.createElement("div");
+    sessionTitleCluster.className = "session-title-cluster";
+
+    const sessionHeaderActions = document.createElement("div");
+    sessionHeaderActions.className = "session-heading-actions";
+
+    const renameButton = document.createElement("button");
+    renameButton.type = "button";
+    renameButton.className = "session-icon-button session-rename-button";
+    renameButton.textContent = "✎";
+    renameButton.title = "Rename";
+    renameButton.setAttribute("aria-label", `Rename ${session.name}`);
+    renameButton.dataset.action = `rename-${session.name}`;
+    renameButton.addEventListener("click", () => {
+      const form = document.createElement("form");
+      form.className = "session-rename-form";
+
+      const renameInput = document.createElement("input");
+      renameInput.name = `rename-${session.name}`;
+      renameInput.value = session.name;
+
+      const saveButton = document.createElement("button");
+      saveButton.type = "submit";
+      saveButton.textContent = "Save";
+
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const nextName = renameInput.value.trim();
+
+        if (!nextName || nextName === session.name) {
+          return;
+        }
+
+        actions.onRenameSession(session.name, nextName);
+      });
+
+      form.append(renameInput, saveButton);
+      sessionTitleCluster.replaceChildren(form);
+      renameInput.focus();
+      renameInput.select();
+    });
+
+    const configButton = document.createElement("button");
+    configButton.type = "button";
+    configButton.className = "session-icon-button session-config-button";
+    configButton.textContent = "⚙";
+    configButton.title = "Config";
+    configButton.setAttribute("aria-label", `Configure ${session.name}`);
+    configButton.dataset.action = `configure-${session.name}`;
+    configButton.addEventListener("click", () =>
+      actions.onOpenSessionConfig(session.name)
+    );
+
+    sessionTitleCluster.append(sessionName, renameButton, configButton);
+    sessionHeaderActions.append(sessionStatus);
+
+    const sessionNameHeader = document.createElement("div");
+    sessionNameHeader.className = "session-name-header";
+    sessionNameHeader.append(sessionTitleCluster, sessionHeaderActions);
+
+    const sessionPath = document.createElement("div");
+    sessionPath.className = "session-path";
+    sessionPath.textContent = formatDisplayPath(
+      session.currentPath,
+      state.serverStatus?.homeDirectory
+    );
+    sessionPath.title = session.currentPath || "";
+
+    const sessionMeta = document.createElement("div");
+    sessionMeta.className = "session-meta";
+    appendMetaItem(
+      sessionMeta,
+      formatDashboardSessionActivity(session.lastActivityAt)
+    );
+    appendMetaItem(sessionMeta, session.windows > 1 ? `${session.windows}w` : null);
+    appendMetaItem(
+      sessionMeta,
+      session.paneCount > 1 ? `${session.paneCount}p` : null
+    );
+    appendMetaItem(
+      sessionMeta,
+      session.paneDead
+        ? session.paneDeadStatus === 0
+          ? "exited 0"
+          : `failed ${session.paneDeadStatus ?? "unknown"}`
+        : null,
+      session.paneDead && session.paneDeadStatus !== 0 ? "is-failed" : ""
+    );
+
+    const sessionDetailRow = document.createElement("div");
+    sessionDetailRow.className = "session-detail-row";
+    sessionDetailRow.append(sessionPath);
+
+    nameCell.append(sessionNameHeader, sessionDetailRow);
 
     const actionsCell = document.createElement("td");
+    actionsCell.dataset.label = "Actions";
+
+    const actionButtons = document.createElement("div");
+    actionButtons.className = "session-action-buttons";
 
     const openButton = document.createElement("button");
     openButton.type = "button";
@@ -74,15 +455,168 @@ export function renderDashboard(
 
     const killButton = document.createElement("button");
     killButton.type = "button";
-    killButton.textContent = "Kill";
+    killButton.className = "session-kill-button";
+    killButton.textContent = "🗑";
+    killButton.title = "Kill";
+    killButton.setAttribute("aria-label", `Kill ${session.name}`);
     killButton.addEventListener("click", () => actions.onKillSession(session.name));
 
-    actionsCell.append(openButton, killButton);
-    row.append(nameCell, windowsCell, actionsCell);
+    actionButtons.append(openButton, killButton);
+    actionsCell.append(sessionMeta, actionButtons);
+    row.append(nameCell, actionsCell);
     body.append(row);
   });
 
   table.append(body);
   section.append(table);
+
+  const activeConfigSession = state.sessions.find(
+    (session) => session.name === actions.activeConfigSessionName
+  );
+
+  if (activeConfigSession) {
+    const sessionSettings = actions.getSessionSettings(activeConfigSession.name);
+    const backdrop = document.createElement("div");
+    backdrop.className = "session-config-backdrop";
+    backdrop.addEventListener("click", (event) => {
+      if (event.target === backdrop) {
+        actions.onCloseSessionConfig();
+      }
+    });
+
+    const modal = document.createElement("section");
+    modal.className = "session-config-modal";
+    modal.setAttribute("role", "dialog");
+    modal.setAttribute("aria-modal", "true");
+    modal.setAttribute("aria-labelledby", "session-config-title");
+
+    const modalHeader = document.createElement("div");
+    modalHeader.className = "session-config-modal-header";
+
+    const modalTitle = document.createElement("h2");
+    modalTitle.id = "session-config-title";
+    modalTitle.textContent = activeConfigSession.name;
+
+    const closeButton = document.createElement("button");
+    closeButton.type = "button";
+    closeButton.className = "session-config-close";
+    closeButton.textContent = "Close";
+    closeButton.addEventListener("click", actions.onCloseSessionConfig);
+
+    modalHeader.append(modalTitle, closeButton);
+
+    const fontField = document.createElement("label");
+    fontField.className = "session-config-field";
+    fontField.textContent = "Font size";
+
+    const fontSizeInput = document.createElement("input");
+    fontSizeInput.type = "number";
+    fontSizeInput.name = `fontSize-${activeConfigSession.name}`;
+    fontSizeInput.min = "10";
+    fontSizeInput.max = "24";
+    fontSizeInput.step = "1";
+    fontSizeInput.value = String(sessionSettings.fontSize);
+    preventWheelNumberChange(fontSizeInput);
+    fontSizeInput.addEventListener("change", () => {
+      actions.onSessionFontSizeChange(
+        activeConfigSession.name,
+        Number(fontSizeInput.value)
+      );
+    });
+    fontField.append(fontSizeInput);
+
+    const fontFamilyField = document.createElement("label");
+    fontFamilyField.className = "session-config-field";
+    fontFamilyField.textContent = "Font family";
+
+    const fontFamilySelect = document.createElement("select");
+    fontFamilySelect.name = `fontFamily-${activeConfigSession.name}`;
+    FONT_FAMILY_OPTIONS.forEach((fontFamily) => {
+      const option = document.createElement("option");
+      option.value = fontFamily;
+      option.textContent = fontFamily;
+      fontFamilySelect.append(option);
+    });
+    fontFamilySelect.value = sessionSettings.fontFamily;
+    fontFamilySelect.addEventListener("change", () => {
+      actions.onSessionFontFamilyChange(
+        activeConfigSession.name,
+        fontFamilySelect.value
+      );
+    });
+    fontFamilyField.append(fontFamilySelect);
+
+    const lineHeightField = document.createElement("label");
+    lineHeightField.className = "session-config-field";
+    lineHeightField.textContent = "Line height";
+
+    const lineHeightInput = document.createElement("input");
+    lineHeightInput.type = "number";
+    lineHeightInput.name = `lineHeight-${activeConfigSession.name}`;
+    lineHeightInput.min = "1";
+    lineHeightInput.max = "1.8";
+    lineHeightInput.step = "0.05";
+    lineHeightInput.value = String(sessionSettings.lineHeight);
+    preventWheelNumberChange(lineHeightInput);
+    lineHeightInput.addEventListener("change", () => {
+      actions.onSessionLineHeightChange(
+        activeConfigSession.name,
+        Number(lineHeightInput.value)
+      );
+    });
+    lineHeightField.append(lineHeightInput);
+
+    const themeGroup = document.createElement("div");
+    themeGroup.className = "session-config-field";
+
+    const themeTitle = document.createElement("div");
+    themeTitle.className = "session-config-field-title";
+    themeTitle.textContent = "Terminal theme";
+
+    const sessionThemeList = document.createElement("div");
+    sessionThemeList.className = "session-theme-list";
+
+    actions.themes.forEach((theme) => {
+      const swatchButton = document.createElement("button");
+      swatchButton.type = "button";
+      swatchButton.className = `session-theme-swatch${
+        theme.id === sessionSettings.themeId ? " is-active" : ""
+      }`;
+      swatchButton.title = theme.label;
+      swatchButton.setAttribute(
+        "aria-label",
+        `${activeConfigSession.name} ${theme.label}`
+      );
+      swatchButton.setAttribute(
+        "aria-pressed",
+        theme.id === sessionSettings.themeId ? "true" : "false"
+      );
+      swatchButton.addEventListener("click", () =>
+        actions.onSessionThemeChange(activeConfigSession.name, theme.id)
+      );
+
+      theme.swatches.forEach((color) => {
+        const colorChip = document.createElement("span");
+        colorChip.style.background = color;
+        swatchButton.append(colorChip);
+      });
+
+      sessionThemeList.append(swatchButton);
+    });
+
+    themeGroup.append(themeTitle, sessionThemeList);
+    modal.append(modalHeader, fontField, fontFamilyField, lineHeightField, themeGroup);
+    backdrop.append(modal);
+    section.append(backdrop);
+  }
+
   root.append(section);
+
+  if (shouldRestoreFocus) {
+    input.focus();
+
+    if (previousSelectionStart !== null && previousSelectionEnd !== null) {
+      input.setSelectionRange(previousSelectionStart, previousSelectionEnd);
+    }
+  }
 }

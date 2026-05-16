@@ -23,6 +23,8 @@ type MessageSocket = {
   onClose: (handler: () => void) => void;
 };
 
+const OUTPUT_BATCH_MS = 8;
+
 function serialize(message: ServerMessage): string {
   return JSON.stringify(message);
 }
@@ -54,15 +56,20 @@ function adaptWebSocket(socket: WebSocket): MessageSocket {
 
 function createTestSocket(): MessageSocket & {
   receive: (message: ClientMessage) => void;
+  sent: string[];
+  closeCount: number;
 } {
   const messageHandlers: Array<(payload: string) => void> = [];
   const closeHandlers: Array<() => void> = [];
+  const sent: string[] = [];
+  let closeCount = 0;
 
   return {
-    send() {
-      return undefined;
+    send(payload) {
+      sent.push(payload);
     },
     close() {
+      closeCount += 1;
       closeHandlers.forEach((handler) => handler());
     },
     onMessage(handler) {
@@ -74,6 +81,54 @@ function createTestSocket(): MessageSocket & {
     receive(message) {
       const payload = JSON.stringify(message);
       messageHandlers.forEach((handler) => handler(payload));
+    },
+    sent,
+    get closeCount() {
+      return closeCount;
+    }
+  };
+}
+
+function createSocketOutputBuffer(socket: MessageSocket) {
+  let pendingOutput = "";
+  let pendingTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function clearPendingTimer() {
+    if (pendingTimer === null) {
+      return;
+    }
+
+    clearTimeout(pendingTimer);
+    pendingTimer = null;
+  }
+
+  function flush() {
+    clearPendingTimer();
+
+    if (!pendingOutput) {
+      return;
+    }
+
+    const output = pendingOutput;
+    pendingOutput = "";
+    socket.send(serialize({ type: "output", data: output }));
+  }
+
+  return {
+    enqueue(data: string) {
+      pendingOutput += data;
+
+      if (pendingTimer !== null) {
+        return;
+      }
+
+      pendingTimer = setTimeout(flush, OUTPUT_BATCH_MS);
+      pendingTimer.unref?.();
+    },
+    flush,
+    cancel() {
+      clearPendingTimer();
+      pendingOutput = "";
     }
   };
 }
@@ -91,6 +146,7 @@ export function createTerminalSocketServer(deps: {
       tabId: string | null;
       sessionName: string | null;
       bridge: TerminalBridge | null;
+      outputBuffer: ReturnType<typeof createSocketOutputBuffer> | null;
       cleanedUp: boolean;
     }
   >();
@@ -107,6 +163,9 @@ export function createTerminalSocketServer(deps: {
     if (connection.tabId) {
       registry.detach(connection.tabId);
     }
+
+    connection.outputBuffer?.cancel();
+    connection.outputBuffer = null;
 
     if (connection.bridge) {
       connection.bridge.kill();
@@ -127,6 +186,7 @@ export function createTerminalSocketServer(deps: {
       tabId: message.tabId,
       sessionName: message.sessionName,
       bridge,
+      outputBuffer: createSocketOutputBuffer(socket),
       cleanedUp: false
     };
 
@@ -137,10 +197,11 @@ export function createTerminalSocketServer(deps: {
     );
 
     bridge.onData((data: string) => {
-      socket.send(serialize({ type: "output", data }));
+      connection.outputBuffer?.enqueue(data);
     });
 
     bridge.onExit(() => {
+      connection.outputBuffer?.flush();
       socket.send(serialize({ type: "session-exit" }));
       cleanup(socket);
       socket.close();
@@ -152,6 +213,7 @@ export function createTerminalSocketServer(deps: {
       tabId: null,
       sessionName: null,
       bridge: null,
+      outputBuffer: null,
       cleanedUp: false
     });
 
@@ -184,6 +246,11 @@ export function createTerminalSocketServer(deps: {
           return;
         }
 
+        if (message.type === "scroll") {
+          connection.bridge.scroll(message.lines);
+          return;
+        }
+
         connection.bridge.resize(message.cols, message.rows);
       } catch (error) {
         socket.send(
@@ -192,6 +259,8 @@ export function createTerminalSocketServer(deps: {
             message: error instanceof Error ? error.message : "Invalid message"
           })
         );
+
+        socket.close();
       }
     });
 

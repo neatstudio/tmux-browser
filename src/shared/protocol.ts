@@ -17,7 +17,16 @@ export type ResizeMessage = {
   rows: number;
 };
 
-export type ClientMessage = AttachMessage | InputMessage | ResizeMessage;
+export type ScrollMessage = {
+  type: "scroll";
+  lines: number;
+};
+
+export type ClientMessage =
+  | AttachMessage
+  | InputMessage
+  | ResizeMessage
+  | ScrollMessage;
 
 export type OutputMessage = {
   type: "output";
