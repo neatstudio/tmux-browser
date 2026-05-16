@@ -67,7 +67,7 @@ export function createTerminalTabController(deps: {
 
   function handleSocketClose() {
     if (!closedByApp) {
-      deps.onClosed();
+      deps.onOutput("\r\n[disconnected]\r\n");
     }
   }
 

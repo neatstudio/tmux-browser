@@ -122,6 +122,7 @@ import {
   createTerminalOutputBuffer,
   createTerminalTabController
 } from "../../../src/client/terminal/createTerminalTab";
+import { createTabState } from "../../../src/client/state/tabState";
 
 describe("createTerminalTabController", () => {
   it("closes the browser tab when the server reports session exit", () => {
@@ -141,6 +142,65 @@ describe("createTerminalTabController", () => {
     controller.handleMessage({ type: "session-exit" });
 
     expect(onClosed).toHaveBeenCalled();
+  });
+
+  it("keeps the browser tab when the websocket closes without session exit", () => {
+    const listeners = new Map<string, (event?: Event) => void>();
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      addEventListener: vi.fn((type: string, listener: (event?: Event) => void) => {
+        listeners.set(type, listener);
+      })
+    };
+    const onClosed = vi.fn();
+    const onOutput = vi.fn();
+
+    createTerminalTabController({
+      socket,
+      onClosed,
+      onOutput
+    });
+
+    listeners.get("close")?.(new Event("close"));
+
+    expect(onClosed).not.toHaveBeenCalled();
+    expect(onOutput).toHaveBeenCalledWith("\r\n[disconnected]\r\n");
+  });
+
+  it("does not erase a pinned tab from storage during page reload socket close", () => {
+    localStorage.clear();
+    sessionStorage.clear();
+
+    const state = createTabState();
+    const opened = state.openTab("build");
+    state.togglePinned(opened.id);
+
+    const listeners = new Map<string, (event?: Event) => void>();
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      addEventListener: vi.fn((type: string, listener: (event?: Event) => void) => {
+        listeners.set(type, listener);
+      })
+    };
+
+    createTerminalTabController({
+      socket,
+      onClosed: () => state.forceCloseTab(opened.id),
+      onOutput: vi.fn()
+    });
+
+    listeners.get("close")?.(new Event("close"));
+
+    expect(createTabState().getTabs()).toEqual([
+      {
+        id: opened.id,
+        sessionName: "build",
+        title: "build",
+        pinned: true
+      }
+    ]);
   });
 });
 
