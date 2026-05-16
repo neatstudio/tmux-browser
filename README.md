@@ -16,7 +16,7 @@ sessions from the UI.
 - `npm run dev:client` starts the Vite client dev server
 - `npm run build` builds the server and client bundles
 - `npm run pack:run` builds a standalone `.run` installer under `release/`
-- `npm run publish` uploads an existing `release/tmux.run` to explicit targets
+- `npm run publish` uploads an existing `release/release.run` to explicit targets
 - `npm run start` runs the built server
 - `npm run test` runs the test suite
 - `npm run test:watch` runs tests in watch mode
@@ -70,7 +70,31 @@ The run file defaults to installing into `~/.tmux-ui`:
 ./release/release.run uninstall
 ```
 
-`restart` runs the server inside a dedicated tmux session named `tmux-ui`.
+Download and run a GitHub Release build:
+
+```bash
+curl -L -o tmux.run https://github.com/neatstudio/tmux-browser/releases/latest/download/release.run
+chmod +x tmux.run
+./tmux.run help
+./tmux.run install
+./tmux.run start
+```
+
+For a long-running server process, use `restart` instead of `start`:
+
+```bash
+./tmux.run restart
+```
+
+That command extracts the app into `~/.tmux-ui`, installs production
+dependencies if needed, and starts the server inside a dedicated tmux session
+named `tmux-ui`. Stop or remove it with:
+
+```bash
+./tmux.run stop
+./tmux.run uninstall
+```
+
 The default bind host is the first Tailscale IPv4 address matching `100.*`.
 Set `HOST` or `PORT` explicitly to override:
 
