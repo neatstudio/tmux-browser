@@ -109,14 +109,29 @@ load_node_runtime() {
   fi
 }
 
-detect_tailscale_host() {
+detect_tailscale_host_with_ip() {
   if ! command -v ip >/dev/null 2>&1; then
-    echo "Missing required command: ip. Set HOST explicitly or install iproute2." >&2
-    exit 1
+    return
   fi
 
+  ip -o -4 addr show scope global | awk '{ print $4 }' | cut -d/ -f1 | awk '/^100\\./ { print; exit }'
+}
+
+detect_tailscale_host_with_ifconfig() {
+  if ! command -v ifconfig >/dev/null 2>&1; then
+    return
+  fi
+
+  ifconfig 2>/dev/null | awk '/inet / { print $2 }' | awk '/^100\\./ { print; exit }'
+}
+
+detect_tailscale_host() {
   local host
-  host="$(ip -o -4 addr show scope global | awk '{ print $4 }' | cut -d/ -f1 | awk '/^100\\./ { print; exit }')"
+  host="$(detect_tailscale_host_with_ip)"
+
+  if [[ -z "$host" ]]; then
+    host="$(detect_tailscale_host_with_ifconfig)"
+  fi
 
   if [[ -z "$host" ]]; then
     echo "No Tailscale 100.x address found. Set HOST explicitly if you want another bind address." >&2

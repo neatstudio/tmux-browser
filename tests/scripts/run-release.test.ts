@@ -75,6 +75,9 @@ describe("run release scripts", () => {
   it("keeps Tailscale-first host defaults with explicit HOST override", () => {
     expect(packScript).toContain("detect_tailscale_host");
     expect(packScript).toContain("100\\\\.");
+    expect(packScript).toContain("detect_tailscale_host_with_ip");
+    expect(packScript).toContain("detect_tailscale_host_with_ifconfig");
+    expect(packScript).toContain('ifconfig 2>/dev/null');
     expect(packScript).toContain('export HOST="\\${HOST:-$(detect_tailscale_host)}"');
     expect(packScript).toContain("No Tailscale 100.x address found");
   });
