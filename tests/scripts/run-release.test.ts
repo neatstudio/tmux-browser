@@ -52,6 +52,7 @@ describe("run release scripts", () => {
     expect(packScript).toContain('readlink "/proc/$pid/cwd"');
     expect(packScript).toContain("stop_port_processes()");
     expect(packScript).toContain('lsof -nP -iTCP:"$port" -sTCP:LISTEN -t');
+    expect(packScript).toContain('"$command_line" == *"dist/server/index.js"*');
   });
 
   it("keeps Tailscale-first host defaults with explicit HOST override", () => {
