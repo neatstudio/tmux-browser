@@ -143,7 +143,11 @@ detect_tailscale_host() {
 }
 
 load_node_runtime
-export HOST="\${HOST:-$(detect_tailscale_host)}"
+HOST="\${HOST:-}"
+if [[ -z "$HOST" ]]; then
+  HOST="$(detect_tailscale_host)"
+fi
+export HOST
 export PORT="\${PORT:-3000}"
 exec node dist/server/index.js
 `;
@@ -377,7 +381,7 @@ restart_server() {
 
   stop_server
   ensure_tmux_session
-  tmux send-keys -t "$APP_SESSION" "cd '$APP_HOME' && PORT='\${PORT:-3000}' HOST='\${HOST:-}' ./start.sh" C-m
+  tmux send-keys -t "$APP_SESSION" "cd '$APP_HOME' && PORT='\${PORT:-3000}' ./start.sh" C-m
   tmux ls
 }
 

@@ -78,7 +78,10 @@ describe("run release scripts", () => {
     expect(packScript).toContain("detect_tailscale_host_with_ip");
     expect(packScript).toContain("detect_tailscale_host_with_ifconfig");
     expect(packScript).toContain('ifconfig 2>/dev/null');
-    expect(packScript).toContain('export HOST="\\${HOST:-$(detect_tailscale_host)}"');
+    expect(packScript).toContain('HOST="\\${HOST:-}"');
+    expect(packScript).toContain('HOST="$(detect_tailscale_host)"');
+    expect(packScript).toContain("export HOST");
+    expect(packScript).not.toContain('export HOST="\\${HOST:-$(detect_tailscale_host)}"');
     expect(packScript).toContain("No Tailscale 100.x address found");
   });
 
