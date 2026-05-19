@@ -99,6 +99,7 @@ describe("run release scripts", () => {
     expect(packScript).toContain("bootstrap_launchd_service_if_needed()");
     expect(packScript).toContain("print_launchd_status()");
     expect(packScript).toContain('echo "launchd service: $LAUNCHD_LABEL"');
+    expect(packScript).toContain('echo "state: \\${state:-unknown}"');
   });
 
   it("supports uninstall and does not default to starting the server", () => {

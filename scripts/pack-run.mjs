@@ -600,9 +600,9 @@ print_launchd_status() {
   runs="$(printf '%s\n' "$output" | awk -F'= ' '/runs =/ { print $2; exit }')"
 
   echo "launchd service: $LAUNCHD_LABEL"
-  echo "state: ${state:-unknown}"
-  echo "pid: ${pid:-none}"
-  echo "runs: ${runs:-unknown}"
+  echo "state: \${state:-unknown}"
+  echo "pid: \${pid:-none}"
+  echo "runs: \${runs:-unknown}"
   echo "plist: $LAUNCHD_PLIST_PATH"
   echo "logs: $APP_HOME/tmux-ui.log"
   echo "errors: $APP_HOME/tmux-ui.err.log"
