@@ -22,6 +22,8 @@ type Disposable = {
   dispose: () => void;
 };
 
+type RenderedOutputListener = (rawData: string, visibleText: string) => void;
+
 type BrowserSocket = {
   send: (payload: string) => void;
   close: () => void;
@@ -231,6 +233,25 @@ function createWebglRenderer(
   }
 }
 
+function getRenderedTerminalText(terminal: Terminal) {
+  const buffer = terminal.buffer.active;
+  const startLine = Math.max(0, buffer.baseY);
+  const endLine = Math.min(buffer.length, startLine + terminal.rows);
+  const lines: string[] = [];
+
+  for (let lineIndex = startLine; lineIndex < endLine; lineIndex += 1) {
+    const line = buffer.getLine(lineIndex);
+
+    if (!line) {
+      continue;
+    }
+
+    lines.push(line.translateToString(true));
+  }
+
+  return lines.join("\n").trim();
+}
+
 export function createTerminalTab(deps: {
   container: HTMLElement;
   rendererStatusElement?: HTMLElement;
@@ -241,7 +262,7 @@ export function createTerminalTab(deps: {
   lineHeight?: number;
   terminalTheme?: TerminalTheme;
   onClosed: () => void;
-  onOutput?: (data: string) => void;
+  onOutput?: RenderedOutputListener;
 }) {
   const terminal = new Terminal({
     cursorBlink: true,
@@ -260,7 +281,11 @@ export function createTerminalTab(deps: {
     deps.rendererStatusElement ?? deps.container
   );
 
-  const outputBuffer = createTerminalOutputBuffer((data) => terminal.write(data));
+  const outputBuffer = createTerminalOutputBuffer((data) => {
+    terminal.write(data, () => {
+      deps.onOutput?.(data, getRenderedTerminalText(terminal));
+    });
+  });
   let socket: WebSocket | null = null;
   let controller: ReturnType<typeof createTerminalTabController> | null = null;
   let browserScrollEnabled = false;
@@ -300,7 +325,6 @@ export function createTerminalTab(deps: {
       socket,
       onOutput: (data) => {
         outputBuffer.write(data);
-        deps.onOutput?.(data);
       },
       onClosed: deps.onClosed
     });

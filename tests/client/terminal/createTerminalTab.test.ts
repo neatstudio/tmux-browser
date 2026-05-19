@@ -7,6 +7,7 @@ const terminalTestState = vi.hoisted(() => {
     options: Record<string, unknown>;
     instance: {
       options: Record<string, unknown>;
+      rows: number;
       loadAddon: ReturnType<typeof vi.fn>;
       open: ReturnType<typeof vi.fn>;
       onData: ReturnType<typeof vi.fn>;
@@ -18,6 +19,13 @@ const terminalTestState = vi.hoisted(() => {
       dispose: ReturnType<typeof vi.fn>;
       modes: {
         bracketedPasteMode: boolean;
+      };
+      buffer: {
+        active: {
+          baseY: number;
+          length: number;
+          getLine: ReturnType<typeof vi.fn>;
+        };
       };
       customKeyEventHandler?: (event: KeyboardEvent) => boolean;
     };
@@ -70,6 +78,24 @@ vi.mock("@xterm/xterm", () => ({
     dispose = vi.fn();
     modes = {
       bracketedPasteMode: false
+    };
+    visibleLines = ["", "", ""];
+    buffer = {
+      active: {
+        baseY: 0,
+        length: 3,
+        getLine: vi.fn((index: number) => {
+          const line = this.visibleLines[index];
+
+          if (line === undefined) {
+            return undefined;
+          }
+
+          return {
+            translateToString: vi.fn(() => line)
+          };
+        })
+      }
     };
     customKeyEventHandler?: (event: KeyboardEvent) => boolean;
 
@@ -281,6 +307,29 @@ describe("createTerminalOutputBuffer", () => {
     expect(cancelFrame).toHaveBeenCalledWith(9);
     expect(write).toHaveBeenCalledWith("pending");
   });
+
+  it("batches output without reading rendered text itself", () => {
+    const terminalTextSnapshots: string[] = [];
+    let scheduledCallback: FrameRequestCallback | null = null;
+    const requestFrame = vi.fn((callback: FrameRequestCallback) => {
+      scheduledCallback = callback;
+      return 1;
+    });
+    const buffer = createTerminalOutputBuffer(
+      (data) => {
+        terminalTextSnapshots.push(data);
+      },
+      {
+        requestFrame,
+        cancelFrame: vi.fn()
+      }
+    );
+
+    buffer.write("raw ansi bytes");
+    scheduledCallback?.(performance.now());
+
+    expect(terminalTextSnapshots).toEqual(["raw ansi bytes"]);
+  });
 });
 
 describe("createTerminalTab", () => {
@@ -323,6 +372,75 @@ describe("createTerminalTab", () => {
       cursorBlink: true,
       scrollback: 5000
     });
+
+    mounted.destroy();
+  });
+
+  it("reports rendered terminal text after output is written to xterm", () => {
+    let scheduledCallback: FrameRequestCallback | null = null;
+    const socketListeners = new Map<string, (event?: MessageEvent<string>) => void>();
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      addEventListener: vi.fn(
+        (type: string, listener: (event?: MessageEvent<string>) => void) => {
+          socketListeners.set(type, listener);
+        }
+      ),
+      removeEventListener: vi.fn()
+    };
+    const onOutput = vi.fn();
+
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation(
+      (callback: FrameRequestCallback) => {
+        scheduledCallback = callback;
+
+        return 1;
+      }
+    );
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        constructor() {
+          return socket;
+        }
+      }
+    );
+
+    const mounted = createTerminalTab({
+      container: document.createElement("div"),
+      tabId: "tab-1",
+      sessionName: "build",
+      onClosed: vi.fn(),
+      onOutput
+    });
+    const terminal = terminalTestState.terminals[0]?.instance;
+    terminal!.rows = 3;
+    terminal!.buffer.active.baseY = 0;
+    terminal!.visibleLines = [
+      "Old stale prompt: continue? [y/a/n]",
+      "Status line",
+      "Do you want to continue? [y/a/n]"
+    ];
+
+    socketListeners.get("message")?.({
+      data: JSON.stringify({ type: "output", data: "\x1b[2Jraw tui repaint" })
+    } as MessageEvent<string>);
+    scheduledCallback?.(performance.now());
+
+    expect(terminal?.write).toHaveBeenCalledWith(
+      "\x1b[2Jraw tui repaint",
+      expect.any(Function)
+    );
+    const writeCallback = terminal?.write.mock.calls[0]?.[1] as
+      | (() => void)
+      | undefined;
+    writeCallback?.();
+
+    expect(onOutput).toHaveBeenCalledWith(
+      "\x1b[2Jraw tui repaint",
+      "Old stale prompt: continue? [y/a/n]\nStatus line\nDo you want to continue? [y/a/n]"
+    );
 
     mounted.destroy();
   });
@@ -530,7 +648,8 @@ describe("createTerminalTab", () => {
     expect(sockets).toHaveLength(2);
     expect(sockets[0]?.close).toHaveBeenCalledOnce();
     expect(terminalTestState.terminals[0]?.instance.write).toHaveBeenCalledWith(
-      "\r\n[reconnecting]\r\n"
+      "\r\n[reconnecting]\r\n",
+      expect.any(Function)
     );
 
     mounted.destroy();

@@ -107,7 +107,6 @@ const inactiveTerminalPruner = createInactiveTerminalPruner({
 });
 const activeOutputTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const busyTerminalTabIds = new Set<string>();
-const terminalOutputTails = new Map<string, string>();
 const terminalPromptSignatures = new Map<string, string>();
 let lastRenderedTabListSignature = "";
 let lastRenderedActiveTabId: string | null | undefined;
@@ -162,7 +161,6 @@ function detachTerminal(tabId: string) {
   }
 
   busyTerminalTabIds.delete(tabId);
-  terminalOutputTails.delete(tabId);
 
   if (!mounted) {
     return;
@@ -178,7 +176,6 @@ function detachTerminal(tabId: string) {
 }
 
 function clearInputPromptForTab(tabId: string) {
-  terminalOutputTails.delete(tabId);
   terminalPromptSignatures.delete(tabId);
 
   if (activeInputPrompt?.tabId === tabId) {
@@ -186,11 +183,8 @@ function clearInputPromptForTab(tabId: string) {
   }
 }
 
-function rememberTerminalOutput(tabId: string, data: string) {
-  const nextTail = `${terminalOutputTails.get(tabId) ?? ""}${data}`.slice(-4000);
-  terminalOutputTails.set(tabId, nextTail);
-
-  const prompt = detectTerminalInputPrompt(nextTail);
+function rememberTerminalOutput(tabId: string, visibleText: string) {
+  const prompt = detectTerminalInputPrompt(visibleText);
 
   if (!prompt) {
     return;
@@ -220,8 +214,8 @@ function rememberTerminalOutput(tabId: string, data: string) {
   scheduleRender();
 }
 
-function handleTerminalOutput(tabId: string, data: string) {
-  rememberTerminalOutput(tabId, data);
+function handleTerminalOutput(tabId: string, _data: string, visibleText: string) {
+  rememberTerminalOutput(tabId, visibleText);
   busyTerminalTabIds.add(tabId);
   const existingTimer = activeOutputTimers.get(tabId);
 
@@ -268,7 +262,7 @@ function ensureTerminal(tab: BrowserTab) {
     fontFamily: sessionSettings.get(tab.sessionName).fontFamily,
     lineHeight: sessionSettings.get(tab.sessionName).lineHeight,
     terminalTheme: getTheme(sessionSettings.get(tab.sessionName).themeId).terminalTheme,
-    onOutput: (data) => handleTerminalOutput(tab.id, data),
+    onOutput: (data, visibleText) => handleTerminalOutput(tab.id, data, visibleText),
     onClosed: () => {
       closeTab(tab.id, { force: true });
       const isDashboardActive = tabState.getActiveTabId() === null;

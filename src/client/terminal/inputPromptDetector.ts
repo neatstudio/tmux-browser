@@ -27,6 +27,36 @@ function normalizeTerminalOutput(output: string) {
     .trim();
 }
 
+function getPromptSnippet(text: string) {
+  const lines = text
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .filter(Boolean);
+
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index]!;
+
+    if (CHOICE_PROMPT_PATTERN.test(line) || ENTER_PROMPT_PATTERN.test(line)) {
+      const previousLine = lines[index - 1];
+
+      if (
+        previousLine &&
+        (QUESTION_PROMPT_PATTERN.test(previousLine) || /\?\s*$/.test(previousLine))
+      ) {
+        return `${previousLine}\n${line}`;
+      }
+
+      return line;
+    }
+
+    if (QUESTION_PROMPT_PATTERN.test(line)) {
+      return line;
+    }
+  }
+
+  return text;
+}
+
 function compactSnippet(text: string) {
   return text.length > 260 ? text.slice(-260).trimStart() : text;
 }
@@ -34,7 +64,8 @@ function compactSnippet(text: string) {
 export function detectTerminalInputPrompt(
   output: string
 ): TerminalInputPrompt | null {
-  const snippet = compactSnippet(normalizeTerminalOutput(output));
+  const visibleText = normalizeTerminalOutput(output);
+  const snippet = compactSnippet(getPromptSnippet(visibleText));
 
   if (!snippet) {
     return null;
