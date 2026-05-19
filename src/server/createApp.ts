@@ -11,6 +11,12 @@ import {
   getServerStatus,
   type ServerStatus
 } from "./services/serverStatus/getServerStatus.js";
+import { getAppInfo, type AppInfo } from "./services/appInfo/getAppInfo.js";
+
+const favicon = Buffer.from(
+  "AAABAAEAEBAAAAEAIABoBAAAFgAAACgAAAAQAAAAIAAAAAEAIAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAVGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP+3/7D/t/+w/7f/sP+3/7D/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/t/+w/7f/sP+3/7D/t/+w/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/7f/sP+3/7D/t/+w/7f/sP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP+3/7D/t/+w/7f/sP+3/7D/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/t/+w/7f/sP+3/7D/t/+w/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/7f/sP+3/7D/t/+w/7f/sP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP+3/7D/t/+w/7f/sP+3/7D/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/t/+w/7f/sP+3/7D/t/+w/7f/sP+3/7D/t/+w/7f/sP+3/7D/t/+w/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/7f/sP+3/7D/t/+w/7f/sP+3/7D/t/+w/7f/sP+3/7D/t/+w/7f/sP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP+3/7D/t/+w/7f/sP+3/7D/t/+w/7f/sP+3/7D/t/+w/7f/sP+3/7D/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+  "base64"
+);
 
 function stripPreview<T extends { preview?: string | null }>(session: T) {
   const { preview: _preview, ...lightweightSession } = session;
@@ -22,16 +28,26 @@ export function createApp(options: {
   tmuxService?: TmuxService;
   killSession?: (name: string) => Promise<void>;
   getServerStatus?: () => ServerStatus;
+  getAppInfo?: () => AppInfo;
 } = {}) {
   const tmuxService = options.tmuxService ?? createTmuxService();
   const readServerStatus = options.getServerStatus ?? getServerStatus;
+  const readAppInfo = options.getAppInfo ?? getAppInfo;
   const app = express();
   const clientDistDir = resolve(process.cwd(), "dist/client");
 
   app.use(express.json());
 
   app.get("/api/health", (_req, res) => {
-    res.json({ ok: true });
+    res.json({ ok: true, ...readAppInfo() });
+  });
+
+  app.get("/favicon.ico", (_req, res) => {
+    res
+      .status(200)
+      .type("image/x-icon")
+      .set("Cache-Control", "public, max-age=86400")
+      .send(favicon);
   });
 
   app.get("/api/server-status", (_req, res) => {

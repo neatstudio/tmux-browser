@@ -24,6 +24,11 @@ const version = packageJson.version ?? "0.0.0";
 const versionOutputFile = join(releaseDir, `${projectName}-${version}.run`);
 const releaseOutputFile = join(releaseDir, "release.run");
 const payloadMarker = "__TMUX_UI_PAYLOAD_BELOW__";
+const commit = spawnSync("git", ["rev-parse", "--short", "HEAD"], {
+  cwd: rootDir,
+  encoding: "utf8"
+}).stdout.trim();
+const builtAt = new Date().toISOString();
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -149,6 +154,8 @@ if [[ -z "$HOST" ]]; then
 fi
 export HOST
 export PORT="\${PORT:-3000}"
+export TMUX_UI_COMMIT="\${TMUX_UI_COMMIT:-${commit || "unknown"}}"
+export TMUX_UI_BUILT_AT="\${TMUX_UI_BUILT_AT:-${builtAt}}"
 echo "[$(date '+%Y-%m-%d %H:%M:%S %z')] Starting tmux-ui from $(pwd) on http://$HOST:$PORT"
 exec node dist/server/index.js
 `;

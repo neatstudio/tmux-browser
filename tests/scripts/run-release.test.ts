@@ -29,6 +29,13 @@ describe("run release scripts", () => {
     expect(packScript).not.toContain("deployTargets");
   });
 
+  it("embeds release commit and build time for health checks", () => {
+    expect(packScript).toContain('git", ["rev-parse", "--short", "HEAD"]');
+    expect(packScript).toContain("const builtAt = new Date().toISOString()");
+    expect(packScript).toContain('export TMUX_UI_COMMIT="\\${TMUX_UI_COMMIT:-');
+    expect(packScript).toContain('export TMUX_UI_BUILT_AT="\\${TMUX_UI_BUILT_AT:-');
+  });
+
   it("uses ~/.tmux-ui and a dedicated tmux-ui tmux session", () => {
     expect(packScript).toContain('APP_HOME="\\${TMUX_UI_HOME:-$HOME/.tmux-ui}"');
     expect(packScript).toContain('APP_SESSION="\\${TMUX_UI_SESSION:-tmux-ui}"');

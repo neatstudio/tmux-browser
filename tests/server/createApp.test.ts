@@ -4,6 +4,60 @@ import { describe, expect, it, vi } from "vitest";
 import { createApp } from "../../src/server/createApp";
 
 describe("createApp", () => {
+  it("serves health with version and build metadata", async () => {
+    const app = createApp({
+      tmuxService: {
+        listSessions: vi.fn(),
+        createSession: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      },
+      getAppInfo: () => ({
+        name: "tmux-ui",
+        version: "1.2.3",
+        commit: "abc123",
+        builtAt: "2026-05-19T03:00:00.000Z"
+      })
+    });
+
+    const response = await request(app).get("/api/health");
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      ok: true,
+      name: "tmux-ui",
+      version: "1.2.3",
+      commit: "abc123",
+      builtAt: "2026-05-19T03:00:00.000Z"
+    });
+  });
+
+  it("serves a small favicon without falling through to the SPA", async () => {
+    const app = createApp({
+      tmuxService: {
+        listSessions: vi.fn(),
+        createSession: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    const response = await request(app).get("/favicon.ico");
+
+    expect(response.status).toBe(200);
+    expect(response.headers["content-type"]).toContain("image/x-icon");
+    expect(response.headers["cache-control"]).toContain("max-age=86400");
+    expect(Number(response.headers["content-length"])).toBeGreaterThan(0);
+  });
+
   it("serves server status for the dashboard header", async () => {
     const app = createApp({
       tmuxService: {
