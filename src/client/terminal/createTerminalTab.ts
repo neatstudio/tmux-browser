@@ -24,6 +24,13 @@ type Disposable = {
 
 type RenderedOutputListener = (rawData: string, visibleText: string) => void;
 
+type ImageUploadResponse = {
+  ok: true;
+  absolutePath: string;
+  contentType: string;
+  size: number;
+};
+
 type BrowserSocket = {
   send: (payload: string) => void;
   close: () => void;
@@ -286,6 +293,34 @@ function getRenderedTerminalText(terminal: Terminal) {
   return lines.join("\n").trim();
 }
 
+function getImageFileFromItems(items: DataTransferItemList | undefined) {
+  if (!items) {
+    return null;
+  }
+
+  for (const item of Array.from(items)) {
+    if (item.kind !== "file" || !item.type.startsWith("image/")) {
+      continue;
+    }
+
+    const file = item.getAsFile();
+
+    if (file) {
+      return file;
+    }
+  }
+
+  return null;
+}
+
+function getImageFileFromFiles(files: FileList | undefined) {
+  if (!files) {
+    return null;
+  }
+
+  return Array.from(files).find((file) => file.type.startsWith("image/")) ?? null;
+}
+
 export function createTerminalTab(deps: {
   container: HTMLElement;
   rendererStatusElement?: HTMLElement;
@@ -356,6 +391,71 @@ export function createTerminalTab(deps: {
       : "tmux";
   }
 
+  async function uploadAndInsertImage(file: File) {
+    outputBuffer.write("\r\n[uploading image]\r\n");
+
+    try {
+      const response = await fetch("/api/uploads/image", {
+        method: "POST",
+        headers: {
+          "Content-Type": file.type || "application/octet-stream",
+          "X-Tmux-Session": deps.sessionName
+        },
+        body: file
+      });
+
+      if (!response.ok) {
+        throw new Error(`Upload failed with ${response.status}`);
+      }
+
+      const upload = (await response.json()) as ImageUploadResponse;
+      controller?.sendInput(upload.absolutePath);
+      outputBuffer.write(`\r\n[image path inserted] ${upload.absolutePath}\r\n`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Upload failed";
+      outputBuffer.write(`\r\n[image upload failed] ${message}\r\n`);
+    }
+  }
+
+  const handlePaste = (event: ClipboardEvent) => {
+    const file = getImageFileFromItems(event.clipboardData?.items);
+
+    if (!file) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    void uploadAndInsertImage(file);
+  };
+
+  const handleDrop = (event: DragEvent) => {
+    const file =
+      getImageFileFromItems(event.dataTransfer?.items) ??
+      getImageFileFromFiles(event.dataTransfer?.files);
+
+    if (!file) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    void uploadAndInsertImage(file);
+  };
+
+  const handleDragOver = (event: DragEvent) => {
+    const file =
+      getImageFileFromItems(event.dataTransfer?.items) ??
+      getImageFileFromFiles(event.dataTransfer?.files);
+
+    if (!file) {
+      return;
+    }
+
+    event.preventDefault();
+    event.dataTransfer!.dropEffect = "copy";
+  };
+
   safeFitTerminal();
   const webglRenderer = createWebglRenderer(
     terminal,
@@ -413,6 +513,9 @@ export function createTerminalTab(deps: {
     capture: true,
     passive: false
   });
+  deps.container.addEventListener("paste", handlePaste, true);
+  deps.container.addEventListener("drop", handleDrop, true);
+  deps.container.addEventListener("dragover", handleDragOver, true);
 
   const handleTouchStart = (event: TouchEvent) => {
     if (browserScrollEnabled || event.touches.length !== 1) {
@@ -609,6 +712,9 @@ export function createTerminalTab(deps: {
     },
     destroy() {
       deps.container.removeEventListener("wheel", handleWheel, true);
+      deps.container.removeEventListener("paste", handlePaste, true);
+      deps.container.removeEventListener("drop", handleDrop, true);
+      deps.container.removeEventListener("dragover", handleDragOver, true);
       deps.container.removeEventListener("touchstart", handleTouchStart, true);
       deps.container.removeEventListener("touchmove", handleTouchMove, true);
       deps.container.removeEventListener("touchend", handleTouchEnd, true);

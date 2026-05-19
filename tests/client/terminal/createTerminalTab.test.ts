@@ -660,6 +660,83 @@ describe("createTerminalTab", () => {
     mounted.destroy();
   });
 
+  it("uploads pasted images and inserts the saved path without submitting", async () => {
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    };
+    const fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          ok: true,
+          absolutePath: "/Users/gouki/.tmux-ui/uploads/build/paste.png"
+        })
+    });
+    vi.stubGlobal("fetch", fetch);
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        constructor() {
+          return socket;
+        }
+      }
+    );
+
+    const container = document.createElement("div");
+    const mounted = createTerminalTab({
+      container,
+      tabId: "tab-1",
+      sessionName: "build",
+      onClosed: vi.fn()
+    });
+    socket.send.mockClear();
+
+    const file = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "paste.png", {
+      type: "image/png"
+    });
+    const event = new Event("paste", {
+      bubbles: true,
+      cancelable: true
+    });
+    Object.defineProperty(event, "clipboardData", {
+      value: {
+        items: [
+          {
+            kind: "file",
+            type: "image/png",
+            getAsFile: () => file
+          }
+        ]
+      },
+      configurable: true
+    });
+
+    container.dispatchEvent(event);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(fetch).toHaveBeenCalledWith("/api/uploads/image", {
+      method: "POST",
+      headers: {
+        "Content-Type": "image/png",
+        "X-Tmux-Session": "build"
+      },
+      body: file
+    });
+    expect(socket.send).toHaveBeenCalledWith(
+      JSON.stringify({
+        type: "input",
+        data: "/Users/gouki/.tmux-ui/uploads/build/paste.png"
+      })
+    );
+
+    mounted.destroy();
+  });
+
   it("keeps redraw from throwing when the terminal renderer is no longer usable", () => {
     const socket = {
       send: vi.fn(),

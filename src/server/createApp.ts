@@ -14,6 +14,10 @@ import {
   type ServerStatus
 } from "./services/serverStatus/getServerStatus.js";
 import { getAppInfo, type AppInfo } from "./services/appInfo/getAppInfo.js";
+import {
+  ImageUploadError,
+  saveUploadedImage
+} from "./services/uploads/imageUploadService.js";
 
 const faviconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#15181c"/><path d="M14 14h36v10H37v28H27V24H14z" fill="#b7ffb0"/></svg>`;
 const IMAGE_MIME_TYPES = new Map([
@@ -249,11 +253,19 @@ export function createApp(options: {
   getServerStatus?: () => ServerStatus;
   getAppInfo?: () => AppInfo;
   imagePreviewRoots?: string[];
+  uploadDir?: string;
+  uploadRetentionMs?: number;
+  uploadMaxTotalBytes?: number;
 } = {}) {
   const tmuxService = options.tmuxService ?? createTmuxService();
   const readServerStatus = options.getServerStatus ?? getServerStatus;
   const readAppInfo = options.getAppInfo ?? getAppInfo;
   const imagePreviewRoots = getImagePreviewRoots(options.imagePreviewRoots);
+  const uploadOptions = {
+    uploadDir: options.uploadDir,
+    retentionMs: options.uploadRetentionMs,
+    maxTotalBytes: options.uploadMaxTotalBytes
+  };
   const app = express();
   const clientDistDir = resolve(process.cwd(), "dist/client");
 
@@ -282,6 +294,30 @@ export function createApp(options: {
   app.get("/api/server-status", (_req, res) => {
     res.json(readServerStatus());
   });
+
+  app.post(
+    "/api/uploads/image",
+    express.raw({ type: "*/*", limit: "10mb" }),
+    async (req, res, next) => {
+      try {
+        const body = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+        const upload = await saveUploadedImage(
+          body,
+          req.header("X-Tmux-Session"),
+          uploadOptions
+        );
+
+        res.status(201).json(upload);
+      } catch (error) {
+        if (error instanceof ImageUploadError) {
+          res.status(error.statusCode).json({ error: error.message });
+          return;
+        }
+
+        next(error);
+      }
+    }
+  );
 
   app.get("/api/image-preview", async (req, res, next) => {
     try {
@@ -418,16 +454,25 @@ export function createApp(options: {
     ) => {
       const message =
         error instanceof Error ? error.message : "Unexpected server error";
-      const statusCode = error instanceof HttpError
-        ? error.statusCode
-        : message === "Invalid tmux session name" ||
-            message === "Invalid tmux pane id" ||
-            message === "Image path is required" ||
-            message === "Cannot kill the only pane" ||
-            message === "Pane does not belong to session" ||
-            message === "Tmux session not found"
-          ? 400
-          : 500;
+      const explicitStatusCode =
+        error &&
+        typeof error === "object" &&
+        "statusCode" in error &&
+        typeof (error as { statusCode?: unknown }).statusCode === "number"
+          ? (error as { statusCode: number }).statusCode
+          : null;
+      const statusCode =
+        explicitStatusCode ??
+        (error instanceof HttpError
+          ? error.statusCode
+          : message === "Invalid tmux session name" ||
+              message === "Invalid tmux pane id" ||
+              message === "Image path is required" ||
+              message === "Cannot kill the only pane" ||
+              message === "Pane does not belong to session" ||
+              message === "Tmux session not found"
+            ? 400
+            : 500);
 
       res.status(statusCode).json({ error: message });
     }

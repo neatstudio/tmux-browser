@@ -1,5 +1,14 @@
 import request from "supertest";
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeFileSync
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -101,6 +110,112 @@ describe("createApp", () => {
       expect(response.body.length).toBeGreaterThan(0);
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("uploads pasted images into a fixed upload directory", async () => {
+    const uploadDir = mkdtempSync(join(tmpdir(), "tmux-ui-upload-"));
+    const app = createApp({
+      uploadDir,
+      tmuxService: {
+        listSessions: vi.fn(),
+        createSession: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    try {
+      const response = await request(app)
+        .post("/api/uploads/image")
+        .set("Content-Type", "image/png")
+        .set("X-Tmux-Session", "local/dev")
+        .send(
+          Buffer.from(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lx0H+QAAAABJRU5ErkJggg==",
+            "base64"
+          )
+        );
+
+      expect(response.status).toBe(201);
+      expect(response.body).toMatchObject({
+        ok: true,
+        contentType: "image/png"
+      });
+      expect(response.body.absolutePath).toContain(uploadDir);
+      expect(response.body.absolutePath).toContain("local-dev");
+      expect(existsSync(response.body.absolutePath)).toBe(true);
+    } finally {
+      rmSync(uploadDir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects upload payloads that are not real images", async () => {
+    const uploadDir = mkdtempSync(join(tmpdir(), "tmux-ui-upload-"));
+    const app = createApp({
+      uploadDir,
+      tmuxService: {
+        listSessions: vi.fn(),
+        createSession: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    try {
+      const response = await request(app)
+        .post("/api/uploads/image")
+        .set("Content-Type", "image/png")
+        .send(Buffer.from("not actually a png", "utf8"));
+
+      expect(response.status).toBe(415);
+      expect(response.body).toEqual({ error: "Unsupported image upload" });
+      expect(readdirSync(uploadDir)).toHaveLength(0);
+    } finally {
+      rmSync(uploadDir, { recursive: true, force: true });
+    }
+  });
+
+  it("cleans old uploaded images before saving new ones", async () => {
+    const uploadDir = mkdtempSync(join(tmpdir(), "tmux-ui-upload-"));
+    const oldFile = join(uploadDir, "old.png");
+    writeFileSync(oldFile, Buffer.from("old", "utf8"));
+    const oldTime = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    utimesSync(oldFile, oldTime, oldTime);
+    const app = createApp({
+      uploadDir,
+      uploadRetentionMs: 60 * 60 * 1000,
+      tmuxService: {
+        listSessions: vi.fn(),
+        createSession: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    try {
+      const response = await request(app)
+        .post("/api/uploads/image")
+        .set("Content-Type", "image/png")
+        .send(Buffer.from("89504e470d0a1a0a0000000d49484452", "hex"));
+
+      expect(response.status).toBe(201);
+      expect(existsSync(oldFile)).toBe(false);
+      expect(statSync(response.body.absolutePath).isFile()).toBe(true);
+    } finally {
+      rmSync(uploadDir, { recursive: true, force: true });
     }
   });
 
