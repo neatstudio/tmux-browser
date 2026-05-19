@@ -16,6 +16,7 @@ function parseArgs(argv) {
     targets: [],
     install: false,
     restart: false,
+    serviceInstall: false,
     help: false
   };
 
@@ -49,6 +50,11 @@ function parseArgs(argv) {
 
     if (arg === "--restart") {
       options.restart = true;
+      continue;
+    }
+
+    if (arg === "--service-install") {
+      options.serviceInstall = true;
       continue;
     }
 
@@ -127,6 +133,7 @@ Options:
   --remote-name name       Remote filename. Default: tmux.run
   --install                Run <remote>/tmux.run install after upload
   --restart                Run <remote>/tmux.run restart after upload
+  --service-install        Run <remote>/tmux.run service-install after upload
 
 Local config:
   If no --target is provided, publish reads .tmux-ui.publish.json when present.
@@ -145,11 +152,15 @@ function publishTarget(runFile, remoteName, target, options) {
   run("scp", [runFile, remoteFile]);
   run("ssh", [target.host, "chmod", "+x", remotePath]);
 
-  if (options.install) {
+  if (options.serviceInstall) {
+    run("ssh", [target.host, remotePath, "service-install"]);
+  } else if (options.install) {
     run("ssh", [target.host, remotePath, "install"]);
-  }
 
-  if (options.restart) {
+    if (options.restart) {
+      run("ssh", [target.host, remotePath, "restart"]);
+    }
+  } else if (options.restart) {
     run("ssh", [target.host, remotePath, "restart"]);
   }
 

@@ -96,6 +96,9 @@ describe("run release scripts", () => {
     expect(packScript).toContain('launchctl kickstart -k "gui/$(id -u)/$LAUNCHD_LABEL"');
     expect(packScript).toContain('launchctl bootout "gui/$(id -u)" "$LAUNCHD_PLIST_PATH"');
     expect(packScript).toContain("stop_launchd_service_if_present()");
+    expect(packScript).toContain("bootstrap_launchd_service_if_needed()");
+    expect(packScript).toContain("print_launchd_status()");
+    expect(packScript).toContain('echo "launchd service: $LAUNCHD_LABEL"');
   });
 
   it("supports uninstall and does not default to starting the server", () => {
@@ -153,6 +156,8 @@ describe("run release scripts", () => {
     expect(publishScript).toContain("scp");
     expect(publishScript).toContain("--install");
     expect(publishScript).toContain("--restart");
+    expect(publishScript).toContain("--service-install");
+    expect(publishScript).toContain('"service-install"');
     expect(publishScript).not.toContain('host: "tw0"');
     expect(publishScript).not.toContain('host: "tw1"');
     expect(publishScript).not.toContain('host: "vn"');

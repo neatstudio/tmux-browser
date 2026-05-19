@@ -543,23 +543,25 @@ install_launchd_service() {
   launchctl bootout "gui/$(id -u)" "$LAUNCHD_PLIST_PATH" 2>/dev/null || true
   launchctl bootstrap "gui/$(id -u)" "$LAUNCHD_PLIST_PATH"
   launchctl kickstart -k "gui/$(id -u)/$LAUNCHD_LABEL"
-  launchctl print "gui/$(id -u)/$LAUNCHD_LABEL" || true
+  print_launchd_status
 }
 
 start_launchd_service() {
   require_command launchctl
+  bootstrap_launchd_service_if_needed
   launchctl kickstart -k "gui/$(id -u)/$LAUNCHD_LABEL"
-  launchctl print "gui/$(id -u)/$LAUNCHD_LABEL" || true
+  print_launchd_status
 }
 
 stop_launchd_service() {
   require_command launchctl
   launchctl bootout "gui/$(id -u)" "$LAUNCHD_PLIST_PATH" 2>/dev/null || true
+  echo "Stopped launchd service $LAUNCHD_LABEL"
 }
 
 status_launchd_service() {
   require_command launchctl
-  launchctl print "gui/$(id -u)/$LAUNCHD_LABEL"
+  print_launchd_status
 }
 
 uninstall_launchd_service() {
@@ -567,6 +569,43 @@ uninstall_launchd_service() {
   launchctl bootout "gui/$(id -u)" "$LAUNCHD_PLIST_PATH" 2>/dev/null || true
   rm -f "$LAUNCHD_PLIST_PATH"
   echo "Removed $LAUNCHD_PLIST_PATH"
+}
+
+bootstrap_launchd_service_if_needed() {
+  if launchctl print "gui/$(id -u)/$LAUNCHD_LABEL" >/dev/null 2>&1; then
+    return
+  fi
+
+  if [[ ! -f "$LAUNCHD_PLIST_PATH" ]]; then
+    echo "launchd plist not found: $LAUNCHD_PLIST_PATH" >&2
+    echo "Run service-install first." >&2
+    exit 1
+  fi
+
+  launchctl bootstrap "gui/$(id -u)" "$LAUNCHD_PLIST_PATH"
+}
+
+print_launchd_status() {
+  local output state pid runs
+  output="$(launchctl print "gui/$(id -u)/$LAUNCHD_LABEL" 2>/dev/null || true)"
+
+  if [[ -z "$output" ]]; then
+    echo "launchd service $LAUNCHD_LABEL is not loaded"
+    echo "plist: $LAUNCHD_PLIST_PATH"
+    return 3
+  fi
+
+  state="$(printf '%s\n' "$output" | awk -F'= ' '/state =/ { print $2; exit }')"
+  pid="$(printf '%s\n' "$output" | awk -F'= ' '/pid =/ { print $2; exit }')"
+  runs="$(printf '%s\n' "$output" | awk -F'= ' '/runs =/ { print $2; exit }')"
+
+  echo "launchd service: $LAUNCHD_LABEL"
+  echo "state: ${state:-unknown}"
+  echo "pid: ${pid:-none}"
+  echo "runs: ${runs:-unknown}"
+  echo "plist: $LAUNCHD_PLIST_PATH"
+  echo "logs: $APP_HOME/tmux-ui.log"
+  echo "errors: $APP_HOME/tmux-ui.err.log"
 }
 
 install_service() {
