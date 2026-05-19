@@ -113,6 +113,7 @@ const IMAGE_PREVIEW_PATH_STORAGE_KEY = "browser-tmux-dashboard.image-preview-pat
 const IMAGE_PATH_PATTERN =
   /(?:~\/|\/|\.{1,2}\/)?[^\s'"<>|]+?\.(?:png|jpe?g|gif|webp|svg|avif|apng)(?:\?[^\s'"<>|]*)?/gi;
 let activeImageSessionName: string | null = null;
+let imagePreviewScanToken = 0;
 let lastRenderedTabListSignature = "";
 let lastRenderedActiveTabId: string | null | undefined;
 let visibleTerminalPanelId: string | null = null;
@@ -510,6 +511,16 @@ function getImagePreviewUrl(imagePath: string, basePath: string) {
   return `/api/image-preview?${params.toString()}`;
 }
 
+function getImagePreviewInfoUrl(imagePath: string, basePath: string) {
+  const params = new URLSearchParams({ path: imagePath });
+
+  if (basePath) {
+    params.set("basePath", basePath);
+  }
+
+  return `/api/image-preview-info?${params.toString()}`;
+}
+
 function getStoredImagePreviewPath() {
   try {
     return window.localStorage.getItem(IMAGE_PREVIEW_PATH_STORAGE_KEY);
@@ -561,7 +572,39 @@ function openImagePreviewPanel(sessionName: string) {
 
 function closeImagePreviewPanel() {
   activeImageSessionName = null;
+  imagePreviewScanToken += 1;
   scheduleRender();
+}
+
+async function verifyImagePath(imagePath: string, basePath: string) {
+  try {
+    const response = await fetch(getImagePreviewInfoUrl(imagePath, basePath));
+
+    if (!response.ok) {
+      return null;
+    }
+
+    return (await response.json()) as {
+      ok: true;
+      path: string;
+      contentType: string;
+      size: number;
+    };
+  } catch {
+    return null;
+  }
+}
+
+function formatImageSize(size: number) {
+  if (size < 1024) {
+    return `${size}B`;
+  }
+
+  if (size < 1024 * 1024) {
+    return `${Math.round(size / 1024)}KB`;
+  }
+
+  return `${(size / 1024 / 1024).toFixed(1)}MB`;
 }
 
 function setPreviewImage(
@@ -597,8 +640,7 @@ function renderImagePreviewPanel() {
   }
 
   const detectedPaths = getVisibleImagePaths(tab);
-  const defaultPath =
-    detectedPaths[0] ?? getStoredImagePreviewPath() ?? "/tmp/tmux-ui-preview-test.png";
+  const defaultPath = detectedPaths[0] ?? getStoredImagePreviewPath() ?? "";
 
   const backdrop = document.createElement("div");
   backdrop.className = "image-preview-backdrop";
@@ -645,24 +687,49 @@ function renderImagePreviewPanel() {
   candidateList.className = "image-preview-candidates";
   candidateList.setAttribute("aria-label", "Detected image paths");
 
+  const scanToken = (imagePreviewScanToken += 1);
+  const basePath = getSessionCurrentPath(tab.sessionName);
+
+  const loading = document.createElement("span");
+  loading.textContent = detectedPaths.length > 0
+    ? `Checking ${detectedPaths.length} image path${detectedPaths.length === 1 ? "" : "s"}`
+    : "No image paths in visible terminal output";
+  candidateList.append(loading);
+
   detectedPaths.forEach((imagePath) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = imagePath;
-    button.title = imagePath;
-    button.addEventListener("click", () => {
-      input.value = imagePath;
-      setPreviewImage(image, error, tab.sessionName, imagePath);
+    void verifyImagePath(imagePath, basePath).then((info) => {
+      if (scanToken !== imagePreviewScanToken || !info) {
+        return;
+      }
+
+      if (loading.isConnected) {
+        loading.remove();
+      }
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = `${info.path} · ${formatImageSize(info.size)}`;
+      button.title = info.path;
+      button.addEventListener("click", () => {
+        input.value = info.path;
+        setPreviewImage(image, error, tab.sessionName, info.path);
+      });
+      candidateList.append(button);
     });
-    candidateList.append(button);
   });
 
-  if (detectedPaths.length === 0) {
-    const empty = document.createElement("span");
-    empty.textContent = "No image paths in visible terminal output";
-    candidateList.append(empty);
+  if (detectedPaths.length > 0) {
+    queueMicrotask(() => {
+      window.setTimeout(() => {
+        if (
+          scanToken === imagePreviewScanToken &&
+          candidateList.querySelectorAll("button").length === 0
+        ) {
+          loading.textContent = `Found 0 real image files from ${detectedPaths.length} candidate${detectedPaths.length === 1 ? "" : "s"}`;
+        }
+      }, 800);
+    });
   }
-
   const body = document.createElement("div");
   body.className = "image-preview-body";
 
@@ -690,7 +757,11 @@ function renderImagePreviewPanel() {
   panel.append(header, candidateList, body);
   backdrop.append(panel);
   mounted.panel.append(backdrop);
-  setPreviewImage(image, error, tab.sessionName, defaultPath);
+
+  if (defaultPath) {
+    setPreviewImage(image, error, tab.sessionName, defaultPath);
+  }
+
   input.focus();
   input.select();
 }

@@ -1,5 +1,5 @@
 import request from "supertest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -74,6 +74,7 @@ describe("createApp", () => {
       )
     );
     const app = createApp({
+      imagePreviewRoots: [realpathSync(dir)],
       tmuxService: {
         listSessions: vi.fn(),
         createSession: vi.fn(),
@@ -94,7 +95,9 @@ describe("createApp", () => {
       expect(response.status).toBe(200);
       expect(response.headers["content-type"]).toContain("image/png");
       expect(response.headers["cache-control"]).toBe("no-store");
-      expect(response.headers["x-preview-image-path"]).toBe(imagePath);
+      expect(response.headers["x-preview-image-path"]).toBe(
+        realpathSync(imagePath)
+      );
       expect(response.body.length).toBeGreaterThan(0);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -106,6 +109,7 @@ describe("createApp", () => {
     const imagePath = join(dir, "preview.webp");
     writeFileSync(imagePath, Buffer.from("RIFFxxxxWEBP", "utf8"));
     const app = createApp({
+      imagePreviewRoots: [realpathSync(dir)],
       tmuxService: {
         listSessions: vi.fn(),
         createSession: vi.fn(),
@@ -125,7 +129,9 @@ describe("createApp", () => {
 
       expect(response.status).toBe(200);
       expect(response.headers["content-type"]).toContain("image/webp");
-      expect(response.headers["x-preview-image-path"]).toBe(imagePath);
+      expect(response.headers["x-preview-image-path"]).toBe(
+        realpathSync(imagePath)
+      );
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -151,6 +157,104 @@ describe("createApp", () => {
 
     expect(response.status).toBe(415);
     expect(response.body).toEqual({ error: "Unsupported image type" });
+  });
+
+  it("returns not found for image-looking paths that are not real files", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "tmux-ui-image-"));
+    const app = createApp({
+      imagePreviewRoots: [realpathSync(dir)],
+      tmuxService: {
+        listSessions: vi.fn(),
+        createSession: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    try {
+      const response = await request(app)
+        .get("/api/image-preview-info")
+        .query({ path: "missing.png", basePath: dir });
+
+      expect(response.status).toBe(404);
+      expect(response.body).toEqual({ ok: false, error: "Image not found" });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects image paths outside configured preview roots", async () => {
+    const allowedDir = mkdtempSync(join(tmpdir(), "tmux-ui-allowed-"));
+    const outsideDir = mkdtempSync(join(tmpdir(), "tmux-ui-outside-"));
+    const imagePath = join(outsideDir, "preview.png");
+    writeFileSync(imagePath, Buffer.from("png", "utf8"));
+    const app = createApp({
+      imagePreviewRoots: [realpathSync(allowedDir)],
+      tmuxService: {
+        listSessions: vi.fn(),
+        createSession: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    try {
+      const response = await request(app)
+        .get("/api/image-preview-info")
+        .query({ path: imagePath });
+
+      expect(response.status).toBe(403);
+      expect(response.body).toEqual({
+        ok: false,
+        error: "Image path is outside allowed roots"
+      });
+    } finally {
+      rmSync(allowedDir, { recursive: true, force: true });
+      rmSync(outsideDir, { recursive: true, force: true });
+    }
+  });
+
+  it("returns metadata for real image previews before listing candidates", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "tmux-ui-image-"));
+    const imagePath = join(dir, "preview.png");
+    writeFileSync(imagePath, Buffer.from("png", "utf8"));
+    const app = createApp({
+      imagePreviewRoots: [realpathSync(dir)],
+      tmuxService: {
+        listSessions: vi.fn(),
+        createSession: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    try {
+      const response = await request(app)
+        .get("/api/image-preview-info")
+        .query({ path: imagePath });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        ok: true,
+        path: realpathSync(imagePath),
+        contentType: "image/png",
+        size: 3
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("serves a direct image viewer page", async () => {

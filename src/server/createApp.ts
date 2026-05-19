@@ -1,8 +1,8 @@
 import express from "express";
 import { createReadStream, existsSync } from "node:fs";
-import { stat } from "node:fs/promises";
+import { lstat, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { extname, isAbsolute, resolve } from "node:path";
+import { extname, isAbsolute, relative, resolve } from "node:path";
 
 import {
   createTmuxService,
@@ -27,6 +27,15 @@ const IMAGE_MIME_TYPES = new Map([
   [".webp", "image/webp"]
 ]);
 
+class HttpError extends Error {
+  constructor(
+    message: string,
+    readonly statusCode: number
+  ) {
+    super(message);
+  }
+}
+
 function stripPreview<T extends { preview?: string | null }>(session: T) {
   const { preview: _preview, ...lightweightSession } = session;
 
@@ -37,7 +46,7 @@ function resolvePreviewImagePath(imagePath: string, basePath: string | undefined
   const trimmedPath = imagePath.trim();
 
   if (!trimmedPath) {
-    throw new Error("Image path is required");
+    throw new HttpError("Image path is required", 400);
   }
 
   if (trimmedPath.startsWith("~/")) {
@@ -49,6 +58,94 @@ function resolvePreviewImagePath(imagePath: string, basePath: string | undefined
   }
 
   return resolve(basePath?.trim() || process.cwd(), trimmedPath);
+}
+
+function getImagePreviewRoots(optionRoots: string[] | undefined) {
+  const envRoots = process.env.TMUX_UI_IMAGE_ROOTS?.split(",")
+    .map((root) => root.trim())
+    .filter(Boolean);
+  const roots = optionRoots?.length ? optionRoots : envRoots?.length ? envRoots : [homedir()];
+
+  return roots.map((root) => resolve(root));
+}
+
+function isPathInsideRoot(path: string, root: string) {
+  const pathRelativeToRoot = relative(root, path);
+
+  return (
+    pathRelativeToRoot === "" ||
+    (!pathRelativeToRoot.startsWith("..") && !isAbsolute(pathRelativeToRoot))
+  );
+}
+
+async function getRealPreviewRoots(roots: string[]) {
+  return Promise.all(
+    roots.map(async (root) => {
+      try {
+        return await realpath(root);
+      } catch {
+        return root;
+      }
+    })
+  );
+}
+
+async function resolvePreviewImageFile(
+  imagePath: string,
+  basePath: string | undefined,
+  roots: string[]
+) {
+  const resolvedPath = resolvePreviewImagePath(imagePath, basePath);
+  const extension = extname(resolvedPath).toLowerCase();
+  const contentType = IMAGE_MIME_TYPES.get(extension);
+
+  if (!contentType) {
+    throw new HttpError("Unsupported image type", 415);
+  }
+
+  let linkStats;
+
+  try {
+    linkStats = await lstat(resolvedPath);
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code?: string }).code === "ENOENT"
+    ) {
+      throw new HttpError("Image not found", 404);
+    }
+
+    throw error;
+  }
+
+  if (linkStats.isSymbolicLink()) {
+    throw new HttpError("Image symlinks are not allowed", 403);
+  }
+
+  if (!linkStats.isFile()) {
+    throw new HttpError("Image not found", 404);
+  }
+
+  const realPath = await realpath(resolvedPath);
+  const realRoots = await getRealPreviewRoots(roots);
+
+  if (!realRoots.some((root) => isPathInsideRoot(realPath, root))) {
+    throw new HttpError("Image path is outside allowed roots", 403);
+  }
+
+  const stats = await stat(realPath);
+
+  if (!stats.isFile()) {
+    throw new HttpError("Image not found", 404);
+  }
+
+  return {
+    contentType,
+    path: realPath,
+    size: stats.size
+  };
 }
 
 function escapeHtml(value: string) {
@@ -151,10 +248,12 @@ export function createApp(options: {
   killSession?: (name: string) => Promise<void>;
   getServerStatus?: () => ServerStatus;
   getAppInfo?: () => AppInfo;
+  imagePreviewRoots?: string[];
 } = {}) {
   const tmuxService = options.tmuxService ?? createTmuxService();
   const readServerStatus = options.getServerStatus ?? getServerStatus;
   const readAppInfo = options.getAppInfo ?? getAppInfo;
+  const imagePreviewRoots = getImagePreviewRoots(options.imagePreviewRoots);
   const app = express();
   const clientDistDir = resolve(process.cwd(), "dist/client");
 
@@ -189,36 +288,50 @@ export function createApp(options: {
       const imagePath = String(req.query.path ?? "");
       const basePath =
         typeof req.query.basePath === "string" ? req.query.basePath : undefined;
-      const resolvedPath = resolvePreviewImagePath(imagePath, basePath);
-      const extension = extname(resolvedPath).toLowerCase();
-      const contentType = IMAGE_MIME_TYPES.get(extension);
-
-      if (!contentType) {
-        res.status(415).json({ error: "Unsupported image type" });
-        return;
-      }
-
-      const stats = await stat(resolvedPath);
-
-      if (!stats.isFile()) {
-        res.status(404).json({ error: "Image not found" });
-        return;
-      }
+      const image = await resolvePreviewImageFile(
+        imagePath,
+        basePath,
+        imagePreviewRoots
+      );
 
       res
         .status(200)
-        .type(contentType)
+        .type(image.contentType)
         .set("Cache-Control", "no-store")
-        .set("X-Preview-Image-Path", resolvedPath);
-      createReadStream(resolvedPath).pipe(res);
+        .set("Content-Security-Policy", "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'")
+        .set("X-Content-Type-Options", "nosniff")
+        .set("X-Preview-Image-Path", image.path);
+      createReadStream(image.path).pipe(res);
     } catch (error) {
-      if (
-        error &&
-        typeof error === "object" &&
-        "code" in error &&
-        (error as { code?: string }).code === "ENOENT"
-      ) {
-        res.status(404).json({ error: "Image not found" });
+      if (error instanceof HttpError) {
+        res.status(error.statusCode).json({ error: error.message });
+        return;
+      }
+
+      next(error);
+    }
+  });
+
+  app.get("/api/image-preview-info", async (req, res, next) => {
+    try {
+      const imagePath = String(req.query.path ?? "");
+      const basePath =
+        typeof req.query.basePath === "string" ? req.query.basePath : undefined;
+      const image = await resolvePreviewImageFile(
+        imagePath,
+        basePath,
+        imagePreviewRoots
+      );
+
+      res.status(200).json({
+        ok: true,
+        path: image.path,
+        contentType: image.contentType,
+        size: image.size
+      });
+    } catch (error) {
+      if (error instanceof HttpError) {
+        res.status(error.statusCode).json({ ok: false, error: error.message });
         return;
       }
 
@@ -303,13 +416,14 @@ export function createApp(options: {
     ) => {
       const message =
         error instanceof Error ? error.message : "Unexpected server error";
-      const statusCode =
-        message === "Invalid tmux session name" ||
-        message === "Invalid tmux pane id" ||
-        message === "Image path is required" ||
-        message === "Cannot kill the only pane" ||
-        message === "Pane does not belong to session" ||
-        message === "Tmux session not found"
+      const statusCode = error instanceof HttpError
+        ? error.statusCode
+        : message === "Invalid tmux session name" ||
+            message === "Invalid tmux pane id" ||
+            message === "Image path is required" ||
+            message === "Cannot kill the only pane" ||
+            message === "Pane does not belong to session" ||
+            message === "Tmux session not found"
           ? 400
           : 500;
 
