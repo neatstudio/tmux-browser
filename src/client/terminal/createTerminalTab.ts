@@ -309,10 +309,6 @@ export function createTerminalTab(deps: {
   const fitAddon = new FitAddon();
   terminal.loadAddon(fitAddon);
   terminal.open(deps.container);
-  const webglRenderer = createWebglRenderer(
-    terminal,
-    deps.rendererStatusElement ?? deps.container
-  );
 
   const outputBuffer = createTerminalOutputBuffer((data) => {
     terminal.write(data, () => {
@@ -361,6 +357,10 @@ export function createTerminalTab(deps: {
   }
 
   safeFitTerminal();
+  const webglRenderer = createWebglRenderer(
+    terminal,
+    deps.rendererStatusElement ?? deps.container
+  );
   syncBrowserScrollMode();
 
   const attach = () => {
