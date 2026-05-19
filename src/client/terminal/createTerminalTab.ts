@@ -240,7 +240,7 @@ export function createTerminalTab(deps: {
   lineHeight?: number;
   terminalTheme?: TerminalTheme;
   onClosed: () => void;
-  onOutput?: () => void;
+  onOutput?: (data: string) => void;
 }) {
   const terminal = new Terminal({
     cursorBlink: true,
@@ -262,6 +262,20 @@ export function createTerminalTab(deps: {
   const outputBuffer = createTerminalOutputBuffer((data) => terminal.write(data));
   let socket: WebSocket | null = null;
   let controller: ReturnType<typeof createTerminalTabController> | null = null;
+  let browserScrollEnabled = false;
+  const scrollStatusElement = deps.rendererStatusElement ?? deps.container;
+
+  function syncBrowserScrollMode() {
+    scrollStatusElement.classList.toggle(
+      "is-browser-scroll",
+      browserScrollEnabled
+    );
+    scrollStatusElement.dataset.scrollMode = browserScrollEnabled
+      ? "browser"
+      : "tmux";
+  }
+
+  syncBrowserScrollMode();
 
   const attach = () => {
     fitAddon.fit();
@@ -282,7 +296,7 @@ export function createTerminalTab(deps: {
       socket,
       onOutput: (data) => {
         outputBuffer.write(data);
-        deps.onOutput?.();
+        deps.onOutput?.(data);
       },
       onClosed: deps.onClosed
     });
@@ -296,6 +310,10 @@ export function createTerminalTab(deps: {
   connect();
 
   const handleWheel = (event: WheelEvent) => {
+    if (browserScrollEnabled) {
+      return;
+    }
+
     const historyLines = getTmuxWheelScrollLines(event, terminal.rows);
 
     if (historyLines === 0) {
@@ -364,6 +382,15 @@ export function createTerminalTab(deps: {
     reconnect() {
       connect({ announce: true });
     },
+    toggleBrowserScroll() {
+      browserScrollEnabled = !browserScrollEnabled;
+      syncBrowserScrollMode();
+
+      return browserScrollEnabled;
+    },
+    isBrowserScrollEnabled() {
+      return browserScrollEnabled;
+    },
     setTheme(theme: TerminalTheme) {
       terminal.options.theme = theme;
     },
@@ -391,6 +418,8 @@ export function createTerminalTab(deps: {
       socket = null;
       outputBuffer.destroy();
       webglRenderer?.dispose();
+      scrollStatusElement.classList.remove("is-browser-scroll");
+      delete scrollStatusElement.dataset.scrollMode;
       terminal.dispose();
     }
   };

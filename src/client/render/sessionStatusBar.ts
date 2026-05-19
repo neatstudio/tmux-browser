@@ -15,6 +15,8 @@ export type SessionStatusBarActions = {
   onViewSession?: () => void;
   onSplitHorizontal?: () => void;
   onSplitVertical?: () => void;
+  onToggleBrowserScroll?: () => void;
+  browserScrollEnabled?: boolean;
   onSelectPane?: (sessionName: string, paneId: string) => void;
   onKillPane?: (sessionName: string, paneId: string) => void;
   onKill?: () => void;
@@ -166,6 +168,26 @@ function renderStatusActions(
 ) {
   const actionsRoot = document.createElement("div");
   actionsRoot.className = "terminal-status-actions";
+  const browserScrollButton = createActionButton(
+    "browser-scroll",
+    actions.browserScrollEnabled ? "Tmux" : "Page",
+    () => {
+      actions.onToggleBrowserScroll?.();
+    },
+    !actions.onToggleBrowserScroll,
+    actions.browserScrollEnabled
+      ? "Switch wheel back to tmux history scroll"
+      : "Let the browser/xterm viewport handle wheel scroll"
+  );
+
+  browserScrollButton.setAttribute(
+    "aria-pressed",
+    actions.browserScrollEnabled ? "true" : "false"
+  );
+  browserScrollButton.classList.toggle(
+    "is-active",
+    Boolean(actions.browserScrollEnabled)
+  );
 
   actionsRoot.append(
     createActionButton("clear", "Clear", () => actions.onClear?.(), !actions.onClear, "Clear terminal"),
@@ -181,6 +203,7 @@ function renderStatusActions(
     createActionButton("view", "View", () => actions.onViewSession?.(), !actions.onViewSession, "View session"),
     createActionButton("split-horizontal", "Split", () => actions.onSplitHorizontal?.(), !actions.onSplitHorizontal, "Split pane horizontally"),
     createActionButton("split-vertical", "Stack", () => actions.onSplitVertical?.(), !actions.onSplitVertical, "Split pane vertically"),
+    browserScrollButton,
     createActionButton("kill", "Kill", () => actions.onKill?.(), !actions.onKill, "Kill session")
   );
 

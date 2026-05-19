@@ -795,6 +795,78 @@ describe("createTerminalTab", () => {
     mounted.destroy();
   });
 
+  it("can let browser scrolling handle wheel gestures on demand", () => {
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    };
+
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        constructor() {
+          return socket;
+        }
+      }
+    );
+
+    const container = document.createElement("div");
+    const panel = document.createElement("div");
+    const target = document.createElement("div");
+    const bubbleListener = vi.fn();
+    container.append(target);
+    container.addEventListener("wheel", bubbleListener);
+
+    const mounted = createTerminalTab({
+      container,
+      rendererStatusElement: panel,
+      tabId: "tab-1",
+      sessionName: "build",
+      onClosed: vi.fn()
+    });
+
+    expect(mounted.isBrowserScrollEnabled()).toBe(false);
+    expect(panel.dataset.scrollMode).toBe("tmux");
+
+    expect(mounted.toggleBrowserScroll()).toBe(true);
+    expect(mounted.isBrowserScrollEnabled()).toBe(true);
+    expect(panel.classList.contains("is-browser-scroll")).toBe(true);
+    expect(panel.dataset.scrollMode).toBe("browser");
+
+    const wheelEvent = new WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      deltaY: 48
+    });
+
+    target.dispatchEvent(wheelEvent);
+
+    expect(bubbleListener).toHaveBeenCalledOnce();
+    expect(wheelEvent.defaultPrevented).toBe(false);
+    expect(socket.send).not.toHaveBeenCalledWith(
+      JSON.stringify({ type: "scroll", lines: 1 })
+    );
+
+    expect(mounted.toggleBrowserScroll()).toBe(false);
+
+    const tmuxWheelEvent = new WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      deltaY: 48
+    });
+
+    target.dispatchEvent(tmuxWheelEvent);
+
+    expect(tmuxWheelEvent.defaultPrevented).toBe(true);
+    expect(socket.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: "scroll", lines: 1 })
+    );
+
+    mounted.destroy();
+  });
+
   it("uses Option+wheel to page through tmux pane history", () => {
     const socket = {
       send: vi.fn(),

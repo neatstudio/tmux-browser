@@ -152,6 +152,7 @@ describe("sessionStatusBar", () => {
     const onViewSession = vi.fn();
     const onSplitHorizontal = vi.fn();
     const onSplitVertical = vi.fn();
+    const onToggleBrowserScroll = vi.fn();
 
     renderSessionStatusBar(root, SESSION, {
       onRefresh,
@@ -164,7 +165,8 @@ describe("sessionStatusBar", () => {
       onSendCommand,
       onViewSession,
       onSplitHorizontal,
-      onSplitVertical
+      onSplitVertical,
+      onToggleBrowserScroll
     });
 
     expect(root.querySelector("[data-action='send-pwd']")).toBeNull();
@@ -180,6 +182,7 @@ describe("sessionStatusBar", () => {
     root.querySelector<HTMLButtonElement>("[data-action='view']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='split-horizontal']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='split-vertical']")?.click();
+    root.querySelector<HTMLButtonElement>("[data-action='browser-scroll']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='kill']")?.click();
 
     expect(onClear).toHaveBeenCalledOnce();
@@ -192,6 +195,7 @@ describe("sessionStatusBar", () => {
     expect(onViewSession).toHaveBeenCalledOnce();
     expect(onSplitHorizontal).toHaveBeenCalledOnce();
     expect(onSplitVertical).toHaveBeenCalledOnce();
+    expect(onToggleBrowserScroll).toHaveBeenCalledOnce();
     expect(onKill).toHaveBeenCalledOnce();
   });
 
@@ -209,7 +213,8 @@ describe("sessionStatusBar", () => {
       onSendCommand: vi.fn(),
       onViewSession: vi.fn(),
       onSplitHorizontal: vi.fn(),
-      onSplitVertical: vi.fn()
+      onSplitVertical: vi.fn(),
+      onToggleBrowserScroll: vi.fn()
     });
 
     expect(
@@ -227,8 +232,26 @@ describe("sessionStatusBar", () => {
       "View",
       "Split",
       "Stack",
+      "Page",
       "Kill"
     ]);
+  });
+
+  it("marks browser scroll mode as active in the status bar", () => {
+    const root = document.createElement("div");
+
+    renderSessionStatusBar(root, SESSION, {
+      browserScrollEnabled: true,
+      onToggleBrowserScroll: vi.fn()
+    });
+
+    const button = root.querySelector<HTMLButtonElement>(
+      "[data-action='browser-scroll']"
+    )!;
+
+    expect(button.textContent).toBe("Tmux");
+    expect(button.getAttribute("aria-pressed")).toBe("true");
+    expect(button.classList.contains("is-active")).toBe(true);
   });
 
   it("renders pane quick switches and pane close actions in the status bar", () => {
@@ -290,6 +313,9 @@ describe("sessionStatusBar", () => {
     ).toBe(true);
     expect(
       root.querySelector<HTMLButtonElement>("[data-action='split-vertical']")?.disabled
+    ).toBe(true);
+    expect(
+      root.querySelector<HTMLButtonElement>("[data-action='browser-scroll']")?.disabled
     ).toBe(true);
     expect(
       root.querySelector<HTMLButtonElement>("[data-action='kill']")?.disabled

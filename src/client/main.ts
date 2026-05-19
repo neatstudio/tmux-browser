@@ -11,6 +11,10 @@ import { createSessionSettingsStore } from "./state/sessionSettings";
 import { createTabState, type BrowserTab } from "./state/tabState";
 import { createTerminalTab } from "./terminal/createTerminalTab";
 import { createInactiveTerminalPruner } from "./terminal/inactiveTerminalPruner";
+import {
+  detectTerminalInputPrompt,
+  type TerminalInputPrompt
+} from "./terminal/inputPromptDetector";
 import { syncTerminalPanelVisibility } from "./terminal/panelVisibility";
 import {
   applyTheme,
@@ -28,6 +32,8 @@ type MountedTerminal = {
   clear: () => void;
   redraw: () => void;
   reconnect: () => void;
+  toggleBrowserScroll: () => boolean;
+  isBrowserScrollEnabled: () => boolean;
   setTheme: (theme: AppTheme["terminalTheme"]) => void;
   setFontSize: (fontSize: number) => void;
   setFontFamily: (fontFamily: string) => void;
@@ -62,6 +68,14 @@ let activeConfigSessionName: string | null = null;
 let activeSendSessionName: string | null = null;
 let draftSendTargetName = "";
 let draftSendCommand = "";
+let activeInputPrompt:
+  | {
+      tabId: string;
+      sessionName: string;
+      prompt: TerminalInputPrompt;
+      signature: string;
+    }
+  | null = null;
 const tabState = createTabState();
 const sessionSettings = createSessionSettingsStore();
 const store = createDashboardStore({
@@ -89,6 +103,8 @@ const inactiveTerminalPruner = createInactiveTerminalPruner({
 });
 const activeOutputTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const busyTerminalTabIds = new Set<string>();
+const terminalOutputTails = new Map<string, string>();
+const terminalPromptSignatures = new Map<string, string>();
 let lastRenderedTabListSignature = "";
 let lastRenderedActiveTabId: string | null | undefined;
 let visibleTerminalPanelId: string | null = null;
@@ -117,6 +133,7 @@ function getOrOpenTab(sessionName: string) {
 }
 
 function closeTab(tabId: string, options: { force?: boolean } = {}) {
+  clearInputPromptForTab(tabId);
   inactiveTerminalPruner.cancel(tabId);
   mountedTerminals.get(tabId)?.destroy();
   mountedTerminals.get(tabId)?.panel.remove();
@@ -141,6 +158,7 @@ function detachTerminal(tabId: string) {
   }
 
   busyTerminalTabIds.delete(tabId);
+  terminalOutputTails.delete(tabId);
 
   if (!mounted) {
     return;
@@ -155,7 +173,51 @@ function detachTerminal(tabId: string) {
   }
 }
 
-function handleTerminalOutput(tabId: string) {
+function clearInputPromptForTab(tabId: string) {
+  terminalOutputTails.delete(tabId);
+  terminalPromptSignatures.delete(tabId);
+
+  if (activeInputPrompt?.tabId === tabId) {
+    activeInputPrompt = null;
+  }
+}
+
+function rememberTerminalOutput(tabId: string, data: string) {
+  const nextTail = `${terminalOutputTails.get(tabId) ?? ""}${data}`.slice(-4000);
+  terminalOutputTails.set(tabId, nextTail);
+
+  const prompt = detectTerminalInputPrompt(nextTail);
+
+  if (!prompt) {
+    return;
+  }
+
+  const tab = tabState.getTabs().find((item) => item.id === tabId);
+
+  if (!tab) {
+    return;
+  }
+
+  const signature = `${tab.sessionName}:${prompt.snippet}:${prompt.actions
+    .map((action) => action.label)
+    .join(",")}`;
+
+  if (terminalPromptSignatures.get(tabId) === signature) {
+    return;
+  }
+
+  terminalPromptSignatures.set(tabId, signature);
+  activeInputPrompt = {
+    tabId,
+    sessionName: tab.sessionName,
+    prompt,
+    signature
+  };
+  scheduleRender();
+}
+
+function handleTerminalOutput(tabId: string, data: string) {
+  rememberTerminalOutput(tabId, data);
   busyTerminalTabIds.add(tabId);
   const existingTimer = activeOutputTimers.get(tabId);
 
@@ -202,7 +264,7 @@ function ensureTerminal(tab: BrowserTab) {
     fontFamily: sessionSettings.get(tab.sessionName).fontFamily,
     lineHeight: sessionSettings.get(tab.sessionName).lineHeight,
     terminalTheme: getTheme(sessionSettings.get(tab.sessionName).themeId).terminalTheme,
-    onOutput: () => handleTerminalOutput(tab.id),
+    onOutput: (data) => handleTerminalOutput(tab.id, data),
     onClosed: () => {
       closeTab(tab.id, { force: true });
       const isDashboardActive = tabState.getActiveTabId() === null;
@@ -220,6 +282,8 @@ function ensureTerminal(tab: BrowserTab) {
     clear: mounted.clear,
     redraw: mounted.redraw,
     reconnect: mounted.reconnect,
+    toggleBrowserScroll: mounted.toggleBrowserScroll,
+    isBrowserScrollEnabled: mounted.isBrowserScrollEnabled,
     setTheme: mounted.setTheme,
     setFontSize: mounted.setFontSize,
     setFontFamily: mounted.setFontFamily,
@@ -532,6 +596,93 @@ function renderSendCommandPanel() {
   input.focus();
 }
 
+function closeInputPrompt() {
+  activeInputPrompt = null;
+  scheduleRender();
+}
+
+function sendInputPromptAction(input: string) {
+  if (!activeInputPrompt) {
+    return;
+  }
+
+  const tab = tabState
+    .getTabs()
+    .find((item) => item.id === activeInputPrompt?.tabId);
+
+  if (tab) {
+    tabState.setActiveTab(tab.id);
+    ensureTerminal(tab);
+  }
+
+  mountedTerminals.get(activeInputPrompt.tabId)?.sendInput(input);
+  closeInputPrompt();
+}
+
+function openInputPromptTab() {
+  if (!activeInputPrompt) {
+    return;
+  }
+
+  tabState.setActiveTab(activeInputPrompt.tabId);
+  scheduleRender();
+}
+
+function renderInputPromptToast() {
+  app.querySelector(".input-prompt-toast")?.remove();
+
+  if (!activeInputPrompt) {
+    return;
+  }
+
+  const toast = document.createElement("section");
+  toast.className = "input-prompt-toast";
+  toast.setAttribute("role", "dialog");
+  toast.setAttribute("aria-live", "assertive");
+  toast.setAttribute("aria-label", "Terminal is waiting for input");
+
+  const header = document.createElement("div");
+  header.className = "input-prompt-header";
+
+  const title = document.createElement("strong");
+  title.textContent = `${activeInputPrompt.sessionName} waiting`;
+
+  const closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.className = "input-prompt-close";
+  closeButton.textContent = "×";
+  closeButton.setAttribute("aria-label", "Dismiss prompt");
+  closeButton.addEventListener("click", closeInputPrompt);
+
+  header.append(title, closeButton);
+
+  const snippet = document.createElement("pre");
+  snippet.className = "input-prompt-snippet";
+  snippet.textContent = activeInputPrompt.prompt.snippet;
+
+  const actions = document.createElement("div");
+  actions.className = "input-prompt-actions";
+
+  activeInputPrompt.prompt.actions.forEach((action) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = action.label;
+    button.addEventListener("click", () => {
+      sendInputPromptAction(action.input);
+    });
+    actions.append(button);
+  });
+
+  const openButton = document.createElement("button");
+  openButton.type = "button";
+  openButton.textContent = "Open";
+  openButton.addEventListener("click", openInputPromptTab);
+  actions.append(openButton);
+
+  toast.append(header, snippet, actions);
+  app.append(toast);
+}
+
 function splitPane(sessionName: string, direction: "horizontal" | "vertical") {
   void store.splitPane(sessionName, direction).then(() => {
     scheduleRender();
@@ -595,6 +746,11 @@ function createSessionStatusActions(tab: BrowserTab, mounted: MountedTerminal) {
     onReconnect: () => {
       mounted.reconnect();
     },
+    onToggleBrowserScroll: () => {
+      mounted.toggleBrowserScroll();
+      syncTerminalStatusBars();
+    },
+    browserScrollEnabled: mounted.isBrowserScrollEnabled(),
     onConfig: () => {
       activeConfigSessionName = tab.sessionName;
       scheduleRender();
@@ -694,6 +850,7 @@ function render() {
   syncPanels();
   panelsRoot.querySelector(".session-config-backdrop")?.remove();
   renderSendCommandPanel();
+  renderInputPromptToast();
 
   if (activeTabId !== null && activeConfigSessionName) {
     const activeSession = store
