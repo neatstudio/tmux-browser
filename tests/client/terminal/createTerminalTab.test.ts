@@ -447,6 +447,60 @@ describe("createTerminalTab", () => {
     mounted.destroy();
   });
 
+  it("reconnects the terminal websocket on demand", () => {
+    let scheduledCallback: FrameRequestCallback | null = null;
+    const sockets: Array<{
+      send: ReturnType<typeof vi.fn>;
+      close: ReturnType<typeof vi.fn>;
+      addEventListener: ReturnType<typeof vi.fn>;
+      removeEventListener: ReturnType<typeof vi.fn>;
+    }> = [];
+
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        send = vi.fn();
+        close = vi.fn();
+        addEventListener = vi.fn();
+        removeEventListener = vi.fn();
+
+        constructor() {
+          sockets.push(this);
+        }
+      }
+    );
+
+    const mounted = createTerminalTab({
+      container: document.createElement("div"),
+      tabId: "tab-1",
+      sessionName: "build",
+      onClosed: vi.fn()
+    });
+    const requestAnimationFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback: FrameRequestCallback) => {
+        scheduledCallback = callback;
+
+        return 1;
+      });
+
+    expect(sockets).toHaveLength(1);
+
+    mounted.reconnect();
+    scheduledCallback?.(performance.now());
+
+    expect(sockets).toHaveLength(2);
+    expect(sockets[0]?.close).toHaveBeenCalledOnce();
+    expect(terminalTestState.terminals[0]?.instance.write).toHaveBeenCalledWith(
+      "\r\n[reconnecting]\r\n"
+    );
+
+    mounted.destroy();
+    requestAnimationFrame.mockRestore();
+
+    expect(sockets[1]?.close).toHaveBeenCalledOnce();
+  });
+
   it("loads the WebGL renderer addon when it is available", () => {
     const socket = {
       send: vi.fn(),

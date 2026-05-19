@@ -7,6 +7,7 @@ const STATUS_BAR_MODES: StatusBarMode[] = ["compact", "full", "git"];
 export type SessionStatusBarActions = {
   onClear?: () => void;
   onRedraw?: () => void;
+  onReconnect?: () => void;
   onRefresh?: () => void;
   onConfig?: () => void;
   onRename?: () => void;
@@ -169,6 +170,7 @@ function renderStatusActions(
   actionsRoot.append(
     createActionButton("clear", "Clear", () => actions.onClear?.(), !actions.onClear, "Clear terminal"),
     createActionButton("redraw", "Draw", () => actions.onRedraw?.(), !actions.onRedraw, "Redraw terminal"),
+    createActionButton("reconnect", "Recon", () => actions.onReconnect?.(), !actions.onReconnect, "Reconnect terminal websocket"),
     createActionButton("refresh", "Sync", () => {
       actions.onRefresh?.();
       renderSessionStatusBar(root, session, actions);

@@ -557,6 +557,86 @@ select {
   background: rgba(0, 0, 0, 0.45);
 }
 
+.send-command-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: grid;
+  align-items: end;
+  justify-items: center;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.32);
+}
+
+.send-command-panel {
+  width: min(560px, 100%);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--dashboard-bg);
+  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.42);
+  padding: 0.72rem;
+}
+
+.send-command-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-bottom: 0.55rem;
+}
+
+.send-command-header h2 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.send-command-targets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-bottom: 0.55rem;
+}
+
+.send-command-targets button,
+.send-command-header button,
+.send-command-form button {
+  border: 1px solid var(--border-strong);
+  border-radius: 2px;
+  background: var(--button-bg);
+  color: var(--control-fg);
+  cursor: pointer;
+  font-size: 0.75rem;
+  min-height: 26px;
+  padding: 0.18rem 0.48rem;
+}
+
+.send-command-targets button.is-selected {
+  border-color: rgba(94, 255, 130, 0.45);
+  background: rgba(94, 255, 130, 0.12);
+  color: #bfffc4;
+}
+
+.send-command-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.45rem;
+}
+
+.send-command-form input {
+  min-width: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 2px;
+  background: var(--control-bg);
+  color: var(--control-fg);
+  font-family:
+    "Iosevka Term",
+    Menlo,
+    "PingFang SC",
+    "Hiragino Sans GB",
+    monospace;
+  padding: 0.34rem 0.48rem;
+}
+
 .session-config-modal {
   width: min(520px, 100%);
   border: 1px solid var(--border-strong);

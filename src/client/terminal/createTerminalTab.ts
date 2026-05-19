@@ -97,6 +97,12 @@ export function createTerminalTabController(deps: {
   };
 }
 
+function createTerminalSocket() {
+  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+
+  return new WebSocket(`${protocol}://${window.location.host}/ws/terminal`);
+}
+
 export function createTerminalOutputBuffer(
   onFlush: (data: string) => void,
   deps: FrameDeps = {}
@@ -252,17 +258,38 @@ export function createTerminalTab(deps: {
     deps.rendererStatusElement ?? deps.container
   );
 
-  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-  const socket = new WebSocket(
-    `${protocol}://${window.location.host}/ws/terminal`
-  );
-
   const outputBuffer = createTerminalOutputBuffer((data) => terminal.write(data));
-  const controller = createTerminalTabController({
-    socket,
-    onOutput: (data) => outputBuffer.write(data),
-    onClosed: deps.onClosed
-  });
+  let socket: WebSocket | null = null;
+  let controller: ReturnType<typeof createTerminalTabController> | null = null;
+
+  const attach = () => {
+    fitAddon.fit();
+    controller?.attach({
+      type: "attach",
+      tabId: deps.tabId,
+      sessionName: deps.sessionName,
+      cols: terminal.cols,
+      rows: terminal.rows
+    });
+  };
+
+  function connect(options: { announce?: boolean } = {}) {
+    socket?.removeEventListener("open", attach);
+    controller?.destroy();
+    socket = createTerminalSocket();
+    controller = createTerminalTabController({
+      socket,
+      onOutput: (data) => outputBuffer.write(data),
+      onClosed: deps.onClosed
+    });
+    socket.addEventListener("open", attach);
+
+    if (options.announce) {
+      outputBuffer.write("\r\n[reconnecting]\r\n");
+    }
+  }
+
+  connect();
 
   const handleWheel = (event: WheelEvent) => {
     const historyLines = getTmuxWheelScrollLines(event, terminal.rows);
@@ -273,7 +300,7 @@ export function createTerminalTab(deps: {
 
     event.preventDefault();
     event.stopImmediatePropagation();
-    controller.scroll(historyLines);
+    controller?.scroll(historyLines);
   };
 
   deps.container.addEventListener("wheel", handleWheel, {
@@ -288,7 +315,7 @@ export function createTerminalTab(deps: {
           terminal.paste("\n");
         } else {
           // CSI-u preserves Shift+Enter as a modified key for terminal apps.
-          controller.sendInput(SHIFT_ENTER_SEQUENCE);
+          controller?.sendInput(SHIFT_ENTER_SEQUENCE);
         }
       }
 
@@ -296,51 +323,42 @@ export function createTerminalTab(deps: {
     }
 
     if (event.type === "keydown" && event.key === "PageUp") {
-      controller.scroll(-terminal.rows);
+      controller?.scroll(-terminal.rows);
       return false;
     }
 
     if (event.type === "keydown" && event.key === "PageDown") {
-      controller.scroll(terminal.rows);
+      controller?.scroll(terminal.rows);
       return false;
     }
 
     return true;
   });
 
-  const attach = () => {
-    fitAddon.fit();
-    controller.attach({
-      type: "attach",
-      tabId: deps.tabId,
-      sessionName: deps.sessionName,
-      cols: terminal.cols,
-      rows: terminal.rows
-    });
-  };
-
   const handleWindowResize = () => {
     fitAddon.fit();
-    controller.resize(terminal.cols, terminal.rows);
+    controller?.resize(terminal.cols, terminal.rows);
   };
 
-  socket.addEventListener("open", attach);
   window.addEventListener("resize", handleWindowResize);
 
   terminal.onData((data) => {
-    controller.sendInput(data);
+    controller?.sendInput(data);
   });
 
   return {
     sendInput(data: string) {
-      controller.sendInput(data);
+      controller?.sendInput(data);
     },
     clear() {
       terminal.clear();
     },
     redraw() {
       fitAddon.fit();
-      controller.resize(terminal.cols, terminal.rows);
+      controller?.resize(terminal.cols, terminal.rows);
+    },
+    reconnect() {
+      connect({ announce: true });
     },
     setTheme(theme: TerminalTheme) {
       terminal.options.theme = theme;
@@ -348,22 +366,25 @@ export function createTerminalTab(deps: {
     setFontSize(fontSize: number) {
       terminal.options.fontSize = fontSize;
       fitAddon.fit();
-      controller.resize(terminal.cols, terminal.rows);
+      controller?.resize(terminal.cols, terminal.rows);
     },
     setFontFamily(fontFamily: string) {
       terminal.options.fontFamily = fontFamily;
       fitAddon.fit();
-      controller.resize(terminal.cols, terminal.rows);
+      controller?.resize(terminal.cols, terminal.rows);
     },
     setLineHeight(lineHeight: number) {
       terminal.options.lineHeight = lineHeight;
       fitAddon.fit();
-      controller.resize(terminal.cols, terminal.rows);
+      controller?.resize(terminal.cols, terminal.rows);
     },
     destroy() {
       deps.container.removeEventListener("wheel", handleWheel, true);
       window.removeEventListener("resize", handleWindowResize);
-      controller.destroy();
+      socket?.removeEventListener("open", attach);
+      controller?.destroy();
+      controller = null;
+      socket = null;
       outputBuffer.destroy();
       webglRenderer?.dispose();
       terminal.dispose();

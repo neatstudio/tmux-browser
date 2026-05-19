@@ -144,6 +144,7 @@ describe("sessionStatusBar", () => {
     const onRefresh = vi.fn();
     const onClear = vi.fn();
     const onRedraw = vi.fn();
+    const onReconnect = vi.fn();
     const onConfig = vi.fn();
     const onRename = vi.fn();
     const onKill = vi.fn();
@@ -156,6 +157,7 @@ describe("sessionStatusBar", () => {
       onRefresh,
       onClear,
       onRedraw,
+      onReconnect,
       onConfig,
       onRename,
       onKill,
@@ -170,6 +172,7 @@ describe("sessionStatusBar", () => {
 
     root.querySelector<HTMLButtonElement>("[data-action='clear']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='redraw']")?.click();
+    root.querySelector<HTMLButtonElement>("[data-action='reconnect']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='refresh']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='config']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='rename']")?.click();
@@ -181,6 +184,7 @@ describe("sessionStatusBar", () => {
 
     expect(onClear).toHaveBeenCalledOnce();
     expect(onRedraw).toHaveBeenCalledOnce();
+    expect(onReconnect).toHaveBeenCalledOnce();
     expect(onRefresh).toHaveBeenCalledOnce();
     expect(onConfig).toHaveBeenCalledOnce();
     expect(onRename).toHaveBeenCalledOnce();
@@ -198,6 +202,7 @@ describe("sessionStatusBar", () => {
       onRefresh: vi.fn(),
       onClear: vi.fn(),
       onRedraw: vi.fn(),
+      onReconnect: vi.fn(),
       onConfig: vi.fn(),
       onRename: vi.fn(),
       onKill: vi.fn(),
@@ -214,6 +219,7 @@ describe("sessionStatusBar", () => {
     ).toEqual([
       "Clear",
       "Draw",
+      "Recon",
       "Sync",
       "Cfg",
       "Ren",
@@ -264,6 +270,9 @@ describe("sessionStatusBar", () => {
 
     renderSessionStatusBar(root, SESSION);
 
+    expect(
+      root.querySelector<HTMLButtonElement>("[data-action='reconnect']")?.disabled
+    ).toBe(true);
     expect(
       root.querySelector<HTMLButtonElement>("[data-action='config']")?.disabled
     ).toBe(true);
