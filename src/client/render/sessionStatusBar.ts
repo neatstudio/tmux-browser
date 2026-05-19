@@ -13,6 +13,7 @@ export type SessionStatusBarActions = {
   onRename?: () => void;
   onSendCommand?: () => void;
   onViewSession?: () => void;
+  onPreviewImage?: () => void;
   onSplitHorizontal?: () => void;
   onSplitVertical?: () => void;
   onToggleBrowserScroll?: () => void;
@@ -203,6 +204,7 @@ function renderStatusActions(
     createActionButton("rename", "Ren", () => actions.onRename?.(), !actions.onRename, "Rename session"),
     createActionButton("send", "Send", () => actions.onSendCommand?.(), !actions.onSendCommand, "Send command"),
     createActionButton("view", "View", () => actions.onViewSession?.(), !actions.onViewSession, "View session"),
+    createActionButton("preview-image", "Img", () => actions.onPreviewImage?.(), !actions.onPreviewImage, "Preview image file"),
     createActionButton("split-horizontal", "Split", () => actions.onSplitHorizontal?.(), !actions.onSplitHorizontal, "Split pane horizontally"),
     createActionButton("split-vertical", "Stack", () => actions.onSplitVertical?.(), !actions.onSplitVertical, "Split pane vertically"),
     createActionButton("scroll-history-back", "Hist", () => actions.onScrollHistoryBack?.(), !actions.onScrollHistoryBack, "Page back in tmux history"),

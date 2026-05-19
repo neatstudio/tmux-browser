@@ -1,4 +1,7 @@
 import request from "supertest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { createApp } from "../../src/server/createApp";
@@ -58,6 +61,96 @@ describe("createApp", () => {
     expect(Number(response.headers["content-length"])).toBeGreaterThan(0);
     expect(response.body.toString("utf8")).toContain("<svg");
     expect(response.body.toString("utf8")).toContain("<path");
+  });
+
+  it("serves local image previews from absolute paths", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "tmux-ui-image-"));
+    const imagePath = join(dir, "preview.png");
+    writeFileSync(
+      imagePath,
+      Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lx0H+QAAAABJRU5ErkJggg==",
+        "base64"
+      )
+    );
+    const app = createApp({
+      tmuxService: {
+        listSessions: vi.fn(),
+        createSession: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    try {
+      const response = await request(app)
+        .get("/api/image-preview")
+        .query({ path: imagePath });
+
+      expect(response.status).toBe(200);
+      expect(response.headers["content-type"]).toContain("image/png");
+      expect(response.headers["cache-control"]).toBe("no-store");
+      expect(response.headers["x-preview-image-path"]).toBe(imagePath);
+      expect(response.body.length).toBeGreaterThan(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("resolves relative image preview paths against the session path", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "tmux-ui-image-"));
+    const imagePath = join(dir, "preview.webp");
+    writeFileSync(imagePath, Buffer.from("RIFFxxxxWEBP", "utf8"));
+    const app = createApp({
+      tmuxService: {
+        listSessions: vi.fn(),
+        createSession: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    try {
+      const response = await request(app)
+        .get("/api/image-preview")
+        .query({ path: "preview.webp", basePath: dir });
+
+      expect(response.status).toBe(200);
+      expect(response.headers["content-type"]).toContain("image/webp");
+      expect(response.headers["x-preview-image-path"]).toBe(imagePath);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects non-image preview files", async () => {
+    const app = createApp({
+      tmuxService: {
+        listSessions: vi.fn(),
+        createSession: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    const response = await request(app)
+      .get("/api/image-preview")
+      .query({ path: "/tmp/not-an-image.txt" });
+
+    expect(response.status).toBe(415);
+    expect(response.body).toEqual({ error: "Unsupported image type" });
   });
 
   it("serves server status for the dashboard header", async () => {

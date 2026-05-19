@@ -150,6 +150,7 @@ describe("sessionStatusBar", () => {
     const onKill = vi.fn();
     const onSendCommand = vi.fn();
     const onViewSession = vi.fn();
+    const onPreviewImage = vi.fn();
     const onSplitHorizontal = vi.fn();
     const onSplitVertical = vi.fn();
     const onToggleBrowserScroll = vi.fn();
@@ -166,6 +167,7 @@ describe("sessionStatusBar", () => {
       onKill,
       onSendCommand,
       onViewSession,
+      onPreviewImage,
       onSplitHorizontal,
       onSplitVertical,
       onToggleBrowserScroll,
@@ -184,6 +186,7 @@ describe("sessionStatusBar", () => {
     root.querySelector<HTMLButtonElement>("[data-action='rename']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='send']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='view']")?.click();
+    root.querySelector<HTMLButtonElement>("[data-action='preview-image']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='split-horizontal']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='split-vertical']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='scroll-history-back']")?.click();
@@ -199,6 +202,7 @@ describe("sessionStatusBar", () => {
     expect(onRename).toHaveBeenCalledOnce();
     expect(onSendCommand).toHaveBeenCalledOnce();
     expect(onViewSession).toHaveBeenCalledOnce();
+    expect(onPreviewImage).toHaveBeenCalledOnce();
     expect(onSplitHorizontal).toHaveBeenCalledOnce();
     expect(onSplitVertical).toHaveBeenCalledOnce();
     expect(onToggleBrowserScroll).toHaveBeenCalledOnce();
@@ -220,6 +224,7 @@ describe("sessionStatusBar", () => {
       onKill: vi.fn(),
       onSendCommand: vi.fn(),
       onViewSession: vi.fn(),
+      onPreviewImage: vi.fn(),
       onSplitHorizontal: vi.fn(),
       onSplitVertical: vi.fn(),
       onToggleBrowserScroll: vi.fn(),
@@ -240,6 +245,7 @@ describe("sessionStatusBar", () => {
       "Ren",
       "Send",
       "View",
+      "Img",
       "Split",
       "Stack",
       "Hist",
@@ -319,6 +325,9 @@ describe("sessionStatusBar", () => {
     ).toBe(true);
     expect(
       root.querySelector<HTMLButtonElement>("[data-action='view']")?.disabled
+    ).toBe(true);
+    expect(
+      root.querySelector<HTMLButtonElement>("[data-action='preview-image']")?.disabled
     ).toBe(true);
     expect(
       root.querySelector<HTMLButtonElement>("[data-action='split-horizontal']")?.disabled

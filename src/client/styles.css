@@ -637,6 +637,118 @@ select {
   padding: 0.34rem 0.48rem;
 }
 
+.image-preview-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 14;
+  display: grid;
+  align-items: center;
+  justify-items: center;
+  padding: clamp(0.65rem, 1.4vw, 1.35rem);
+  background:
+    radial-gradient(circle at 18% 18%, rgba(112, 255, 179, 0.12), transparent 24rem),
+    rgba(0, 0, 0, 0.52);
+}
+
+.image-preview-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(1120px, 96vw);
+  height: min(760px, 84vh);
+  min-height: 260px;
+  overflow: hidden;
+  border: 1px solid rgba(217, 226, 234, 0.24);
+  border-radius: 5px;
+  background: linear-gradient(180deg, rgba(28, 36, 45, 0.98), rgba(8, 12, 16, 0.98));
+  box-shadow: 0 24px 100px rgba(0, 0, 0, 0.58);
+}
+
+.image-preview-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 38px;
+  border-bottom: 1px solid rgba(217, 226, 234, 0.12);
+  padding: 0.42rem 0.55rem 0.42rem 0.7rem;
+}
+
+.image-preview-title {
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(239, 246, 252, 0.86);
+  font-family:
+    "Iosevka Term",
+    Menlo,
+    "PingFang SC",
+    "Hiragino Sans GB",
+    monospace;
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.image-preview-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.image-preview-actions a,
+.image-preview-actions button {
+  border: 1px solid rgba(217, 226, 234, 0.24);
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.075);
+  color: rgba(239, 246, 252, 0.88);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 650;
+  line-height: 1;
+  min-height: 24px;
+  padding: 0.24rem 0.46rem;
+  text-decoration: none;
+}
+
+.image-preview-body {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  overflow: auto;
+  background:
+    linear-gradient(45deg, rgba(255, 255, 255, 0.035) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(255, 255, 255, 0.035) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(255, 255, 255, 0.035) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(255, 255, 255, 0.035) 75%),
+    #05080b;
+  background-position:
+    0 0,
+    0 12px,
+    12px -12px,
+    -12px 0;
+  background-size: 24px 24px;
+  padding: 0.7rem;
+}
+
+.image-preview-image {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.image-preview-error {
+  position: absolute;
+  inset: auto 1rem 1rem;
+  border: 1px solid rgba(255, 174, 152, 0.32);
+  border-radius: 3px;
+  background: rgba(70, 20, 16, 0.88);
+  color: var(--error-fg);
+  padding: 0.45rem 0.6rem;
+  font-size: 0.8rem;
+}
+
 .session-config-modal {
   width: min(520px, 100%);
   border: 1px solid var(--border-strong);
