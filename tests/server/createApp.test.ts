@@ -36,7 +36,7 @@ describe("createApp", () => {
     });
   });
 
-  it("serves a small favicon without falling through to the SPA", async () => {
+  it("serves a small svg favicon without falling through to the SPA", async () => {
     const app = createApp({
       tmuxService: {
         listSessions: vi.fn(),
@@ -53,9 +53,11 @@ describe("createApp", () => {
     const response = await request(app).get("/favicon.ico");
 
     expect(response.status).toBe(200);
-    expect(response.headers["content-type"]).toContain("image/x-icon");
+    expect(response.headers["content-type"]).toContain("image/svg+xml");
     expect(response.headers["cache-control"]).toContain("max-age=86400");
     expect(Number(response.headers["content-length"])).toBeGreaterThan(0);
+    expect(response.body.toString("utf8")).toContain("<svg");
+    expect(response.body.toString("utf8")).toContain("<path");
   });
 
   it("serves server status for the dashboard header", async () => {

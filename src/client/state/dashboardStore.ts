@@ -36,6 +36,7 @@ type DashboardStoreDeps = {
   shouldIncludePreview?: () => boolean;
   shouldIncludePanes?: () => boolean;
   getActiveSessionName?: () => string | null;
+  isActiveSessionBusy?: () => boolean;
 };
 
 type RefreshOptions = {
@@ -227,7 +228,7 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
       timer = globalThis.setInterval(() => {
         const activeSessionName = deps.getActiveSessionName?.() ?? null;
 
-        if (!activeSessionName) {
+        if (!activeSessionName || deps.isActiveSessionBusy?.()) {
           return;
         }
 

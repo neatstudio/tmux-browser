@@ -13,10 +13,7 @@ import {
 } from "./services/serverStatus/getServerStatus.js";
 import { getAppInfo, type AppInfo } from "./services/appInfo/getAppInfo.js";
 
-const favicon = Buffer.from(
-  "AAABAAEAEBAAAAEAIABoBAAAFgAAACgAAAAQAAAAIAAAAAEAIAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAVGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP+3/7D/t/+w/7f/sP+3/7D/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/t/+w/7f/sP+3/7D/t/+w/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/7f/sP+3/7D/t/+w/7f/sP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP+3/7D/t/+w/7f/sP+3/7D/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/t/+w/7f/sP+3/7D/t/+w/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/7f/sP+3/7D/t/+w/7f/sP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP+3/7D/t/+w/7f/sP+3/7D/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/t/+w/7f/sP+3/7D/t/+w/7f/sP+3/7D/t/+w/7f/sP+3/7D/t/+w/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/7f/sP+3/7D/t/+w/7f/sP+3/7D/t/+w/7f/sP+3/7D/t/+w/7f/sP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP+3/7D/t/+w/7f/sP+3/7D/t/+w/7f/sP+3/7D/t/+w/7f/sP+3/7D/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/FRgc/xUYHP8VGBz/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
-  "base64"
-);
+const faviconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#15181c"/><path d="M14 14h36v10H37v28H27V24H14z" fill="#b7ffb0"/></svg>`;
 
 function stripPreview<T extends { preview?: string | null }>(session: T) {
   const { preview: _preview, ...lightweightSession } = session;
@@ -45,9 +42,17 @@ export function createApp(options: {
   app.get("/favicon.ico", (_req, res) => {
     res
       .status(200)
-      .type("image/x-icon")
+      .type("image/svg+xml")
       .set("Cache-Control", "public, max-age=86400")
-      .send(favicon);
+      .end(faviconSvg);
+  });
+
+  app.get("/favicon.svg", (_req, res) => {
+    res
+      .status(200)
+      .type("image/svg+xml")
+      .set("Cache-Control", "public, max-age=86400")
+      .end(faviconSvg);
   });
 
   app.get("/api/server-status", (_req, res) => {

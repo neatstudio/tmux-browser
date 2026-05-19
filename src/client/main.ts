@@ -70,6 +70,11 @@ const store = createDashboardStore({
   pruneTabs: (validSessionNames) => tabState.pruneTabs(validSessionNames),
   shouldIncludePreview: () => tabState.getActiveTabId() === null,
   shouldIncludePanes: () => tabState.getActiveTabId() !== null,
+  isActiveSessionBusy: () => {
+    const activeTabId = tabState.getActiveTabId();
+
+    return activeTabId !== null && busyTerminalTabIds.has(activeTabId);
+  },
   getActiveSessionName: () => {
     const activeTabId = tabState.getActiveTabId();
 
@@ -82,6 +87,8 @@ const mountedTerminals = new Map<string, MountedTerminal>();
 const inactiveTerminalPruner = createInactiveTerminalPruner({
   delayMs: 5000
 });
+const activeOutputTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const busyTerminalTabIds = new Set<string>();
 let lastRenderedTabListSignature = "";
 let lastRenderedActiveTabId: string | null | undefined;
 let visibleTerminalPanelId: string | null = null;
@@ -126,6 +133,14 @@ function closeTab(tabId: string, options: { force?: boolean } = {}) {
 
 function detachTerminal(tabId: string) {
   const mounted = mountedTerminals.get(tabId);
+  const outputTimer = activeOutputTimers.get(tabId);
+
+  if (outputTimer) {
+    clearTimeout(outputTimer);
+    activeOutputTimers.delete(tabId);
+  }
+
+  busyTerminalTabIds.delete(tabId);
 
   if (!mounted) {
     return;
@@ -138,6 +153,32 @@ function detachTerminal(tabId: string) {
   if (visibleTerminalPanelId === tabId) {
     visibleTerminalPanelId = null;
   }
+}
+
+function handleTerminalOutput(tabId: string) {
+  busyTerminalTabIds.add(tabId);
+  const existingTimer = activeOutputTimers.get(tabId);
+
+  if (existingTimer) {
+    clearTimeout(existingTimer);
+  }
+
+  activeOutputTimers.set(
+    tabId,
+    setTimeout(() => {
+      activeOutputTimers.delete(tabId);
+      busyTerminalTabIds.delete(tabId);
+
+      if (tabState.getActiveTabId() !== tabId) {
+        return;
+      }
+
+      void store.refresh({
+        includePreview: false,
+        includePanes: true
+      });
+    }, 1500)
+  );
 }
 
 function ensureTerminal(tab: BrowserTab) {
@@ -161,6 +202,7 @@ function ensureTerminal(tab: BrowserTab) {
     fontFamily: sessionSettings.get(tab.sessionName).fontFamily,
     lineHeight: sessionSettings.get(tab.sessionName).lineHeight,
     terminalTheme: getTheme(sessionSettings.get(tab.sessionName).themeId).terminalTheme,
+    onOutput: () => handleTerminalOutput(tab.id),
     onClosed: () => {
       closeTab(tab.id, { force: true });
       const isDashboardActive = tabState.getActiveTabId() === null;

@@ -7,3 +7,4 @@ release/
 .tmux-ui.publish.json
 .env
 .superpowers/
+.gstack/

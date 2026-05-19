@@ -240,6 +240,7 @@ export function createTerminalTab(deps: {
   lineHeight?: number;
   terminalTheme?: TerminalTheme;
   onClosed: () => void;
+  onOutput?: () => void;
 }) {
   const terminal = new Terminal({
     cursorBlink: true,
@@ -279,7 +280,10 @@ export function createTerminalTab(deps: {
     socket = createTerminalSocket();
     controller = createTerminalTabController({
       socket,
-      onOutput: (data) => outputBuffer.write(data),
+      onOutput: (data) => {
+        outputBuffer.write(data);
+        deps.onOutput?.();
+      },
       onClosed: deps.onClosed
     });
     socket.addEventListener("open", attach);
