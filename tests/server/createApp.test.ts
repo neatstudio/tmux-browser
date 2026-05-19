@@ -153,6 +153,51 @@ describe("createApp", () => {
     expect(response.body).toEqual({ error: "Unsupported image type" });
   });
 
+  it("serves a direct image viewer page", async () => {
+    const app = createApp({
+      tmuxService: {
+        listSessions: vi.fn(),
+        createSession: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    const response = await request(app)
+      .get("/view")
+      .query({ path: "/tmp/preview.png", basePath: "/tmp" });
+
+    expect(response.status).toBe(200);
+    expect(response.headers["content-type"]).toContain("text/html");
+    expect(response.text).toContain("/api/image-preview?path=%2Ftmp%2Fpreview.png");
+    expect(response.text).toContain("name=\"basePath\" value=\"/tmp\"");
+    expect(response.text).toContain("<img");
+  });
+
+  it("serves a direct image viewer page from encoded path routes", async () => {
+    const app = createApp({
+      tmuxService: {
+        listSessions: vi.fn(),
+        createSession: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    const response = await request(app).get("/view/%2Ftmp%2Fpreview.png");
+
+    expect(response.status).toBe(200);
+    expect(response.text).toContain("/api/image-preview?path=%2Ftmp%2Fpreview.png");
+  });
+
   it("serves server status for the dashboard header", async () => {
     const app = createApp({
       tmuxService: {

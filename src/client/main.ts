@@ -72,14 +72,6 @@ let activeConfigSessionName: string | null = null;
 let activeSendSessionName: string | null = null;
 let draftSendTargetName = "";
 let draftSendCommand = "";
-let activeImagePreview:
-  | {
-      tabId: string;
-      sessionName: string;
-      imagePath: string;
-      imageUrl: string;
-    }
-  | null = null;
 let activeInputPrompt:
   | {
       tabId: string;
@@ -116,6 +108,7 @@ const inactiveTerminalPruner = createInactiveTerminalPruner({
 const activeOutputTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const busyTerminalTabIds = new Set<string>();
 const terminalPromptSignatures = new Map<string, string>();
+const IMAGE_PREVIEW_PATH_STORAGE_KEY = "browser-tmux-dashboard.image-preview-path";
 let lastRenderedTabListSignature = "";
 let lastRenderedActiveTabId: string | null | undefined;
 let visibleTerminalPanelId: string | null = null;
@@ -144,7 +137,6 @@ function getOrOpenTab(sessionName: string) {
 }
 
 function closeTab(tabId: string, options: { force?: boolean } = {}) {
-  closeImagePreviewForTab(tabId);
   clearInputPromptForTab(tabId);
   inactiveTerminalPruner.cancel(tabId);
   mountedTerminals.get(tabId)?.destroy();
@@ -189,12 +181,6 @@ function clearInputPromptForTab(tabId: string) {
 
   if (activeInputPrompt?.tabId === tabId) {
     activeInputPrompt = null;
-  }
-}
-
-function closeImagePreviewForTab(tabId: string) {
-  if (activeImagePreview?.tabId === tabId) {
-    activeImagePreview = null;
   }
 }
 
@@ -509,118 +495,48 @@ function getSessionCurrentPath(sessionName: string) {
   );
 }
 
-function getImagePreviewUrl(imagePath: string, basePath: string) {
+function getImageViewUrl(imagePath: string, basePath: string) {
   const params = new URLSearchParams({ path: imagePath });
 
   if (basePath) {
     params.set("basePath", basePath);
   }
 
-  return `/api/image-preview?${params.toString()}`;
+  return `/view?${params.toString()}`;
+}
+
+function getStoredImagePreviewPath() {
+  try {
+    return window.localStorage.getItem(IMAGE_PREVIEW_PATH_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function storeImagePreviewPath(imagePath: string) {
+  try {
+    window.localStorage.setItem(IMAGE_PREVIEW_PATH_STORAGE_KEY, imagePath);
+  } catch {
+    // Ignore storage failures; preview still works for the current click.
+  }
 }
 
 function promptPreviewImage(tab: BrowserTab) {
+  const defaultPath =
+    getStoredImagePreviewPath() ?? "/tmp/tmux-ui-preview-test.png";
   const imagePath = window
-    .prompt("Preview image path", getSessionCurrentPath(tab.sessionName))
+    .prompt("Preview image path", defaultPath)
     ?.trim();
 
   if (!imagePath) {
     return;
   }
 
-  activeImagePreview = {
-    tabId: tab.id,
-    sessionName: tab.sessionName,
+  storeImagePreviewPath(imagePath);
+  window.location.href = getImageViewUrl(
     imagePath,
-    imageUrl: getImagePreviewUrl(imagePath, getSessionCurrentPath(tab.sessionName))
-  };
-  scheduleRender();
-}
-
-function closeImagePreview() {
-  activeImagePreview = null;
-  scheduleRender();
-}
-
-function renderImagePreview() {
-  panelsRoot.querySelector(".image-preview-backdrop")?.remove();
-
-  if (!activeImagePreview) {
-    return;
-  }
-
-  const tab = tabState.getTabs().find((item) => item.id === activeImagePreview?.tabId);
-
-  if (!tab) {
-    activeImagePreview = null;
-    return;
-  }
-
-  const mounted = mountedTerminals.get(tab.id);
-
-  if (!mounted) {
-    return;
-  }
-
-  const backdrop = document.createElement("div");
-  backdrop.className = "image-preview-backdrop";
-  backdrop.addEventListener("click", (event) => {
-    if (event.target === backdrop) {
-      closeImagePreview();
-    }
-  });
-
-  const panel = document.createElement("section");
-  panel.className = "image-preview-panel";
-  panel.setAttribute("role", "dialog");
-  panel.setAttribute("aria-modal", "true");
-  panel.setAttribute("aria-label", "Image preview");
-
-  const header = document.createElement("div");
-  header.className = "image-preview-header";
-
-  const title = document.createElement("div");
-  title.className = "image-preview-title";
-  title.textContent = activeImagePreview.imagePath;
-  title.title = activeImagePreview.imagePath;
-
-  const actions = document.createElement("div");
-  actions.className = "image-preview-actions";
-
-  const openButton = document.createElement("a");
-  openButton.href = activeImagePreview.imageUrl;
-  openButton.target = "_blank";
-  openButton.rel = "noreferrer";
-  openButton.textContent = "Open";
-
-  const closeButton = document.createElement("button");
-  closeButton.type = "button";
-  closeButton.textContent = "Close";
-  closeButton.addEventListener("click", closeImagePreview);
-
-  actions.append(openButton, closeButton);
-  header.append(title, actions);
-
-  const body = document.createElement("div");
-  body.className = "image-preview-body";
-
-  const error = document.createElement("div");
-  error.className = "image-preview-error";
-  error.textContent = "Image failed to load";
-  error.hidden = true;
-
-  const image = document.createElement("img");
-  image.className = "image-preview-image";
-  image.src = activeImagePreview.imageUrl;
-  image.alt = activeImagePreview.imagePath;
-  image.addEventListener("error", () => {
-    error.hidden = false;
-  });
-
-  body.append(image, error);
-  panel.append(header, body);
-  backdrop.append(panel);
-  mounted.panel.append(backdrop);
+    getSessionCurrentPath(tab.sessionName)
+  );
 }
 
 function openSendCommandPanel(currentSessionName: string) {
@@ -992,7 +908,6 @@ function render() {
   panelsRoot.style.display = activeTabId === null ? "none" : "block";
   syncPanels();
   panelsRoot.querySelector(".session-config-backdrop")?.remove();
-  renderImagePreview();
   renderSendCommandPanel();
   renderInputPromptToast();
 
