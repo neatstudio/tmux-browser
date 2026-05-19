@@ -72,12 +72,12 @@ describe("run release scripts", () => {
     expect(packScript).toContain(
       'SYSTEMD_UNIT_PATH="\\${TMUX_UI_SYSTEMD_UNIT:-/etc/systemd/system/$SERVICE_NAME.service}"'
     );
-    expect(packScript).toContain("service-install  Install systemd service");
-    expect(packScript).toContain("service-start    Start systemd service");
-    expect(packScript).toContain("service-restart  Restart systemd service");
-    expect(packScript).toContain("service-status   Show systemd service status");
-    expect(packScript).toContain("service-stop     Stop systemd service");
-    expect(packScript).toContain("service-uninstall Stop and remove systemd service");
+    expect(packScript).toContain("service-install  Install systemd/launchd service");
+    expect(packScript).toContain("service-start    Start systemd/launchd service");
+    expect(packScript).toContain("service-restart  Restart systemd/launchd service");
+    expect(packScript).toContain("service-status   Show systemd/launchd service status");
+    expect(packScript).toContain("service-stop     Stop systemd/launchd service");
+    expect(packScript).toContain("service-uninstall Stop and remove systemd/launchd service");
     expect(packScript).toContain("write_systemd_unit()");
     expect(packScript).toContain('ExecStart=$APP_HOME/start.sh');
     expect(packScript).toContain("systemctl daemon-reload");

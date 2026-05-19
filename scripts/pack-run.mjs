@@ -324,12 +324,12 @@ Commands:
   start        Extract and start the server, installing deps if missing
   restart      Extract, install if needed, and restart inside a tmux-ui tmux session
   stop         Stop the tmux-ui service started by restart
-  service-install  Install systemd service
-  service-start    Start systemd service
-  service-restart  Restart systemd service
-  service-status   Show systemd service status
-  service-stop     Stop systemd service
-  service-uninstall Stop and remove systemd service
+  service-install  Install systemd/launchd service
+  service-start    Start systemd/launchd service
+  service-restart  Restart systemd/launchd service
+  service-status   Show systemd/launchd service status
+  service-stop     Stop systemd/launchd service
+  service-uninstall Stop and remove systemd/launchd service
   uninstall    Stop tmux-ui and remove the install directory
   extract      Extract files only
   dir          Print install directory
