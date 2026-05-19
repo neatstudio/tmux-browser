@@ -30,6 +30,7 @@ import "./styles.css";
 type MountedTerminal = {
   destroy: () => void;
   sendInput: (data: string) => void;
+  getVisibleText: () => string;
   clear: () => void;
   redraw: () => void;
   reconnect: () => void;
@@ -109,6 +110,9 @@ const activeOutputTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const busyTerminalTabIds = new Set<string>();
 const terminalPromptSignatures = new Map<string, string>();
 const IMAGE_PREVIEW_PATH_STORAGE_KEY = "browser-tmux-dashboard.image-preview-path";
+const IMAGE_PATH_PATTERN =
+  /(?:~\/|\/|\.{1,2}\/)?[^\s'"<>|]+?\.(?:png|jpe?g|gif|webp|svg|avif|apng)(?:\?[^\s'"<>|]*)?/gi;
+let activeImageSessionName: string | null = null;
 let lastRenderedTabListSignature = "";
 let lastRenderedActiveTabId: string | null | undefined;
 let visibleTerminalPanelId: string | null = null;
@@ -278,6 +282,7 @@ function ensureTerminal(tab: BrowserTab) {
   const mountedTerminal: MountedTerminal = {
     destroy: mounted.destroy,
     sendInput: mounted.sendInput,
+    getVisibleText: mounted.getVisibleText,
     clear: mounted.clear,
     redraw: mounted.redraw,
     reconnect: mounted.reconnect,
@@ -495,14 +500,14 @@ function getSessionCurrentPath(sessionName: string) {
   );
 }
 
-function getImageViewUrl(imagePath: string, basePath: string) {
+function getImagePreviewUrl(imagePath: string, basePath: string) {
   const params = new URLSearchParams({ path: imagePath });
 
   if (basePath) {
     params.set("basePath", basePath);
   }
 
-  return `/view?${params.toString()}`;
+  return `/api/image-preview?${params.toString()}`;
 }
 
 function getStoredImagePreviewPath() {
@@ -521,22 +526,173 @@ function storeImagePreviewPath(imagePath: string) {
   }
 }
 
-function promptPreviewImage(tab: BrowserTab) {
-  const defaultPath =
-    getStoredImagePreviewPath() ?? "/tmp/tmux-ui-preview-test.png";
-  const imagePath = window
-    .prompt("Preview image path", defaultPath)
-    ?.trim();
+function normalizeImagePathCandidate(value: string) {
+  return value.replace(/[),.;:]+$/g, "");
+}
 
-  if (!imagePath) {
+function getVisibleImagePaths(tab: BrowserTab) {
+  const visibleText = mountedTerminals.get(tab.id)?.getVisibleText() ?? "";
+  const paths = new Set<string>();
+  let match: RegExpExecArray | null;
+
+  IMAGE_PATH_PATTERN.lastIndex = 0;
+
+  while ((match = IMAGE_PATH_PATTERN.exec(visibleText))) {
+    const candidate = normalizeImagePathCandidate(match[0] ?? "");
+
+    if (candidate) {
+      paths.add(candidate);
+    }
+  }
+
+  const storedPath = getStoredImagePreviewPath();
+
+  if (storedPath) {
+    paths.add(storedPath);
+  }
+
+  return [...paths];
+}
+
+function openImagePreviewPanel(sessionName: string) {
+  activeImageSessionName = sessionName;
+  scheduleRender();
+}
+
+function closeImagePreviewPanel() {
+  activeImageSessionName = null;
+  scheduleRender();
+}
+
+function setPreviewImage(
+  image: HTMLImageElement,
+  error: HTMLElement,
+  sessionName: string,
+  imagePath: string
+) {
+  const basePath = getSessionCurrentPath(sessionName);
+  const imageUrl = getImagePreviewUrl(imagePath, basePath);
+
+  storeImagePreviewPath(imagePath);
+  error.hidden = true;
+  image.src = imageUrl;
+  image.alt = imagePath;
+}
+
+function renderImagePreviewPanel() {
+  panelsRoot.querySelector(".image-preview-backdrop")?.remove();
+
+  if (!activeImageSessionName) {
     return;
   }
 
-  storeImagePreviewPath(imagePath);
-  window.location.href = getImageViewUrl(
-    imagePath,
-    getSessionCurrentPath(tab.sessionName)
-  );
+  const tab = tabState
+    .getTabs()
+    .find((item) => item.sessionName === activeImageSessionName);
+  const mounted = tab ? mountedTerminals.get(tab.id) : null;
+
+  if (!tab || !mounted) {
+    activeImageSessionName = null;
+    return;
+  }
+
+  const detectedPaths = getVisibleImagePaths(tab);
+  const defaultPath =
+    detectedPaths[0] ?? getStoredImagePreviewPath() ?? "/tmp/tmux-ui-preview-test.png";
+
+  const backdrop = document.createElement("div");
+  backdrop.className = "image-preview-backdrop";
+  backdrop.addEventListener("click", (event) => {
+    if (event.target === backdrop) {
+      closeImagePreviewPanel();
+    }
+  });
+
+  const panel = document.createElement("section");
+  panel.className = "image-preview-panel";
+  panel.setAttribute("role", "dialog");
+  panel.setAttribute("aria-modal", "true");
+  panel.setAttribute("aria-label", "Image preview");
+
+  const header = document.createElement("div");
+  header.className = "image-preview-header";
+
+  const form = document.createElement("form");
+  form.className = "image-preview-form";
+
+  const input = document.createElement("input");
+  input.name = "image-path";
+  input.value = defaultPath;
+  input.placeholder = "image path";
+
+  const viewButton = document.createElement("button");
+  viewButton.type = "submit";
+  viewButton.textContent = "View";
+
+  const closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.textContent = "Close";
+  closeButton.addEventListener("click", closeImagePreviewPanel);
+
+  form.append(input, viewButton);
+
+  const actions = document.createElement("div");
+  actions.className = "image-preview-actions";
+  actions.append(closeButton);
+  header.append(form, actions);
+
+  const candidateList = document.createElement("div");
+  candidateList.className = "image-preview-candidates";
+  candidateList.setAttribute("aria-label", "Detected image paths");
+
+  detectedPaths.forEach((imagePath) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = imagePath;
+    button.title = imagePath;
+    button.addEventListener("click", () => {
+      input.value = imagePath;
+      setPreviewImage(image, error, tab.sessionName, imagePath);
+    });
+    candidateList.append(button);
+  });
+
+  if (detectedPaths.length === 0) {
+    const empty = document.createElement("span");
+    empty.textContent = "No image paths in visible terminal output";
+    candidateList.append(empty);
+  }
+
+  const body = document.createElement("div");
+  body.className = "image-preview-body";
+
+  const error = document.createElement("div");
+  error.className = "image-preview-error";
+  error.textContent = "Image failed to load";
+  error.hidden = true;
+
+  const image = document.createElement("img");
+  image.className = "image-preview-image";
+  image.addEventListener("error", () => {
+    error.hidden = false;
+  });
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const imagePath = input.value.trim();
+
+    if (imagePath) {
+      setPreviewImage(image, error, tab.sessionName, imagePath);
+    }
+  });
+
+  body.append(image, error);
+  panel.append(header, candidateList, body);
+  backdrop.append(panel);
+  mounted.panel.append(backdrop);
+  setPreviewImage(image, error, tab.sessionName, defaultPath);
+  input.focus();
+  input.select();
 }
 
 function openSendCommandPanel(currentSessionName: string) {
@@ -816,7 +972,7 @@ function createSessionStatusActions(tab: BrowserTab, mounted: MountedTerminal) {
     onRename: () => promptRenameSession(tab.sessionName),
     onSendCommand: () => openSendCommandPanel(tab.sessionName),
     onViewSession: () => promptViewSession(tab.sessionName),
-    onPreviewImage: () => promptPreviewImage(tab),
+    onPreviewImage: () => openImagePreviewPanel(tab.sessionName),
     onSplitHorizontal: () => splitPane(tab.sessionName, "horizontal"),
     onSplitVertical: () => splitPane(tab.sessionName, "vertical"),
     onSelectPane: selectPane,
@@ -908,6 +1064,7 @@ function render() {
   panelsRoot.style.display = activeTabId === null ? "none" : "block";
   syncPanels();
   panelsRoot.querySelector(".session-config-backdrop")?.remove();
+  renderImagePreviewPanel();
   renderSendCommandPanel();
   renderInputPromptToast();
 

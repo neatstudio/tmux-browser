@@ -513,6 +513,9 @@ export function createTerminalTab(deps: {
     sendInput(data: string) {
       controller?.sendInput(data);
     },
+    getVisibleText() {
+      return getRenderedTerminalText(terminal);
+    },
     clear() {
       terminal.clear();
     },

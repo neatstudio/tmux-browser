@@ -673,6 +673,25 @@ select {
   padding: 0.42rem 0.55rem 0.42rem 0.7rem;
 }
 
+.image-preview-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.image-preview-form input {
+  min-width: 0;
+  border: 1px solid rgba(217, 226, 234, 0.24);
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.24);
+  color: rgba(239, 246, 252, 0.92);
+  font: inherit;
+  font-size: 0.78rem;
+  min-height: 28px;
+  padding: 0.28rem 0.5rem;
+}
+
 .image-preview-title {
   min-width: 0;
   overflow: hidden;
@@ -695,7 +714,8 @@ select {
 }
 
 .image-preview-actions a,
-.image-preview-actions button {
+.image-preview-actions button,
+.image-preview-form button {
   border: 1px solid rgba(217, 226, 234, 0.24);
   border-radius: 3px;
   background: rgba(255, 255, 255, 0.075);
@@ -708,6 +728,48 @@ select {
   min-height: 24px;
   padding: 0.24rem 0.46rem;
   text-decoration: none;
+}
+
+.image-preview-candidates {
+  display: flex;
+  gap: 0.35rem;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-bottom: 1px solid rgba(217, 226, 234, 0.1);
+  padding: 0.4rem 0.55rem;
+  scrollbar-width: thin;
+}
+
+.image-preview-candidates button,
+.image-preview-candidates span {
+  flex: 0 0 auto;
+  max-width: min(42rem, 78vw);
+  overflow: hidden;
+  border: 1px solid rgba(217, 226, 234, 0.18);
+  border-radius: 3px;
+  background: rgba(217, 226, 234, 0.06);
+  color: rgba(217, 226, 234, 0.82);
+  font:
+    0.72rem "Iosevka Term",
+    Menlo,
+    "PingFang SC",
+    monospace;
+  min-height: 24px;
+  padding: 0.22rem 0.42rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.image-preview-candidates button {
+  cursor: pointer;
+}
+
+.image-preview-candidates button:hover,
+.image-preview-candidates button:focus-visible {
+  border-color: rgba(191, 255, 196, 0.46);
+  background: rgba(94, 255, 130, 0.13);
+  color: #d5ffd8;
 }
 
 .image-preview-body {
