@@ -12,6 +12,12 @@ import {
   type ServerStatus
 } from "./services/serverStatus/getServerStatus.js";
 
+function stripPreview<T extends { preview?: string | null }>(session: T) {
+  const { preview: _preview, ...lightweightSession } = session;
+
+  return lightweightSession;
+}
+
 export function createApp(options: {
   tmuxService?: TmuxService;
   killSession?: (name: string) => Promise<void>;
@@ -32,13 +38,46 @@ export function createApp(options: {
     res.json(readServerStatus());
   });
 
+  app.get("/api/sessions-all", async (_req, res, next) => {
+    try {
+      res.json(
+        await tmuxService.listSessions({
+          includePreview: true,
+          includePanes: true
+        })
+      );
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/sessions-panes", async (_req, res, next) => {
+    try {
+      res.json(
+        (
+          await tmuxService.listSessions({
+            includePreview: false,
+            includePanes: true
+          })
+        ).map(stripPreview)
+      );
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.use(
     "/api/sessions",
     createSessionRoutes({
       listSessions: tmuxService.listSessions,
+      getSessionStatus: tmuxService.getSessionStatus,
       createSession: tmuxService.createSession,
       renameSession: tmuxService.renameSession,
-      killSession: options.killSession ?? tmuxService.killSession
+      killSession: options.killSession ?? tmuxService.killSession,
+      sendCommand: tmuxService.sendCommand,
+      splitPane: tmuxService.splitPane,
+      selectPane: tmuxService.selectPane,
+      killPane: tmuxService.killPane
     })
   );
 
@@ -64,7 +103,14 @@ export function createApp(options: {
     ) => {
       const message =
         error instanceof Error ? error.message : "Unexpected server error";
-      const statusCode = message === "Invalid tmux session name" ? 400 : 500;
+      const statusCode =
+        message === "Invalid tmux session name" ||
+        message === "Invalid tmux pane id" ||
+        message === "Cannot kill the only pane" ||
+        message === "Pane does not belong to session" ||
+        message === "Tmux session not found"
+          ? 400
+          : 500;
 
       res.status(statusCode).json({ error: message });
     }

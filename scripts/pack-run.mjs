@@ -149,6 +149,7 @@ if [[ -z "$HOST" ]]; then
 fi
 export HOST
 export PORT="\${PORT:-3000}"
+echo "[$(date '+%Y-%m-%d %H:%M:%S %z')] Starting tmux-ui from $(pwd) on http://$HOST:$PORT"
 exec node dist/server/index.js
 `;
 }
@@ -355,7 +356,13 @@ ensure_tmux_session() {
     return
   fi
 
-  tmux new-session -d -s "$APP_SESSION"
+  tmux new-session -d -s "$APP_SESSION" -c "$HOME"
+}
+
+start_server_in_tmux() {
+  ensure_tmux_session
+  tmux respawn-pane -k -t "$APP_SESSION" -c "$APP_HOME" "PORT='\${PORT:-3000}' ./start.sh"
+  tmux ls
 }
 
 stop_server() {
@@ -380,9 +387,7 @@ restart_server() {
   fi
 
   stop_server
-  ensure_tmux_session
-  tmux send-keys -t "$APP_SESSION" "cd '$APP_HOME' && PORT='\${PORT:-3000}' ./start.sh" C-m
-  tmux ls
+  start_server_in_tmux
 }
 
 uninstall_server() {
@@ -414,7 +419,12 @@ case "$COMMAND" in
       "$APP_HOME/install.sh"
     fi
 
-    "$APP_HOME/start.sh"
+    if [[ -z "\${TMUX:-}" ]]; then
+      echo "Not running inside tmux. Starting tmux-ui in tmux session '$APP_SESSION' instead."
+      start_server_in_tmux
+    else
+      "$APP_HOME/start.sh"
+    fi
     ;;
   restart)
     load_node_runtime

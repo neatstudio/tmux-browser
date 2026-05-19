@@ -46,7 +46,7 @@ describe("client layout styles", () => {
       /\.terminal-panel\s*\{[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\)\s+auto;/s
     );
     expect(styles).toMatch(
-      /\.terminal-status-bar\s*\{[^}]*display:\s*flex;[^}]*min-height:\s*28px;/s
+      /\.terminal-status-bar\s*\{[^}]*display:\s*flex;[^}]*min-height:\s*32px;/s
     );
     expect(styles).toMatch(
       /\.terminal-status-main\s*\{[^}]*flex:\s*1\s+1\s+auto;/s
@@ -203,7 +203,10 @@ describe("client layout styles", () => {
       /\.session-action-buttons\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*var\(--dashboard-card-button-width\)\s+1\.8rem;[^}]*gap:\s*0\.46rem;/s
     );
     expect(styles).toMatch(
-      /\.dashboard-theme-menu\s*\{[^}]*position:\s*relative;/s
+      /\.dashboard-header-actions\s*\{[^}]*display:\s*inline-flex;[^}]*margin-left:\s*auto;/s
+    );
+    expect(styles).toMatch(
+      /\.dashboard-refresh-button,\s*\.dashboard-theme-menu\s*\{[^}]*position:\s*relative;/s
     );
     expect(styles).toMatch(
       /\.dashboard-theme-toolbar\s*\{[^}]*position:\s*absolute;/s

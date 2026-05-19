@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createTmuxService } from "../../../../src/server/services/tmux/createTmuxService";
 
 describe("createTmuxService", () => {
-  it("lists sessions with attached status from tmux format fields", async () => {
+  it("lists lightweight sessions without capturing pane previews by default", async () => {
     const getGitSummary = vi
       .fn()
       .mockResolvedValueOnce({ branch: "main", dirty: true })
@@ -16,7 +16,7 @@ describe("createTmuxService", () => {
       })
       .mockResolvedValueOnce({
         stdout:
-          "build\tserver\t1\t1\tnpm\t/tmp/project\t0\t\t100\nops\tzsh\t1\t1\tzsh\t/tmp/ops\t0\t\t101",
+          "build\t%1\t0\tserver\t1\t0\t1\tnpm\t/tmp/project\t0\t\t100\nops\t%2\t0\tzsh\t1\t0\t1\tzsh\t/tmp/ops\t0\t\t101",
         stderr: ""
       });
     const service = createTmuxService({ run, getGitSummary });
@@ -34,7 +34,8 @@ describe("createTmuxService", () => {
         gitBranch: "main",
         gitDirty: true,
         paneDead: false,
-        paneDeadStatus: null
+        paneDeadStatus: null,
+        preview: null
       },
       {
         name: "ops",
@@ -48,7 +49,8 @@ describe("createTmuxService", () => {
         gitBranch: null,
         gitDirty: null,
         paneDead: false,
-        paneDeadStatus: null
+        paneDeadStatus: null,
+        preview: null
       }
     ]);
     expect(run).toHaveBeenNthCalledWith(1, "list-sessions", [
@@ -58,20 +60,59 @@ describe("createTmuxService", () => {
     expect(run).toHaveBeenNthCalledWith(2, "list-panes", [
       "-a",
       "-F",
-      "#{session_name}\t#{window_name}\t#{window_active}\t#{pane_active}\t#{pane_current_command}\t#{pane_current_path}\t#{pane_dead}\t#{pane_dead_status}\t#{pane_pid}"
+      "#{session_name}\t#{pane_id}\t#{window_index}\t#{window_name}\t#{window_active}\t#{pane_index}\t#{pane_active}\t#{pane_current_command}\t#{pane_current_path}\t#{pane_dead}\t#{pane_dead_status}\t#{pane_pid}"
     ]);
+    expect(run.mock.calls.filter(([command]) => command === "capture-pane")).toHaveLength(0);
     expect(getGitSummary).toHaveBeenNthCalledWith(1, "/tmp/project");
     expect(getGitSummary).toHaveBeenNthCalledWith(2, "/tmp/ops");
   });
 
-  it("creates a detached session with color-capable terminal environment", async () => {
+  it("captures pane previews only when explicitly requested", async () => {
+    const longPreview = Array.from({ length: 30 }, (_, index) => `line-${index + 1}`).join("\n");
+    const run = vi
+      .fn()
+      .mockResolvedValueOnce({
+        stdout: "build\t1\t0\t1714200000",
+        stderr: ""
+      })
+      .mockResolvedValueOnce({
+        stdout: "build\t%1\t0\tzsh\t1\t0\t1\tzsh\t/tmp/project\t0\t\t100",
+        stderr: ""
+      })
+      .mockResolvedValueOnce({
+        stdout: `${longPreview}\n`,
+        stderr: ""
+      });
+    const service = createTmuxService({
+      run,
+      getGitSummary: vi.fn().mockResolvedValue(null)
+    });
+
+    await expect(service.listSessions({ includePreview: true })).resolves.toMatchObject([
+      {
+        name: "build",
+        preview: Array.from({ length: 20 }, (_, index) => `line-${index + 11}`).join("\n")
+      }
+    ]);
+    expect(run).toHaveBeenNthCalledWith(3, "capture-pane", [
+      "-p",
+      "-t",
+      "build",
+      "-S",
+      "-20"
+    ]);
+  });
+
+  it("creates a detached session under the user home with color-capable terminal environment", async () => {
     const run = vi.fn().mockResolvedValue({ stdout: "", stderr: "" });
-    const service = createTmuxService({ run });
+    const service = createTmuxService({ run, homeDirectory: "/home/app" });
 
     await service.createSession("build");
 
     expect(run).toHaveBeenCalledWith("new-session", [
       "-d",
+      "-c",
+      "/home/app",
       "-e",
       "CLICOLOR=1",
       "-e",
@@ -81,6 +122,217 @@ describe("createTmuxService", () => {
       "-s",
       "build"
     ]);
+  });
+
+  it("caches captured pane previews for one minute", async () => {
+    const run = vi
+      .fn()
+      .mockResolvedValueOnce({
+        stdout: "build\t1\t0\t1714200000",
+        stderr: ""
+      })
+      .mockResolvedValueOnce({
+        stdout: "build\t%1\t0\tzsh\t1\t0\t1\tzsh\t/home/app\t0\t\t100",
+        stderr: ""
+      })
+      .mockResolvedValueOnce({
+        stdout: "first preview\n",
+        stderr: ""
+      })
+      .mockResolvedValueOnce({
+        stdout: "build\t1\t0\t1714200001",
+        stderr: ""
+      })
+      .mockResolvedValueOnce({
+        stdout: "build\t%1\t0\tzsh\t1\t0\t1\tzsh\t/home/app\t0\t\t100",
+        stderr: ""
+      })
+      .mockResolvedValueOnce({
+        stdout: "",
+        stderr: ""
+      })
+      .mockResolvedValueOnce({
+        stdout: "build\t1\t0\t1714200002",
+        stderr: ""
+      })
+      .mockResolvedValueOnce({
+        stdout: "build\t%1\t0\tzsh\t1\t0\t1\tzsh\t/home/app\t0\t\t100",
+        stderr: ""
+      })
+      .mockResolvedValueOnce({
+        stdout: "second preview\n",
+        stderr: ""
+      });
+    const service = createTmuxService({
+      run,
+      getGitSummary: vi.fn().mockResolvedValue(null),
+      now: () => 1000,
+      previewTtlMs: 60_000
+    });
+
+    await service.listSessions({ includePreview: true });
+    await service.listSessions({ includePreview: true });
+    await service.sendCommand("build", "pwd");
+    await service.listSessions({ includePreview: true });
+
+    expect(run.mock.calls.filter(([command]) => command === "capture-pane")).toHaveLength(2);
+  });
+
+  it("sends a command to a named session", async () => {
+    const run = vi.fn().mockResolvedValue({ stdout: "", stderr: "" });
+    const service = createTmuxService({ run });
+
+    await service.sendCommand("build", "npm test");
+
+    expect(run).toHaveBeenCalledWith("send-keys", [
+      "-t",
+      "build",
+      "npm test",
+      "C-m"
+    ]);
+  });
+
+  it("returns pane summaries only when explicitly requested", async () => {
+    const run = vi
+      .fn()
+      .mockResolvedValueOnce({
+        stdout: "build\t1\t0\t1714200000",
+        stderr: ""
+      })
+      .mockResolvedValueOnce({
+        stdout:
+          "build\t%1\t0\tzsh\t1\t0\t0\tzsh\t/home/app\t0\t\t100\nbuild\t%2\t0\tzsh\t1\t1\t1\ttail\t/home/app/logs\t0\t\t101",
+        stderr: ""
+      });
+    const service = createTmuxService({
+      run,
+      getGitSummary: vi.fn().mockResolvedValue(null)
+    });
+
+    await expect(service.listSessions({ includePanes: true })).resolves.toMatchObject([
+      {
+        name: "build",
+        paneCount: 2,
+        panes: [
+          {
+            paneId: "%1",
+            windowIndex: 0,
+            paneIndex: 0,
+            paneActive: false,
+            currentCommand: "zsh"
+          },
+          {
+            paneId: "%2",
+            windowIndex: 0,
+            paneIndex: 1,
+            paneActive: true,
+            currentCommand: "tail"
+          }
+        ]
+      }
+    ]);
+  });
+
+  it("loads one session status with panes without scanning all panes", async () => {
+    const run = vi
+      .fn()
+      .mockResolvedValueOnce({
+        stdout: "build\t1\t1\t1714200000\nops\t1\t0\t1714200060",
+        stderr: ""
+      })
+      .mockResolvedValueOnce({
+        stdout:
+          "build\t%1\t0\tzsh\t1\t0\t0\tzsh\t/home/app\t0\t\t100\nbuild\t%2\t0\tzsh\t1\t1\t1\ttail\t/home/app/logs\t0\t\t101",
+        stderr: ""
+      });
+    const service = createTmuxService({
+      run,
+      getGitSummary: vi.fn().mockResolvedValue({ branch: "main", dirty: false })
+    });
+
+    await expect(service.getSessionStatus("build")).resolves.toMatchObject({
+      name: "build",
+      paneCount: 2,
+      currentCommand: "tail",
+      gitBranch: "main",
+      gitDirty: false,
+      panes: [
+        { paneId: "%1", paneIndex: 0 },
+        { paneId: "%2", paneIndex: 1 }
+      ]
+    });
+    expect(run).toHaveBeenNthCalledWith(1, "list-sessions", [
+      "-F",
+      "#{session_name}\t#{session_windows}\t#{session_attached}\t#{session_activity}"
+    ]);
+    expect(run).toHaveBeenNthCalledWith(2, "list-panes", [
+      "-t",
+      "build",
+      "-F",
+      "#{session_name}\t#{pane_id}\t#{window_index}\t#{window_name}\t#{window_active}\t#{pane_index}\t#{pane_active}\t#{pane_current_command}\t#{pane_current_path}\t#{pane_dead}\t#{pane_dead_status}\t#{pane_pid}"
+    ]);
+  });
+
+  it("splits the active pane in the current pane directory", async () => {
+    const run = vi.fn().mockResolvedValue({ stdout: "", stderr: "" });
+    const service = createTmuxService({ run });
+
+    await service.splitPane("build", "horizontal");
+    await service.splitPane("build", "vertical");
+
+    expect(run).toHaveBeenNthCalledWith(1, "split-window", [
+      "-h",
+      "-d",
+      "-t",
+      "build",
+      "-c",
+      "#{pane_current_path}"
+    ]);
+    expect(run).toHaveBeenNthCalledWith(2, "split-window", [
+      "-v",
+      "-d",
+      "-t",
+      "build",
+      "-c",
+      "#{pane_current_path}"
+    ]);
+  });
+
+  it("selects a specific pane by tmux pane id", async () => {
+    const run = vi.fn().mockResolvedValue({ stdout: "", stderr: "" });
+    const service = createTmuxService({ run });
+
+    await service.selectPane("build", "%2");
+
+    expect(run).toHaveBeenCalledWith("select-pane", ["-t", "%2"]);
+  });
+
+  it("kills a pane only after confirming it belongs to the session", async () => {
+    const run = vi
+      .fn()
+      .mockResolvedValueOnce({ stdout: "%1\n%2\n", stderr: "" })
+      .mockResolvedValueOnce({ stdout: "", stderr: "" });
+    const service = createTmuxService({ run });
+
+    await service.killPane("build", "%2");
+
+    expect(run).toHaveBeenNthCalledWith(1, "list-panes", [
+      "-t",
+      "build",
+      "-F",
+      "#{pane_id}"
+    ]);
+    expect(run).toHaveBeenNthCalledWith(2, "kill-pane", ["-t", "%2"]);
+  });
+
+  it("does not kill the only pane in a session", async () => {
+    const run = vi.fn().mockResolvedValueOnce({ stdout: "%1\n", stderr: "" });
+    const service = createTmuxService({ run });
+
+    await expect(service.killPane("build", "%1")).rejects.toThrow(
+      "Cannot kill the only pane"
+    );
+    expect(run).toHaveBeenCalledTimes(1);
   });
 
   it("renames an existing session with validated target names", async () => {

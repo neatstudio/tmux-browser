@@ -20,7 +20,38 @@ const SESSION: SessionSummary = {
   gitBranch: "main",
   gitDirty: true,
   paneDead: false,
-  paneDeadStatus: null
+  paneDeadStatus: null,
+  preview: null,
+  panes: [
+    {
+      sessionName: "build",
+      paneId: "%1",
+      windowIndex: 0,
+      windowName: "server",
+      windowActive: true,
+      paneIndex: 0,
+      paneActive: false,
+      currentCommand: "zsh",
+      currentPath: "/tmp/project/app",
+      paneDead: false,
+      paneDeadStatus: null,
+      panePid: 100
+    },
+    {
+      sessionName: "build",
+      paneId: "%2",
+      windowIndex: 0,
+      windowName: "server",
+      windowActive: true,
+      paneIndex: 1,
+      paneActive: true,
+      currentCommand: "npm",
+      currentPath: "/tmp/project/app",
+      paneDead: false,
+      paneDeadStatus: null,
+      panePid: 101
+    }
+  ]
 };
 
 describe("sessionStatusBar", () => {
@@ -116,6 +147,10 @@ describe("sessionStatusBar", () => {
     const onConfig = vi.fn();
     const onRename = vi.fn();
     const onKill = vi.fn();
+    const onSendCommand = vi.fn();
+    const onViewSession = vi.fn();
+    const onSplitHorizontal = vi.fn();
+    const onSplitVertical = vi.fn();
 
     renderSessionStatusBar(root, SESSION, {
       onRefresh,
@@ -123,11 +158,13 @@ describe("sessionStatusBar", () => {
       onRedraw,
       onConfig,
       onRename,
-      onKill
+      onKill,
+      onSendCommand,
+      onViewSession,
+      onSplitHorizontal,
+      onSplitVertical
     });
 
-    expect(root.querySelector("[data-action='split-horizontal']")).toBeNull();
-    expect(root.querySelector("[data-action='split-vertical']")).toBeNull();
     expect(root.querySelector("[data-action='send-pwd']")).toBeNull();
     expect(root.querySelector("[data-action='send-git-status']")).toBeNull();
 
@@ -136,6 +173,10 @@ describe("sessionStatusBar", () => {
     root.querySelector<HTMLButtonElement>("[data-action='refresh']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='config']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='rename']")?.click();
+    root.querySelector<HTMLButtonElement>("[data-action='send']")?.click();
+    root.querySelector<HTMLButtonElement>("[data-action='view']")?.click();
+    root.querySelector<HTMLButtonElement>("[data-action='split-horizontal']")?.click();
+    root.querySelector<HTMLButtonElement>("[data-action='split-vertical']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='kill']")?.click();
 
     expect(onClear).toHaveBeenCalledOnce();
@@ -143,7 +184,79 @@ describe("sessionStatusBar", () => {
     expect(onRefresh).toHaveBeenCalledOnce();
     expect(onConfig).toHaveBeenCalledOnce();
     expect(onRename).toHaveBeenCalledOnce();
+    expect(onSendCommand).toHaveBeenCalledOnce();
+    expect(onViewSession).toHaveBeenCalledOnce();
+    expect(onSplitHorizontal).toHaveBeenCalledOnce();
+    expect(onSplitVertical).toHaveBeenCalledOnce();
     expect(onKill).toHaveBeenCalledOnce();
+  });
+
+  it("uses readable compact labels for status bar actions", () => {
+    const root = document.createElement("div");
+
+    renderSessionStatusBar(root, SESSION, {
+      onRefresh: vi.fn(),
+      onClear: vi.fn(),
+      onRedraw: vi.fn(),
+      onConfig: vi.fn(),
+      onRename: vi.fn(),
+      onKill: vi.fn(),
+      onSendCommand: vi.fn(),
+      onViewSession: vi.fn(),
+      onSplitHorizontal: vi.fn(),
+      onSplitVertical: vi.fn()
+    });
+
+    expect(
+      [...root.querySelectorAll<HTMLButtonElement>(".terminal-status-action")].map(
+        (button) => button.textContent
+      )
+    ).toEqual([
+      "Clear",
+      "Draw",
+      "Sync",
+      "Cfg",
+      "Ren",
+      "Send",
+      "View",
+      "Split",
+      "Stack",
+      "Kill"
+    ]);
+  });
+
+  it("renders pane quick switches and pane close actions in the status bar", () => {
+    const root = document.createElement("div");
+    const onSelectPane = vi.fn();
+    const onKillPane = vi.fn();
+
+    renderSessionStatusBar(root, { ...SESSION, windows: 1 }, {
+      onSelectPane,
+      onKillPane
+    });
+
+    const paneButtons = root.querySelectorAll<HTMLButtonElement>(
+      ".terminal-status-pane-button"
+    );
+    const closeButtons = root.querySelectorAll<HTMLButtonElement>(
+      ".terminal-status-pane-kill"
+    );
+
+    expect([...paneButtons].map((button) => button.textContent)).toEqual([
+      "#0 zsh",
+      "#1 npm"
+    ]);
+    expect(paneButtons[1]?.classList.contains("is-active")).toBe(true);
+    expect([...closeButtons].map((button) => button.textContent)).toEqual([
+      "×",
+      "×"
+    ]);
+
+    paneButtons[0]?.click();
+    closeButtons[1]?.click();
+
+    expect(onSelectPane).toHaveBeenCalledWith("build", "%1");
+    expect(onKillPane).toHaveBeenCalledWith("build", "%2");
   });
 
   it("disables session management actions when handlers are missing", () => {
@@ -156,6 +269,18 @@ describe("sessionStatusBar", () => {
     ).toBe(true);
     expect(
       root.querySelector<HTMLButtonElement>("[data-action='rename']")?.disabled
+    ).toBe(true);
+    expect(
+      root.querySelector<HTMLButtonElement>("[data-action='send']")?.disabled
+    ).toBe(true);
+    expect(
+      root.querySelector<HTMLButtonElement>("[data-action='view']")?.disabled
+    ).toBe(true);
+    expect(
+      root.querySelector<HTMLButtonElement>("[data-action='split-horizontal']")?.disabled
+    ).toBe(true);
+    expect(
+      root.querySelector<HTMLButtonElement>("[data-action='split-vertical']")?.disabled
     ).toBe(true);
     expect(
       root.querySelector<HTMLButtonElement>("[data-action='kill']")?.disabled

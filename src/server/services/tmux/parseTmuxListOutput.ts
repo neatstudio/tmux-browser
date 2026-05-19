@@ -11,12 +11,17 @@ export type TmuxSessionSummary = {
   gitDirty: boolean | null;
   paneDead: boolean;
   paneDeadStatus: number | null;
+  preview: string | null;
+  panes?: TmuxPaneSummary[];
 };
 
 export type TmuxPaneSummary = {
   sessionName: string;
+  paneId: string;
+  windowIndex: number;
   windowName: string;
   windowActive: boolean;
+  paneIndex: number;
   paneActive: boolean;
   currentCommand: string | null;
   currentPath: string | null;
@@ -54,7 +59,8 @@ export function parseTmuxListOutput(output: string): TmuxSessionSummary[] {
         gitBranch: null,
         gitDirty: null,
         paneDead: false,
-        paneDeadStatus: null
+        paneDeadStatus: null,
+        preview: null
       };
     });
 }
@@ -79,14 +85,17 @@ export function parseTmuxPaneOutput(output: string): TmuxPaneSummary[] {
     .map((line) => {
       const fields = line.split("\t");
 
-      if (fields.length !== 9) {
+      if (fields.length !== 12) {
         throw new Error(`Unsupported tmux pane output: ${line}`);
       }
 
       const [
         sessionName,
+        paneId,
+        windowIndex,
         windowName,
         windowActive,
+        paneIndex,
         paneActive,
         currentCommand,
         currentPath,
@@ -95,14 +104,17 @@ export function parseTmuxPaneOutput(output: string): TmuxPaneSummary[] {
         panePid
       ] = fields;
 
-      if (!sessionName || !windowName) {
+      if (!sessionName || !paneId || !windowName) {
         throw new Error(`Unsupported tmux pane output: ${line}`);
       }
 
       return {
         sessionName,
+        paneId,
+        windowIndex: Number(windowIndex),
         windowName,
         windowActive: windowActive === "1",
+        paneIndex: Number(paneIndex),
         paneActive: paneActive === "1",
         currentCommand: nullableString(currentCommand),
         currentPath: nullableString(currentPath),
@@ -115,16 +127,22 @@ export function parseTmuxPaneOutput(output: string): TmuxPaneSummary[] {
 
 export function mergeTmuxPaneSummaries(
   sessions: TmuxSessionSummary[],
-  panes: TmuxPaneSummary[]
+  panes: TmuxPaneSummary[],
+  options: { includePanes?: boolean } = {}
 ): TmuxSessionSummary[] {
   return sessions.map((session) => {
-    const sessionPanes = panes.filter((pane) => pane.sessionName === session.name);
+    const sessionPanes = panes
+      .filter((pane) => pane.sessionName === session.name)
+      .sort(
+        (left, right) =>
+          left.windowIndex - right.windowIndex || left.paneIndex - right.paneIndex
+      );
     const activePane =
       sessionPanes.find((pane) => pane.windowActive && pane.paneActive) ??
       sessionPanes.find((pane) => pane.paneActive) ??
       sessionPanes[0];
 
-    return {
+    const merged = {
       ...session,
       paneCount: sessionPanes.length,
       activeWindowName: activePane?.windowName ?? null,
@@ -133,7 +151,10 @@ export function mergeTmuxPaneSummaries(
       gitBranch: null,
       gitDirty: null,
       paneDead: activePane?.paneDead ?? false,
-      paneDeadStatus: activePane?.paneDeadStatus ?? null
+      paneDeadStatus: activePane?.paneDeadStatus ?? null,
+      preview: session.preview
     };
+
+    return options.includePanes ? { ...merged, panes: sessionPanes } : merged;
   });
 }

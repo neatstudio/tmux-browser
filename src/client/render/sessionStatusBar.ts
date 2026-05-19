@@ -1,4 +1,4 @@
-import type { SessionSummary } from "../api/sessionApi";
+import type { PaneSummary, SessionSummary } from "../api/sessionApi";
 import { formatSessionActivity } from "./renderDashboard";
 
 type StatusBarMode = "compact" | "full" | "git";
@@ -10,6 +10,12 @@ export type SessionStatusBarActions = {
   onRefresh?: () => void;
   onConfig?: () => void;
   onRename?: () => void;
+  onSendCommand?: () => void;
+  onViewSession?: () => void;
+  onSplitHorizontal?: () => void;
+  onSplitVertical?: () => void;
+  onSelectPane?: (sessionName: string, paneId: string) => void;
+  onKillPane?: (sessionName: string, paneId: string) => void;
   onKill?: () => void;
 };
 
@@ -74,13 +80,16 @@ function createActionButton(
   action: string,
   label: string,
   onClick: () => void,
-  disabled = false
+  disabled = false,
+  title = label
 ) {
   const button = document.createElement("button");
   button.className = "terminal-status-action";
   button.type = "button";
   button.dataset.action = action;
   button.textContent = label;
+  button.title = title;
+  button.setAttribute("aria-label", title);
   button.disabled = disabled;
   button.addEventListener("click", (event) => {
     event.stopPropagation();
@@ -88,6 +97,65 @@ function createActionButton(
   });
 
   return button;
+}
+
+function formatPaneLabel(session: SessionSummary, pane: PaneSummary) {
+  const command = pane.currentCommand ?? "pane";
+
+  if (session.windows > 1) {
+    return `${pane.windowIndex}.${pane.paneIndex} ${command}`;
+  }
+
+  return `#${pane.paneIndex} ${command}`;
+}
+
+function renderPaneSwitches(
+  session: SessionSummary | null | undefined,
+  actions: SessionStatusBarActions
+) {
+  if (!session?.panes || session.panes.length <= 1) {
+    return null;
+  }
+
+  const panesRoot = document.createElement("div");
+  panesRoot.className = "terminal-status-panes";
+  panesRoot.setAttribute("aria-label", `Panes in ${session.name}`);
+
+  session.panes.forEach((pane) => {
+    const paneItem = document.createElement("span");
+    const paneButton = document.createElement("button");
+    const paneLabel = formatPaneLabel(session, pane);
+
+    paneItem.className = "terminal-status-pane";
+    paneButton.className = `terminal-status-pane-button${
+      pane.paneActive && pane.windowActive ? " is-active" : ""
+    }`;
+    paneButton.type = "button";
+    paneButton.textContent = paneLabel;
+    paneButton.title = `Switch to ${paneLabel}`;
+    paneButton.disabled = !actions.onSelectPane;
+    paneButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      actions.onSelectPane?.(session.name, pane.paneId);
+    });
+
+    const killButton = document.createElement("button");
+    killButton.className = "terminal-status-pane-kill";
+    killButton.type = "button";
+    killButton.textContent = "×";
+    killButton.title = `Close ${paneLabel}`;
+    killButton.setAttribute("aria-label", `Close ${paneLabel}`);
+    killButton.disabled = !actions.onKillPane;
+    killButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      actions.onKillPane?.(session.name, pane.paneId);
+    });
+
+    paneItem.append(paneButton, killButton);
+    panesRoot.append(paneItem);
+  });
+
+  return panesRoot;
 }
 
 function renderStatusActions(
@@ -99,15 +167,19 @@ function renderStatusActions(
   actionsRoot.className = "terminal-status-actions";
 
   actionsRoot.append(
-    createActionButton("clear", "clear", () => actions.onClear?.(), !actions.onClear),
-    createActionButton("redraw", "redraw", () => actions.onRedraw?.(), !actions.onRedraw),
-    createActionButton("refresh", "refresh", () => {
+    createActionButton("clear", "Clear", () => actions.onClear?.(), !actions.onClear, "Clear terminal"),
+    createActionButton("redraw", "Draw", () => actions.onRedraw?.(), !actions.onRedraw, "Redraw terminal"),
+    createActionButton("refresh", "Sync", () => {
       actions.onRefresh?.();
       renderSessionStatusBar(root, session, actions);
-    }),
-    createActionButton("config", "config", () => actions.onConfig?.(), !actions.onConfig),
-    createActionButton("rename", "rename", () => actions.onRename?.(), !actions.onRename),
-    createActionButton("kill", "kill", () => actions.onKill?.(), !actions.onKill)
+    }, false, "Refresh tmux status"),
+    createActionButton("config", "Cfg", () => actions.onConfig?.(), !actions.onConfig, "Config session"),
+    createActionButton("rename", "Ren", () => actions.onRename?.(), !actions.onRename, "Rename session"),
+    createActionButton("send", "Send", () => actions.onSendCommand?.(), !actions.onSendCommand, "Send command"),
+    createActionButton("view", "View", () => actions.onViewSession?.(), !actions.onViewSession, "View session"),
+    createActionButton("split-horizontal", "Split", () => actions.onSplitHorizontal?.(), !actions.onSplitHorizontal, "Split pane horizontally"),
+    createActionButton("split-vertical", "Stack", () => actions.onSplitVertical?.(), !actions.onSplitVertical, "Split pane vertically"),
+    createActionButton("kill", "Kill", () => actions.onKill?.(), !actions.onKill, "Kill session")
   );
 
   return actionsRoot;
@@ -130,7 +202,11 @@ export function renderSessionStatusBar(
   statusBar.dataset.mode = mode;
   statusBar.title = "Click to switch compact, full, and git status views";
   statusBar.onclick = (event) => {
-    if ((event.target as HTMLElement | null)?.closest(".terminal-status-action")) {
+    if (
+      (event.target as HTMLElement | null)?.closest(
+        ".terminal-status-action, .terminal-status-pane-button, .terminal-status-pane-kill"
+      )
+    ) {
       return;
     }
 
@@ -150,7 +226,12 @@ export function renderSessionStatusBar(
     emptyItem.className = "terminal-status-item is-muted";
     emptyItem.textContent = "waiting for tmux status";
     main.append(emptyItem);
-    statusBar.append(main, renderStatusActions(root, session, actions));
+    const paneSwitches = renderPaneSwitches(session, actions);
+    statusBar.append(
+      main,
+      ...(paneSwitches ? [paneSwitches] : []),
+      renderStatusActions(root, session, actions)
+    );
     return;
   }
 
@@ -162,5 +243,10 @@ export function renderSessionStatusBar(
     main.append(statusItem);
   });
 
-  statusBar.append(main, renderStatusActions(root, session, actions));
+  const paneSwitches = renderPaneSwitches(session, actions);
+  statusBar.append(
+    main,
+    ...(paneSwitches ? [paneSwitches] : []),
+    renderStatusActions(root, session, actions)
+  );
 }

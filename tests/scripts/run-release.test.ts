@@ -33,9 +33,25 @@ describe("run release scripts", () => {
     expect(packScript).toContain('APP_HOME="\\${TMUX_UI_HOME:-$HOME/.tmux-ui}"');
     expect(packScript).toContain('APP_SESSION="\\${TMUX_UI_SESSION:-tmux-ui}"');
     expect(packScript).toContain('tmux has-session -t "$APP_SESSION"');
-    expect(packScript).toContain('tmux new-session -d -s "$APP_SESSION"');
+    expect(packScript).toContain('tmux new-session -d -s "$APP_SESSION" -c "$HOME"');
     expect(packScript).not.toContain("tmux has-session -t tmux");
     expect(packScript).not.toContain('lsof -tiTCP:"$port"');
+  });
+
+  it("restarts inside the install directory without leaving the tmux session cwd there", () => {
+    expect(packScript).toContain(
+      'tmux respawn-pane -k -t "$APP_SESSION" -c "$APP_HOME"'
+    );
+    expect(packScript).not.toContain("cd '$APP_HOME' && PORT=");
+  });
+
+  it("protects start from running as a bare foreground process outside tmux", () => {
+    expect(packScript).toContain("start_server_in_tmux()");
+    expect(packScript).toContain('if [[ -z "\\${TMUX:-}" ]]; then');
+    expect(packScript).toContain(
+      'Not running inside tmux. Starting tmux-ui in tmux session'
+    );
+    expect(packScript).toContain("start_server_in_tmux");
   });
 
   it("supports uninstall and does not default to starting the server", () => {

@@ -177,6 +177,51 @@ describe("renderDashboard", () => {
     expect(onThemeChange).toHaveBeenCalledWith(THEMES[1]!.id);
   });
 
+  it("exposes a dashboard refresh action in the header", () => {
+    const root = document.createElement("div");
+    const onRefreshDashboard = vi.fn();
+
+    renderDashboard(
+      root,
+      {
+        sessions: [],
+        loading: false,
+        error: null
+      },
+      {
+        onCreateSession: vi.fn(),
+        onOpenSession: vi.fn(),
+        onKillSession: vi.fn(),
+        onRenameSession: vi.fn(),
+        getSessionSettings: vi.fn(() => SESSION_SETTINGS),
+        onSessionFontSizeChange: vi.fn(),
+        onSessionFontFamilyChange: vi.fn(),
+        onSessionLineHeightChange: vi.fn(),
+        onSessionThemeChange: vi.fn(),
+        activeConfigSessionName: null,
+        onOpenSessionConfig: vi.fn(),
+        onCloseSessionConfig: vi.fn(),
+        draftSessionName: "",
+        onDraftChange: vi.fn(),
+        themes: THEMES,
+        activeThemeId: THEMES[0]!.id,
+        onThemeChange: vi.fn(),
+        onRefreshDashboard
+      }
+    );
+
+    const refreshButton = root.querySelector<HTMLButtonElement>(
+      "button[data-action='refresh-dashboard']"
+    )!;
+
+    expect(refreshButton.textContent).toBe("Refresh");
+    expect(refreshButton.disabled).toBe(false);
+
+    refreshButton.click();
+
+    expect(onRefreshDashboard).toHaveBeenCalledOnce();
+  });
+
   it("shows current server load in the dashboard header", () => {
     const root = document.createElement("div");
 
@@ -305,6 +350,51 @@ describe("renderDashboard", () => {
       ?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
 
     expect(onRenameSession).toHaveBeenCalledWith("build", "build-test");
+  });
+
+  it("confirms before killing a session from the dashboard list", () => {
+    const root = document.createElement("div");
+    const onKillSession = vi.fn();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
+
+    renderDashboard(
+      root,
+      {
+        sessions: [{ name: "build", windows: 1, status: "detached" }],
+        loading: false,
+        error: null
+      },
+      {
+        onCreateSession: vi.fn(),
+        onOpenSession: vi.fn(),
+        onKillSession,
+        onRenameSession: vi.fn(),
+        getSessionSettings: vi.fn(() => SESSION_SETTINGS),
+        onSessionFontSizeChange: vi.fn(),
+        onSessionFontFamilyChange: vi.fn(),
+        onSessionLineHeightChange: vi.fn(),
+        onSessionThemeChange: vi.fn(),
+        activeConfigSessionName: null,
+        onOpenSessionConfig: vi.fn(),
+        onCloseSessionConfig: vi.fn(),
+        draftSessionName: "",
+        onDraftChange: vi.fn(),
+        themes: THEMES,
+        activeThemeId: THEMES[0]!.id,
+        onThemeChange: vi.fn()
+      }
+    );
+
+    const killButton = root.querySelector<HTMLButtonElement>(".session-kill-button")!;
+
+    killButton.click();
+    expect(onKillSession).not.toHaveBeenCalled();
+
+    killButton.click();
+    expect(onKillSession).toHaveBeenCalledWith("build");
+    expect(confirm).toHaveBeenCalledWith('Kill tmux session "build"?');
+
+    confirm.mockRestore();
   });
 
   it("keeps rename and status in the session header and reserves the path row", () => {
@@ -528,6 +618,136 @@ describe("renderDashboard", () => {
     expect(meta.textContent).toContain("failed 1");
 
     vi.useRealTimers();
+  });
+
+  it("renders tmux capture previews inside session cards", () => {
+    const root = document.createElement("div");
+
+    renderDashboard(
+      root,
+      {
+        sessions: [
+          {
+            name: "build",
+            windows: 1,
+            status: "attached",
+            currentPath: "/home/dashboard/app",
+            preview: "npm run dev\nListening on 3000"
+          }
+        ],
+        loading: false,
+        error: null,
+        serverStatus: SERVER_STATUS
+      },
+      {
+        onCreateSession: vi.fn(),
+        onOpenSession: vi.fn(),
+        onKillSession: vi.fn(),
+        onRenameSession: vi.fn(),
+        getSessionSettings: vi.fn(() => SESSION_SETTINGS),
+        onSessionFontSizeChange: vi.fn(),
+        onSessionFontFamilyChange: vi.fn(),
+        onSessionLineHeightChange: vi.fn(),
+        onSessionThemeChange: vi.fn(),
+        activeConfigSessionName: null,
+        onOpenSessionConfig: vi.fn(),
+        onCloseSessionConfig: vi.fn(),
+        draftSessionName: "",
+        onDraftChange: vi.fn(),
+        themes: THEMES,
+        activeThemeId: THEMES[0]!.id,
+        onThemeChange: vi.fn()
+      }
+    );
+
+    const preview = root.querySelector<HTMLElement>(".session-preview")!;
+
+    expect(preview).not.toBeNull();
+    expect(preview.textContent).toContain("npm run dev");
+    expect(preview.textContent).toContain("Listening on 3000");
+  });
+
+  it("renders pane shortcuts and opens a selected pane", () => {
+    const root = document.createElement("div");
+    const onOpenSessionPane = vi.fn();
+
+    renderDashboard(
+      root,
+      {
+        sessions: [
+          {
+            name: "build",
+            windows: 1,
+            status: "attached",
+            panes: [
+              {
+                sessionName: "build",
+                paneId: "%1",
+                windowIndex: 0,
+                windowName: "server",
+                windowActive: true,
+                paneIndex: 0,
+                paneActive: false,
+                currentCommand: "zsh",
+                currentPath: "/home/dashboard/app",
+                paneDead: false,
+                paneDeadStatus: null,
+                panePid: 100
+              },
+              {
+                sessionName: "build",
+                paneId: "%2",
+                windowIndex: 0,
+                windowName: "server",
+                windowActive: true,
+                paneIndex: 1,
+                paneActive: true,
+                currentCommand: "tail",
+                currentPath: "/home/dashboard/app/logs",
+                paneDead: false,
+                paneDeadStatus: null,
+                panePid: 101
+              }
+            ]
+          }
+        ],
+        loading: false,
+        error: null,
+        serverStatus: SERVER_STATUS
+      },
+      {
+        onCreateSession: vi.fn(),
+        onOpenSession: vi.fn(),
+        onOpenSessionPane,
+        onKillSession: vi.fn(),
+        onRenameSession: vi.fn(),
+        getSessionSettings: vi.fn(() => SESSION_SETTINGS),
+        onSessionFontSizeChange: vi.fn(),
+        onSessionFontFamilyChange: vi.fn(),
+        onSessionLineHeightChange: vi.fn(),
+        onSessionThemeChange: vi.fn(),
+        activeConfigSessionName: null,
+        onOpenSessionConfig: vi.fn(),
+        onCloseSessionConfig: vi.fn(),
+        draftSessionName: "",
+        onDraftChange: vi.fn(),
+        themes: THEMES,
+        activeThemeId: THEMES[0]!.id,
+        onThemeChange: vi.fn()
+      }
+    );
+
+    const paneButtons = root.querySelectorAll<HTMLButtonElement>(".session-pane-button");
+
+    expect([...paneButtons].map((button) => button.textContent)).toEqual([
+      "#0 zsh",
+      "#1 tail"
+    ]);
+    expect(paneButtons[1]?.classList.contains("is-active")).toBe(true);
+
+    paneButtons[0]?.click();
+
+    expect(onOpenSessionPane).toHaveBeenCalledWith("build", "%1");
   });
 
   it("only shows compact tmux window metadata when a session has multiple windows", () => {

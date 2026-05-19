@@ -220,11 +220,19 @@ select {
   line-height: 1.25;
 }
 
-.dashboard-theme-menu {
-  position: relative;
+.dashboard-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   margin-left: auto;
 }
 
+.dashboard-refresh-button,
+.dashboard-theme-menu {
+  position: relative;
+}
+
+.dashboard-refresh-button,
 .dashboard-theme-menu summary {
   display: inline-flex;
   align-items: center;
@@ -237,6 +245,11 @@ select {
   font-size: 0.72rem;
   list-style: none;
   padding: 0.14rem 0.54rem;
+}
+
+.dashboard-refresh-button:disabled {
+  cursor: default;
+  opacity: 0.55;
 }
 
 .dashboard-theme-menu summary::-webkit-details-marker {
@@ -452,6 +465,55 @@ select {
 .session-detail-row {
   min-width: 0;
   overflow: hidden;
+}
+
+.session-pane-list {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.22rem;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.session-table .session-pane-button {
+  max-width: 8.5rem;
+  min-width: 0;
+  min-height: 18px;
+  border-color: rgba(217, 226, 234, 0.14);
+  background: rgba(217, 226, 234, 0.04);
+  color: rgba(217, 226, 234, 0.7);
+  padding: 0.05rem 0.28rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-table .session-pane-button.is-active {
+  border-color: rgba(142, 255, 173, 0.45);
+  color: #bfffc4;
+  background: rgba(94, 255, 130, 0.1);
+}
+
+.session-preview {
+  min-height: 2.9rem;
+  max-height: 4.6rem;
+  border: 1px solid rgba(217, 226, 234, 0.08);
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.18);
+  color: rgba(217, 226, 234, 0.66);
+  font-family:
+    "Iosevka Term",
+    Menlo,
+    "PingFang SC",
+    "Hiragino Sans GB",
+    monospace;
+  font-size: calc(var(--dashboard-card-meta-size) * 0.82);
+  line-height: 1.28;
+  margin: 0;
+  overflow: hidden;
+  padding: 0.34rem 0.4rem;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .session-meta-item {
@@ -675,7 +737,7 @@ select {
   align-items: center;
   gap: 0.35rem;
   min-width: 0;
-  min-height: 28px;
+  min-height: 32px;
   border-top: 1px solid rgba(217, 226, 234, 0.14);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(0, 0, 0, 0.18));
   color: rgba(217, 226, 234, 0.82);
@@ -685,7 +747,7 @@ select {
     "PingFang SC",
     "Hiragino Sans GB",
     monospace;
-  font-size: 12px;
+  font-size: 12.5px;
   letter-spacing: 0.02em;
   overflow-x: auto;
   overflow-y: hidden;
@@ -717,18 +779,23 @@ select {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.22rem;
 }
 
 .terminal-status-action {
-  border: 1px solid rgba(217, 226, 234, 0.18);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(217, 226, 234, 0.78);
+  border: 1px solid rgba(217, 226, 234, 0.24);
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.075);
+  color: rgba(239, 246, 252, 0.88);
   cursor: pointer;
   font: inherit;
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
   line-height: 1;
-  padding: 0.25rem 0.45rem;
+  min-height: 26px;
+  min-width: 0;
+  padding: 0.22rem 0.42rem;
 }
 
 .terminal-status-action:hover:not(:disabled) {
@@ -739,7 +806,7 @@ select {
 
 .terminal-status-action:disabled {
   cursor: not-allowed;
-  opacity: 0.42;
+  opacity: 0.5;
 }
 
 .terminal-status-item {
@@ -756,6 +823,71 @@ select {
 
 .terminal-status-item.is-muted {
   color: rgba(217, 226, 234, 0.5);
+}
+
+.terminal-status-panes {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 0.22rem;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.terminal-status-pane {
+  display: inline-grid;
+  grid-template-columns: minmax(0, auto) auto;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(217, 226, 234, 0.14);
+  border-radius: 3px;
+  background: rgba(217, 226, 234, 0.04);
+}
+
+.terminal-status-pane-button,
+.terminal-status-pane-kill {
+  border: 0;
+  background: transparent;
+  color: rgba(217, 226, 234, 0.72);
+  cursor: pointer;
+  font: inherit;
+  line-height: 1;
+}
+
+.terminal-status-pane-button {
+  max-width: 8.5rem;
+  min-height: 22px;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0.18rem 0.32rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminal-status-pane-button.is-active {
+  color: #bfffc4;
+  background: rgba(94, 255, 130, 0.1);
+}
+
+.terminal-status-pane-kill {
+  min-height: 22px;
+  min-width: 20px;
+  border-left: 1px solid rgba(217, 226, 234, 0.1);
+  padding: 0.12rem 0.24rem;
+}
+
+.terminal-status-pane-button:hover:not(:disabled),
+.terminal-status-pane-button:focus-visible,
+.terminal-status-pane-kill:hover:not(:disabled),
+.terminal-status-pane-kill:focus-visible {
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.terminal-status-pane-button:disabled,
+.terminal-status-pane-kill:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
 }
 
 .terminal-frame .xterm {

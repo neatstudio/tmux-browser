@@ -21,5 +21,7 @@ const server = createServer(
 terminalSocketServer.attachToServer(server);
 
 server.listen(config.port, config.host, () => {
-  console.log(`Listening on http://${config.host}:${config.port}`);
+  console.log(
+    `[${new Date().toISOString()}] Listening on http://${config.host}:${config.port}`
+  );
 });

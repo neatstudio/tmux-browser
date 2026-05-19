@@ -173,6 +173,7 @@ export function renderDashboard(
   actions: {
     onCreateSession: (name: string) => void;
     onOpenSession: (name: string) => void;
+    onOpenSessionPane?: (name: string, paneId: string) => void;
     onKillSession: (name: string) => void;
     onRenameSession: (fromName: string, toName: string) => void;
     getSessionSettings: (name: string) => SessionSettings;
@@ -188,6 +189,7 @@ export function renderDashboard(
     themes: AppTheme[];
     activeThemeId: string;
     onThemeChange: (themeId: string) => void;
+    onRefreshDashboard?: () => void;
   }
 ) {
   const previousInput = root.querySelector<HTMLInputElement>(
@@ -273,8 +275,24 @@ export function renderDashboard(
   });
 
   themeMenu.append(themeToolbar);
+  const headerActions = document.createElement("div");
+  headerActions.className = "dashboard-header-actions";
+
+  const refreshButton = document.createElement("button");
+  refreshButton.type = "button";
+  refreshButton.className = "dashboard-refresh-button";
+  refreshButton.textContent = "Refresh";
+  refreshButton.title = "Refresh dashboard";
+  refreshButton.setAttribute("aria-label", "Refresh dashboard");
+  refreshButton.dataset.action = "refresh-dashboard";
+  refreshButton.disabled = !actions.onRefreshDashboard;
+  refreshButton.addEventListener("click", () => {
+    actions.onRefreshDashboard?.();
+  });
+
+  headerActions.append(refreshButton, themeMenu);
   titleGroup.append(heading, serverStatus);
-  header.append(titleGroup, themeMenu);
+  header.append(titleGroup, headerActions);
   section.append(header);
 
   const createRow = document.createElement("form");
@@ -429,6 +447,56 @@ export function renderDashboard(
 
     nameCell.append(sessionNameHeader, sessionDetailRow);
 
+    if (session.panes && session.panes.length > 1) {
+      const paneList = document.createElement("div");
+      paneList.className = "session-pane-list";
+      paneList.setAttribute("aria-label", `Panes in ${session.name}`);
+
+      session.panes.forEach((pane) => {
+        const paneButton = document.createElement("button");
+        const paneCommand = pane.currentCommand ?? "pane";
+        const paneLabel =
+          session.windows > 1
+            ? `${pane.windowIndex}.${pane.paneIndex} ${paneCommand}`
+            : `#${pane.paneIndex} ${paneCommand}`;
+
+        paneButton.type = "button";
+        paneButton.className = `session-pane-button${
+          pane.paneActive && pane.windowActive ? " is-active" : ""
+        }`;
+        paneButton.textContent = paneLabel;
+        paneButton.title = `${pane.windowName} ${formatDisplayPath(
+          pane.currentPath,
+          state.serverStatus?.homeDirectory
+        )}`;
+        paneButton.setAttribute(
+          "aria-label",
+          `Open ${session.name} pane ${paneLabel}`
+        );
+        paneButton.addEventListener("click", () => {
+          const openPane = actions.onOpenSessionPane ?? actions.onOpenSession;
+
+          if (actions.onOpenSessionPane) {
+            openPane(session.name, pane.paneId);
+            return;
+          }
+
+          actions.onOpenSession(session.name);
+        });
+        paneList.append(paneButton);
+      });
+
+      nameCell.append(paneList);
+    }
+
+    if (session.preview) {
+      const sessionPreview = document.createElement("pre");
+      sessionPreview.className = "session-preview";
+      sessionPreview.textContent = session.preview;
+      sessionPreview.title = session.preview;
+      nameCell.append(sessionPreview);
+    }
+
     const actionsCell = document.createElement("td");
     actionsCell.dataset.label = "Actions";
 
@@ -446,7 +514,11 @@ export function renderDashboard(
     killButton.textContent = "🗑";
     killButton.title = "Kill";
     killButton.setAttribute("aria-label", `Kill ${session.name}`);
-    killButton.addEventListener("click", () => actions.onKillSession(session.name));
+    killButton.addEventListener("click", () => {
+      if (window.confirm(`Kill tmux session "${session.name}"?`)) {
+        actions.onKillSession(session.name);
+      }
+    });
 
     actionButtons.append(openButton, killButton);
     actionsCell.append(sessionMeta, actionButtons);

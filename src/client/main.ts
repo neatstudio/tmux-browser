@@ -10,6 +10,7 @@ import { createDashboardStore } from "./state/dashboardStore";
 import { createSessionSettingsStore } from "./state/sessionSettings";
 import { createTabState, type BrowserTab } from "./state/tabState";
 import { createTerminalTab } from "./terminal/createTerminalTab";
+import { createInactiveTerminalPruner } from "./terminal/inactiveTerminalPruner";
 import { syncTerminalPanelVisibility } from "./terminal/panelVisibility";
 import {
   applyTheme,
@@ -61,13 +62,26 @@ const tabState = createTabState();
 const sessionSettings = createSessionSettingsStore();
 const store = createDashboardStore({
   api: createSessionApi(),
-  pollMs: 3000,
-  pruneTabs: (validSessionNames) => tabState.pruneTabs(validSessionNames)
+  pollMs: 10_000,
+  pruneTabs: (validSessionNames) => tabState.pruneTabs(validSessionNames),
+  shouldIncludePreview: () => tabState.getActiveTabId() === null,
+  shouldIncludePanes: () => tabState.getActiveTabId() !== null,
+  getActiveSessionName: () => {
+    const activeTabId = tabState.getActiveTabId();
+
+    return (
+      tabState.getTabs().find((tab) => tab.id === activeTabId)?.sessionName ?? null
+    );
+  }
 });
 const mountedTerminals = new Map<string, MountedTerminal>();
+const inactiveTerminalPruner = createInactiveTerminalPruner({
+  delayMs: 5000
+});
 let lastRenderedTabListSignature = "";
 let lastRenderedActiveTabId: string | null | undefined;
 let visibleTerminalPanelId: string | null = null;
+let lastDashboardActive = tabState.getActiveTabId() === null;
 
 applyTheme(activeTheme);
 
@@ -92,6 +106,7 @@ function getOrOpenTab(sessionName: string) {
 }
 
 function closeTab(tabId: string, options: { force?: boolean } = {}) {
+  inactiveTerminalPruner.cancel(tabId);
   mountedTerminals.get(tabId)?.destroy();
   mountedTerminals.get(tabId)?.panel.remove();
   mountedTerminals.delete(tabId);
@@ -103,6 +118,22 @@ function closeTab(tabId: string, options: { force?: boolean } = {}) {
   }
 
   scheduleRender();
+}
+
+function detachTerminal(tabId: string) {
+  const mounted = mountedTerminals.get(tabId);
+
+  if (!mounted) {
+    return;
+  }
+
+  mounted.destroy();
+  mounted.panel.remove();
+  mountedTerminals.delete(tabId);
+
+  if (visibleTerminalPanelId === tabId) {
+    visibleTerminalPanelId = null;
+  }
 }
 
 function ensureTerminal(tab: BrowserTab) {
@@ -128,7 +159,12 @@ function ensureTerminal(tab: BrowserTab) {
     terminalTheme: getTheme(sessionSettings.get(tab.sessionName).themeId).terminalTheme,
     onClosed: () => {
       closeTab(tab.id, { force: true });
-      void store.refresh();
+      const isDashboardActive = tabState.getActiveTabId() === null;
+
+      void store.refresh({
+        includePreview: isDashboardActive,
+        includePanes: !isDashboardActive
+      });
     }
   });
 
@@ -182,9 +218,8 @@ function syncPanels() {
 
   [...mountedTerminals.keys()].forEach((tabId) => {
     if (!validIds.has(tabId)) {
-      mountedTerminals.get(tabId)?.destroy();
-      mountedTerminals.get(tabId)?.panel.remove();
-      mountedTerminals.delete(tabId);
+      inactiveTerminalPruner.cancel(tabId);
+      detachTerminal(tabId);
     }
   });
 
@@ -199,6 +234,11 @@ function syncPanels() {
     mountedTerminals,
     visibleTerminalPanelId,
     nextVisiblePanelId
+  );
+  inactiveTerminalPruner.sync(
+    activeTabId,
+    [...mountedTerminals.keys()],
+    detachTerminal
   );
   syncTerminalStatusBars();
 }
@@ -317,10 +357,114 @@ function killSession(sessionName: string, options: { confirm?: boolean } = {}) {
   });
 }
 
+function getSessionNames() {
+  return store.getState().sessions.map((session) => session.name);
+}
+
+function promptForSession(
+  label: string,
+  currentSessionName: string,
+  options: { preferOther?: boolean } = {}
+) {
+  const sessionNames = getSessionNames();
+  const defaultSessionName =
+    options.preferOther
+      ? sessionNames.find((name) => name !== currentSessionName) ?? currentSessionName
+      : currentSessionName;
+  const targetSessionName = window.prompt(
+    `${label}: ${sessionNames.join(", ")}`,
+    defaultSessionName
+  )?.trim();
+
+  if (!targetSessionName || !sessionNames.includes(targetSessionName)) {
+    return null;
+  }
+
+  return targetSessionName;
+}
+
+function promptSendCommand(currentSessionName: string) {
+  const targetSessionName = promptForSession("Send command to session", currentSessionName, {
+    preferOther: true
+  });
+
+  if (!targetSessionName) {
+    return;
+  }
+
+  const command = window.prompt(`Command for ${targetSessionName}`)?.trim();
+
+  if (!command) {
+    return;
+  }
+
+  void store.sendCommand(targetSessionName, command);
+}
+
+function promptViewSession(currentSessionName: string) {
+  const targetSessionName = promptForSession("View session", currentSessionName);
+
+  if (!targetSessionName) {
+    return;
+  }
+
+  getOrOpenTab(targetSessionName);
+  scheduleRender();
+}
+
+function splitPane(sessionName: string, direction: "horizontal" | "vertical") {
+  void store.splitPane(sessionName, direction).then(() => {
+    scheduleRender();
+  });
+}
+
+function openSessionPane(sessionName: string, paneId: string) {
+  void store.selectPane(sessionName, paneId).then(() => {
+    getOrOpenTab(sessionName);
+    scheduleRender();
+  });
+}
+
+function selectPane(sessionName: string, paneId: string) {
+  void store.selectPane(sessionName, paneId).then(() => {
+    void store.refresh({ includePreview: false, includePanes: true });
+    scheduleRender();
+  });
+}
+
+function killPane(sessionName: string, paneId: string) {
+  const confirmed = window.confirm(`Close pane ${paneId} in "${sessionName}"?`);
+
+  if (!confirmed) {
+    return;
+  }
+
+  void store.killPane(sessionName, paneId).then(() => {
+    scheduleRender();
+  });
+}
+
+function refreshDashboard(options: { includeServerStatus?: boolean } = {}) {
+  void store
+    .refresh({
+      includePreview: true,
+      includePanes: true,
+      includeServerStatus: options.includeServerStatus ?? false
+    })
+    .then(() => {
+      scheduleRender();
+    });
+}
+
 function createSessionStatusActions(tab: BrowserTab, mounted: MountedTerminal) {
   return {
     onRefresh: () => {
-      void store.refresh();
+      const isDashboardActive = tabState.getActiveTabId() === null;
+
+      void store.refresh({
+        includePreview: isDashboardActive,
+        includePanes: !isDashboardActive
+      });
     },
     onClear: () => {
       mounted.clear();
@@ -333,6 +477,12 @@ function createSessionStatusActions(tab: BrowserTab, mounted: MountedTerminal) {
       scheduleRender();
     },
     onRename: () => promptRenameSession(tab.sessionName),
+    onSendCommand: () => promptSendCommand(tab.sessionName),
+    onViewSession: () => promptViewSession(tab.sessionName),
+    onSplitHorizontal: () => splitPane(tab.sessionName, "horizontal"),
+    onSplitVertical: () => splitPane(tab.sessionName, "vertical"),
+    onSelectPane: selectPane,
+    onKillPane: killPane,
     onKill: () => killSession(tab.sessionName, { confirm: true })
   };
 }
@@ -340,6 +490,7 @@ function createSessionStatusActions(tab: BrowserTab, mounted: MountedTerminal) {
 function render() {
   const tabs = tabState.getTabs();
   const activeTabId = tabState.getActiveTabId();
+  const isDashboardActive = activeTabId === null;
   const tabListSignature = tabs
     .map((tab) => `${tab.id}:${tab.title}:${tab.pinned ? "pinned" : "free"}`)
     .join("|");
@@ -363,6 +514,14 @@ function render() {
     lastRenderedActiveTabId = activeTabId;
   }
 
+  if (isDashboardActive !== lastDashboardActive) {
+    lastDashboardActive = isDashboardActive;
+
+    if (isDashboardActive) {
+      refreshDashboard();
+    }
+  }
+
   if (activeTabId === null) {
     renderDashboard(dashboardRoot, store.getState(), {
       onCreateSession: (name) => {
@@ -375,6 +534,7 @@ function render() {
         getOrOpenTab(name);
         scheduleRender();
       },
+      onOpenSessionPane: openSessionPane,
       onKillSession: (name) => {
         killSession(name);
       },
@@ -401,7 +561,8 @@ function render() {
       },
       themes: THEMES,
       activeThemeId: activeTheme.id,
-      onThemeChange: setActiveTheme
+      onThemeChange: setActiveTheme,
+      onRefreshDashboard: () => refreshDashboard({ includeServerStatus: true })
     });
   }
 
@@ -438,7 +599,16 @@ store.subscribe(() => {
   scheduleRender();
 });
 
-void store.refresh().then(() => {
-  scheduleRender();
-  store.startPolling();
-});
+{
+  const isDashboardActive = tabState.getActiveTabId() === null;
+
+  void store
+    .refresh({
+      includePreview: isDashboardActive,
+      includePanes: !isDashboardActive
+    })
+    .then(() => {
+      scheduleRender();
+      store.startPolling();
+    });
+}

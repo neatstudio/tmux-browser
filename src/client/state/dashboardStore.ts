@@ -1,4 +1,9 @@
-import type { ServerStatus, SessionApi, SessionSummary } from "../api/sessionApi";
+import type {
+  ServerStatus,
+  SessionApi,
+  SessionSummary,
+  SplitPaneDirection
+} from "../api/sessionApi";
 import type { BrowserTab } from "./tabState";
 
 export type DashboardState = {
@@ -12,13 +17,31 @@ type DashboardStoreDeps = {
   api: Pick<
     SessionApi,
     | "listSessions"
+    | "listPaneSessions"
+    | "listDashboardSessions"
+    | "getSessionStatus"
     | "getServerStatus"
     | "createSession"
     | "renameSession"
     | "killSession"
+    | "sendCommand"
+    | "splitPane"
+    | "selectPane"
+    | "killPane"
   >;
   pollMs: number;
+  dashboardPollMs?: number;
+  serverStatusPollMs?: number;
   pruneTabs?: (validSessionNames: string[]) => void;
+  shouldIncludePreview?: () => boolean;
+  shouldIncludePanes?: () => boolean;
+  getActiveSessionName?: () => string | null;
+};
+
+type RefreshOptions = {
+  includePreview?: boolean;
+  includePanes?: boolean;
+  includeServerStatus?: boolean;
 };
 
 export function createDashboardStore(deps: DashboardStoreDeps) {
@@ -29,7 +52,9 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
     error: null
   };
   const listeners = new Set<(state: DashboardState) => void>();
-  let timer: number | null = null;
+  let timer: ReturnType<typeof setInterval> | null = null;
+  let dashboardTimer: ReturnType<typeof setInterval> | null = null;
+  let serverStatusTimer: ReturnType<typeof setInterval> | null = null;
 
   function sessionsEqual(previous: SessionSummary[], next: SessionSummary[]) {
     if (previous.length !== next.length) {
@@ -52,7 +77,10 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
         session.gitBranch === nextSession.gitBranch &&
         session.gitDirty === nextSession.gitDirty &&
         session.paneDead === nextSession.paneDead &&
-        session.paneDeadStatus === nextSession.paneDeadStatus
+        session.paneDeadStatus === nextSession.paneDeadStatus &&
+        session.preview === nextSession.preview &&
+        JSON.stringify(session.panes ?? null) ===
+          JSON.stringify(nextSession.panes ?? null)
       );
     });
   }
@@ -76,11 +104,68 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
     listeners.forEach((listener) => listener(state));
   }
 
-  async function refresh() {
+  async function refreshServerStatus() {
     try {
+      const serverStatus = await deps.api.getServerStatus();
+
+      commit({
+        ...state,
+        serverStatus,
+        loading: false,
+        error: null
+      });
+    } catch (error) {
+      commit({
+        ...state,
+        loading: false,
+        error: error instanceof Error ? error.message : "Failed to refresh server status"
+      });
+    }
+  }
+
+  function mergeSessionStatus(session: SessionSummary) {
+    const existingIndex = state.sessions.findIndex(
+      (existingSession) => existingSession.name === session.name
+    );
+    const sessions =
+      existingIndex === -1
+        ? [session]
+        : state.sessions.map((existingSession, index) =>
+            index === existingIndex ? session : existingSession
+          );
+
+    commit({
+      ...state,
+      sessions,
+      loading: false,
+      error: null
+    });
+  }
+
+  async function refresh(options: RefreshOptions = {}) {
+    try {
+      const activeSessionName =
+        (options.includePreview === false && options.includePanes) ||
+        (options.includePreview === undefined && options.includePanes === undefined)
+          ? deps.getActiveSessionName?.() ?? null
+          : null;
+
+      if (activeSessionName) {
+        mergeSessionStatus(await deps.api.getSessionStatus(activeSessionName));
+        return;
+      }
+
+      const loadSessions =
+        options.includePreview === false
+          ? options.includePanes
+            ? deps.api.listPaneSessions()
+            : deps.api.listSessions()
+          : deps.api.listDashboardSessions();
       const [sessions, serverStatus] = await Promise.all([
-        deps.api.listSessions(),
-        deps.api.getServerStatus()
+        loadSessions,
+        options.includeServerStatus === false
+          ? Promise.resolve(state.serverStatus)
+          : deps.api.getServerStatus()
       ]);
       deps.pruneTabs?.(sessions.map((session) => session.name));
 
@@ -120,19 +205,72 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
       await deps.api.killSession(name);
       await refresh();
     },
+    async sendCommand(name: string, command: string) {
+      await deps.api.sendCommand(name, command);
+    },
+    async splitPane(name: string, direction: SplitPaneDirection) {
+      await deps.api.splitPane(name, direction);
+      await refresh();
+    },
+    async selectPane(name: string, paneId: string) {
+      await deps.api.selectPane(name, paneId);
+    },
+    async killPane(name: string, paneId: string) {
+      await deps.api.killPane(name, paneId);
+      await refresh({ includePanes: true });
+    },
     startPolling() {
-      if (timer !== null) {
+      if (timer !== null || dashboardTimer !== null || serverStatusTimer !== null) {
         return;
       }
 
-      timer = window.setInterval(() => {
-        void refresh();
+      timer = globalThis.setInterval(() => {
+        const activeSessionName = deps.getActiveSessionName?.() ?? null;
+
+        if (!activeSessionName) {
+          return;
+        }
+
+        void refresh({
+          includePreview: false,
+          includePanes: true
+        });
       }, deps.pollMs);
+
+      dashboardTimer = globalThis.setInterval(() => {
+        if (!deps.shouldIncludePreview?.()) {
+          return;
+        }
+
+        void refresh({
+          includePreview: true,
+          includePanes: deps.shouldIncludePanes?.() ?? false,
+          includeServerStatus: false
+        });
+      }, deps.dashboardPollMs ?? Math.max(deps.pollMs, 30_000));
+
+      serverStatusTimer = globalThis.setInterval(() => {
+        if (!deps.shouldIncludePreview?.()) {
+          return;
+        }
+
+        void refreshServerStatus();
+      }, deps.serverStatusPollMs ?? Math.max(deps.pollMs, 60_000));
     },
     stopPolling() {
       if (timer !== null) {
-        window.clearInterval(timer);
+        globalThis.clearInterval(timer);
         timer = null;
+      }
+
+      if (dashboardTimer !== null) {
+        globalThis.clearInterval(dashboardTimer);
+        dashboardTimer = null;
+      }
+
+      if (serverStatusTimer !== null) {
+        globalThis.clearInterval(serverStatusTimer);
+        serverStatusTimer = null;
       }
     }
   };

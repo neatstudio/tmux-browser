@@ -26,7 +26,8 @@ describe("parseTmuxListOutput", () => {
         gitBranch: null,
         gitDirty: null,
         paneDead: false,
-        paneDeadStatus: null
+        paneDeadStatus: null,
+        preview: null
       },
       {
         name: "ops",
@@ -40,7 +41,8 @@ describe("parseTmuxListOutput", () => {
         gitBranch: null,
         gitDirty: null,
         paneDead: false,
-        paneDeadStatus: null
+        paneDeadStatus: null,
+        preview: null
       }
     ]);
   });
@@ -49,8 +51,8 @@ describe("parseTmuxListOutput", () => {
     const sessions = parseTmuxListOutput("build\t2\t1\t1714200000");
     const panes = parseTmuxPaneOutput(
       [
-        "build\tserver\t0\t1\tvim\t/tmp/project\t0\t\t100",
-        "build\tworker\t1\t1\tnpm\t/tmp/project/app\t1\t1\t101"
+        "build\t%1\t0\tserver\t0\t0\t1\tvim\t/tmp/project\t0\t\t100",
+        "build\t%2\t1\tworker\t1\t0\t1\tnpm\t/tmp/project/app\t1\t1\t101"
       ].join("\n")
     );
 
@@ -67,7 +69,66 @@ describe("parseTmuxListOutput", () => {
         gitBranch: null,
         gitDirty: null,
         paneDead: true,
-        paneDeadStatus: 1
+        paneDeadStatus: 1,
+        preview: null
+      }
+    ]);
+  });
+
+  it("can keep individual pane summaries for dashboard navigation", () => {
+    const sessions = parseTmuxListOutput("build\t1\t0\t1714200000");
+    const panes = parseTmuxPaneOutput(
+      [
+        "build\t%1\t0\tserver\t1\t0\t0\tzsh\t/tmp/project\t0\t\t100",
+        "build\t%2\t0\tserver\t1\t1\t1\ttail\t/tmp/project/logs\t0\t\t101"
+      ].join("\n")
+    );
+
+    expect(mergeTmuxPaneSummaries(sessions, panes, { includePanes: true })).toEqual([
+      {
+        name: "build",
+        windows: 1,
+        status: "detached",
+        lastActivityAt: 1714200000,
+        paneCount: 2,
+        activeWindowName: "server",
+        currentCommand: "tail",
+        currentPath: "/tmp/project/logs",
+        gitBranch: null,
+        gitDirty: null,
+        paneDead: false,
+        paneDeadStatus: null,
+        preview: null,
+        panes: [
+          {
+            sessionName: "build",
+            paneId: "%1",
+            windowIndex: 0,
+            windowName: "server",
+            windowActive: true,
+            paneIndex: 0,
+            paneActive: false,
+            currentCommand: "zsh",
+            currentPath: "/tmp/project",
+            paneDead: false,
+            paneDeadStatus: null,
+            panePid: 100
+          },
+          {
+            sessionName: "build",
+            paneId: "%2",
+            windowIndex: 0,
+            windowName: "server",
+            windowActive: true,
+            paneIndex: 1,
+            paneActive: true,
+            currentCommand: "tail",
+            currentPath: "/tmp/project/logs",
+            paneDead: false,
+            paneDeadStatus: null,
+            panePid: 101
+          }
+        ]
       }
     ]);
   });

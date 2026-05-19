@@ -80,7 +80,11 @@ chmod +x tmux.run
 ./tmux.run start
 ```
 
-For a long-running server process, use `restart` instead of `start`:
+If `start` is run outside tmux, the script automatically starts tmux-ui inside
+the dedicated `tmux-ui` tmux session so closing the terminal does not stop the
+server. When already inside tmux, `start` runs in the current pane.
+
+For a clean long-running restart, use `restart`:
 
 ```bash
 ./tmux.run restart
