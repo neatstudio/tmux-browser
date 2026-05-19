@@ -181,11 +181,20 @@ Run:
 \`\`\`bash
 chmod +x tmux-ui.run
 ./tmux-ui.run install
-./tmux-ui.run start
+./tmux-ui.run restart
+\`\`\`
+
+On Linux hosts with systemd, use service mode to keep tmux-ui running without a
+keeper tmux window:
+
+\`\`\`bash
+./tmux-ui.run service-install
+./tmux-ui.run service-status
 \`\`\`
 
 The default install directory is \`~/.tmux-ui\`.
 The default tmux session used by \`restart\` is \`tmux-ui\`.
+The default systemd service name is \`tmux-ui\`.
 The server binds to the first Tailscale IPv4 address matching \`100.*\` unless
 \`HOST\` is set explicitly.
 `;
@@ -197,6 +206,8 @@ set -euo pipefail
 
 APP_HOME="\${TMUX_UI_HOME:-$HOME/.tmux-ui}"
 APP_SESSION="\${TMUX_UI_SESSION:-tmux-ui}"
+SERVICE_NAME="\${TMUX_UI_SERVICE_NAME:-tmux-ui}"
+SYSTEMD_UNIT_PATH="\${TMUX_UI_SYSTEMD_UNIT:-/etc/systemd/system/$SERVICE_NAME.service}"
 PID_FILE="\${APP_HOME}/tmux-ui.pid"
 APP_BIN_DIR="$APP_HOME/bin"
 USER_BIN_DIR="\${TMUX_UI_USER_BIN:-$HOME/.local/bin}"
@@ -281,6 +292,12 @@ Commands:
   start        Extract and start the server, installing deps if missing
   restart      Extract, install if needed, and restart inside a tmux-ui tmux session
   stop         Stop the tmux-ui service started by restart
+  service-install  Install systemd service
+  service-start    Start systemd service
+  service-restart  Restart systemd service
+  service-status   Show systemd service status
+  service-stop     Stop systemd service
+  service-uninstall Stop and remove systemd service
   uninstall    Stop tmux-ui and remove the install directory
   extract      Extract files only
   dir          Print install directory
@@ -288,6 +305,8 @@ Commands:
 Environment:
   TMUX_UI_HOME      Install directory, default: $HOME/.tmux-ui
   TMUX_UI_SESSION   tmux session for restart/stop, default: tmux-ui
+  TMUX_UI_SERVICE_NAME systemd service name, default: tmux-ui
+  TMUX_UI_SYSTEMD_UNIT systemd unit path, default: /etc/systemd/system/$SERVICE_NAME.service
   HOST              Bind host for start, default: first Tailscale 100.x address
   PORT              Bind port for start, default: 3000
 
@@ -358,6 +377,100 @@ stop_port_processes() {
   done < <(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null || true)
 }
 
+stop_systemd_service_if_present() {
+  if ! command -v systemctl >/dev/null 2>&1; then
+    return
+  fi
+
+  if [[ -f "$SYSTEMD_UNIT_PATH" ]]; then
+    systemctl stop "$SERVICE_NAME.service" 2>/dev/null || true
+  fi
+}
+
+write_systemd_unit() {
+  require_command systemctl
+
+  local unit_dir port_value
+  unit_dir="$(dirname "$SYSTEMD_UNIT_PATH")"
+  port_value="\${PORT:-3000}"
+  mkdir -p "$unit_dir"
+
+  {
+    cat <<UNIT
+[Unit]
+Description=tmux-ui browser dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=$APP_HOME
+Environment=HOME=$HOME
+Environment=NVM_DIR=$NVM_DIR
+Environment=PORT=$port_value
+UNIT
+    if [[ -n "\${HOST:-}" ]]; then
+      printf 'Environment=HOST=%s\\n' "$HOST"
+    fi
+    cat <<UNIT
+ExecStart=$APP_HOME/start.sh
+Restart=always
+RestartSec=2
+KillSignal=SIGINT
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+  } > "$SYSTEMD_UNIT_PATH"
+
+  systemctl daemon-reload
+}
+
+install_service() {
+  load_node_runtime
+  require_command node
+  require_command npm
+  require_command tmux
+  require_command systemctl
+  extract_payload
+  install_cli_entrypoint
+
+  if [[ ! -d "$APP_HOME/node_modules" ]]; then
+    "$APP_HOME/install.sh"
+  fi
+
+  stop_server
+  write_systemd_unit
+  systemctl enable "$SERVICE_NAME.service"
+  systemctl restart "$SERVICE_NAME.service"
+  systemctl status "$SERVICE_NAME.service" --no-pager || true
+}
+
+start_service() {
+  require_command systemctl
+  systemctl start "$SERVICE_NAME.service"
+  systemctl status "$SERVICE_NAME.service" --no-pager || true
+}
+
+stop_service() {
+  require_command systemctl
+  systemctl stop "$SERVICE_NAME.service"
+}
+
+status_service() {
+  require_command systemctl
+  systemctl status "$SERVICE_NAME.service" --no-pager
+}
+
+uninstall_service() {
+  require_command systemctl
+  systemctl stop "$SERVICE_NAME.service" 2>/dev/null || true
+  systemctl disable "$SERVICE_NAME.service" 2>/dev/null || true
+  rm -f "$SYSTEMD_UNIT_PATH"
+  systemctl daemon-reload
+  echo "Removed $SYSTEMD_UNIT_PATH"
+}
+
 ensure_tmux_session() {
   if tmux has-session -t "$APP_SESSION" 2>/dev/null; then
     return
@@ -373,6 +486,8 @@ start_server_in_tmux() {
 }
 
 stop_server() {
+  stop_systemd_service_if_present
+
   if command -v tmux >/dev/null 2>&1 && tmux has-session -t "$APP_SESSION" 2>/dev/null; then
     tmux send-keys -t "$APP_SESSION" C-c
   fi
@@ -398,6 +513,10 @@ restart_server() {
 }
 
 uninstall_server() {
+  if command -v systemctl >/dev/null 2>&1 && [[ -f "$SYSTEMD_UNIT_PATH" ]]; then
+    uninstall_service
+  fi
+
   stop_server
   if [[ -L "$USER_BIN_DIR/$CLI_NAME" ]] && [[ "$(readlink "$USER_BIN_DIR/$CLI_NAME" 2>/dev/null || true)" == "$APP_BIN_DIR/$CLI_NAME" ]]; then
     rm -f "$USER_BIN_DIR/$CLI_NAME"
@@ -437,6 +556,24 @@ case "$COMMAND" in
     load_node_runtime
     install_cli_entrypoint
     restart_server
+    ;;
+  service-install)
+    install_service
+    ;;
+  service-start)
+    start_service
+    ;;
+  service-restart)
+    install_service
+    ;;
+  service-status)
+    status_service
+    ;;
+  service-stop)
+    stop_service
+    ;;
+  service-uninstall)
+    uninstall_service
     ;;
   stop)
     stop_server

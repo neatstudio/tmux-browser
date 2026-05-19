@@ -67,6 +67,7 @@ The run file defaults to installing into `~/.tmux-ui`:
 ./release/release.run install
 ./release/release.run start
 ./release/release.run restart
+./release/release.run service-install
 ./release/release.run uninstall
 ```
 
@@ -98,6 +99,20 @@ named `tmux-ui`. Stop or remove it with:
 ./tmux.run stop
 ./tmux.run uninstall
 ```
+
+On Linux/systemd servers, prefer service mode when you do not want a keeper
+tmux session:
+
+```bash
+./tmux.run service-install
+./tmux.run service-status
+./tmux.run service-restart
+./tmux.run service-stop
+./tmux.run service-uninstall
+```
+
+The default unit is `/etc/systemd/system/tmux-ui.service`. Override the service
+name with `TMUX_UI_SERVICE_NAME` or the unit path with `TMUX_UI_SYSTEMD_UNIT`.
 
 The default bind host is the first Tailscale IPv4 address matching `100.*`.
 Set `HOST` or `PORT` explicitly to override:
