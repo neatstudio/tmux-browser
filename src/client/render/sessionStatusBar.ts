@@ -17,6 +17,8 @@ export type SessionStatusBarActions = {
   onSplitVertical?: () => void;
   onToggleBrowserScroll?: () => void;
   browserScrollEnabled?: boolean;
+  onScrollHistoryBack?: () => void;
+  onScrollHistoryForward?: () => void;
   onSelectPane?: (sessionName: string, paneId: string) => void;
   onKillPane?: (sessionName: string, paneId: string) => void;
   onKill?: () => void;
@@ -203,6 +205,8 @@ function renderStatusActions(
     createActionButton("view", "View", () => actions.onViewSession?.(), !actions.onViewSession, "View session"),
     createActionButton("split-horizontal", "Split", () => actions.onSplitHorizontal?.(), !actions.onSplitHorizontal, "Split pane horizontally"),
     createActionButton("split-vertical", "Stack", () => actions.onSplitVertical?.(), !actions.onSplitVertical, "Split pane vertically"),
+    createActionButton("scroll-history-back", "Hist", () => actions.onScrollHistoryBack?.(), !actions.onScrollHistoryBack, "Page back in tmux history"),
+    createActionButton("scroll-history-forward", "Live", () => actions.onScrollHistoryForward?.(), !actions.onScrollHistoryForward, "Page forward toward live output"),
     browserScrollButton,
     createActionButton("kill", "Kill", () => actions.onKill?.(), !actions.onKill, "Kill session")
   );

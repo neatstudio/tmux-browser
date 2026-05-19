@@ -153,6 +153,8 @@ describe("sessionStatusBar", () => {
     const onSplitHorizontal = vi.fn();
     const onSplitVertical = vi.fn();
     const onToggleBrowserScroll = vi.fn();
+    const onScrollHistoryBack = vi.fn();
+    const onScrollHistoryForward = vi.fn();
 
     renderSessionStatusBar(root, SESSION, {
       onRefresh,
@@ -166,7 +168,9 @@ describe("sessionStatusBar", () => {
       onViewSession,
       onSplitHorizontal,
       onSplitVertical,
-      onToggleBrowserScroll
+      onToggleBrowserScroll,
+      onScrollHistoryBack,
+      onScrollHistoryForward
     });
 
     expect(root.querySelector("[data-action='send-pwd']")).toBeNull();
@@ -182,6 +186,8 @@ describe("sessionStatusBar", () => {
     root.querySelector<HTMLButtonElement>("[data-action='view']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='split-horizontal']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='split-vertical']")?.click();
+    root.querySelector<HTMLButtonElement>("[data-action='scroll-history-back']")?.click();
+    root.querySelector<HTMLButtonElement>("[data-action='scroll-history-forward']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='browser-scroll']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='kill']")?.click();
 
@@ -196,6 +202,8 @@ describe("sessionStatusBar", () => {
     expect(onSplitHorizontal).toHaveBeenCalledOnce();
     expect(onSplitVertical).toHaveBeenCalledOnce();
     expect(onToggleBrowserScroll).toHaveBeenCalledOnce();
+    expect(onScrollHistoryBack).toHaveBeenCalledOnce();
+    expect(onScrollHistoryForward).toHaveBeenCalledOnce();
     expect(onKill).toHaveBeenCalledOnce();
   });
 
@@ -214,7 +222,9 @@ describe("sessionStatusBar", () => {
       onViewSession: vi.fn(),
       onSplitHorizontal: vi.fn(),
       onSplitVertical: vi.fn(),
-      onToggleBrowserScroll: vi.fn()
+      onToggleBrowserScroll: vi.fn(),
+      onScrollHistoryBack: vi.fn(),
+      onScrollHistoryForward: vi.fn()
     });
 
     expect(
@@ -232,6 +242,8 @@ describe("sessionStatusBar", () => {
       "View",
       "Split",
       "Stack",
+      "Hist",
+      "Live",
       "Page",
       "Kill"
     ]);
@@ -313,6 +325,12 @@ describe("sessionStatusBar", () => {
     ).toBe(true);
     expect(
       root.querySelector<HTMLButtonElement>("[data-action='split-vertical']")?.disabled
+    ).toBe(true);
+    expect(
+      root.querySelector<HTMLButtonElement>("[data-action='scroll-history-back']")?.disabled
+    ).toBe(true);
+    expect(
+      root.querySelector<HTMLButtonElement>("[data-action='scroll-history-forward']")?.disabled
     ).toBe(true);
     expect(
       root.querySelector<HTMLButtonElement>("[data-action='browser-scroll']")?.disabled

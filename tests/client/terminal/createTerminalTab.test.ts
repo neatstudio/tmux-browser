@@ -138,6 +138,30 @@ function createTouchGestureEvent(type: string, clientY: number) {
   return event;
 }
 
+function createPointerGestureEvent(type: string, clientY: number) {
+  const event = new Event(type, {
+    bubbles: true,
+    cancelable: true
+  });
+
+  Object.defineProperties(event, {
+    clientY: {
+      value: clientY,
+      configurable: true
+    },
+    pointerId: {
+      value: 7,
+      configurable: true
+    },
+    pointerType: {
+      value: "touch",
+      configurable: true
+    }
+  });
+
+  return event;
+}
+
 describe("createTerminalTabController", () => {
   it("closes the browser tab when the server reports session exit", () => {
     const socket = {
@@ -911,14 +935,14 @@ describe("createTerminalTab", () => {
       onClosed: vi.fn()
     });
 
-    target.dispatchEvent(createTouchGestureEvent("touchstart", 200));
-    const moveEvent = createTouchGestureEvent("touchmove", 152);
+    target.dispatchEvent(createTouchGestureEvent("touchstart", 152));
+    const moveEvent = createTouchGestureEvent("touchmove", 200);
     target.dispatchEvent(moveEvent);
 
     expect(bubbleListener).not.toHaveBeenCalled();
     expect(moveEvent.defaultPrevented).toBe(true);
     expect(socket.send).toHaveBeenCalledWith(
-      JSON.stringify({ type: "scroll", lines: 2 })
+      JSON.stringify({ type: "scroll", lines: -4 })
     );
 
     mounted.destroy();
@@ -955,14 +979,96 @@ describe("createTerminalTab", () => {
     });
 
     mounted.toggleBrowserScroll();
-    target.dispatchEvent(createTouchGestureEvent("touchstart", 200));
-    const moveEvent = createTouchGestureEvent("touchmove", 152);
+    target.dispatchEvent(createTouchGestureEvent("touchstart", 152));
+    const moveEvent = createTouchGestureEvent("touchmove", 200);
     target.dispatchEvent(moveEvent);
 
     expect(bubbleListener).toHaveBeenCalledOnce();
     expect(moveEvent.defaultPrevented).toBe(false);
     expect(socket.send).not.toHaveBeenCalledWith(
-      JSON.stringify({ type: "scroll", lines: 2 })
+      JSON.stringify({ type: "scroll", lines: -4 })
+    );
+
+    mounted.destroy();
+  });
+
+  it("maps pointer drag gestures to tmux history scroll on iPad browsers", () => {
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    };
+
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        constructor() {
+          return socket;
+        }
+      }
+    );
+
+    const container = document.createElement("div");
+    const target = document.createElement("div");
+    const bubbleListener = vi.fn();
+    container.append(target);
+    container.addEventListener("pointermove", bubbleListener);
+
+    const mounted = createTerminalTab({
+      container,
+      tabId: "tab-1",
+      sessionName: "build",
+      onClosed: vi.fn()
+    });
+
+    target.dispatchEvent(createPointerGestureEvent("pointerdown", 160));
+    const moveEvent = createPointerGestureEvent("pointermove", 220);
+    target.dispatchEvent(moveEvent);
+
+    expect(bubbleListener).not.toHaveBeenCalled();
+    expect(moveEvent.defaultPrevented).toBe(true);
+    expect(socket.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: "scroll", lines: -5 })
+    );
+
+    mounted.destroy();
+  });
+
+  it("exposes page-sized tmux history scrolling for mobile controls", () => {
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    };
+
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        constructor() {
+          return socket;
+        }
+      }
+    );
+
+    const mounted = createTerminalTab({
+      container: document.createElement("div"),
+      tabId: "tab-1",
+      sessionName: "build",
+      onClosed: vi.fn()
+    });
+
+    mounted.scrollPage("back");
+    mounted.scrollPage("forward");
+
+    expect(socket.send).toHaveBeenNthCalledWith(
+      1,
+      JSON.stringify({ type: "scroll", lines: -40 })
+    );
+    expect(socket.send).toHaveBeenNthCalledWith(
+      2,
+      JSON.stringify({ type: "scroll", lines: 40 })
     );
 
     mounted.destroy();

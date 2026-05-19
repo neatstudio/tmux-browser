@@ -10,7 +10,7 @@ import type {
 
 const TERMINAL_SCROLLBACK = 5000;
 const PIXELS_PER_SCROLL_LINE = 40;
-const TOUCH_PIXELS_PER_SCROLL_LINE = 24;
+const TOUCH_PIXELS_PER_SCROLL_LINE = 12;
 const SHIFT_ENTER_SEQUENCE = "\x1b[13;2u";
 
 type FrameDeps = {
@@ -265,6 +265,8 @@ export function createTerminalTab(deps: {
   let controller: ReturnType<typeof createTerminalTabController> | null = null;
   let browserScrollEnabled = false;
   let touchScrollY: number | null = null;
+  let pointerScrollY: number | null = null;
+  let activePointerId: number | null = null;
   const scrollStatusElement = deps.rendererStatusElement ?? deps.container;
 
   function syncBrowserScrollMode() {
@@ -356,8 +358,8 @@ export function createTerminalTab(deps: {
       return;
     }
 
-    const deltaY = touchScrollY - nextY;
-    const lines = Math.trunc(deltaY / TOUCH_PIXELS_PER_SCROLL_LINE);
+    const deltaY = nextY - touchScrollY;
+    const lines = -Math.trunc(deltaY / TOUCH_PIXELS_PER_SCROLL_LINE);
 
     if (lines === 0) {
       return;
@@ -385,6 +387,63 @@ export function createTerminalTab(deps: {
     capture: true
   });
   deps.container.addEventListener("touchcancel", handleTouchEnd, {
+    capture: true
+  });
+
+  const handlePointerDown = (event: PointerEvent) => {
+    if (browserScrollEnabled || event.pointerType !== "touch") {
+      pointerScrollY = null;
+      activePointerId = null;
+      return;
+    }
+
+    pointerScrollY = event.clientY;
+    activePointerId = event.pointerId;
+  };
+
+  const handlePointerMove = (event: PointerEvent) => {
+    if (
+      browserScrollEnabled ||
+      event.pointerType !== "touch" ||
+      pointerScrollY === null ||
+      activePointerId !== event.pointerId
+    ) {
+      return;
+    }
+
+    const deltaY = event.clientY - pointerScrollY;
+    const lines = -Math.trunc(deltaY / TOUCH_PIXELS_PER_SCROLL_LINE);
+
+    if (lines === 0) {
+      return;
+    }
+
+    pointerScrollY = event.clientY;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    controller?.scroll(lines);
+  };
+
+  const handlePointerEnd = (event: PointerEvent) => {
+    if (activePointerId !== event.pointerId) {
+      return;
+    }
+
+    pointerScrollY = null;
+    activePointerId = null;
+  };
+
+  deps.container.addEventListener("pointerdown", handlePointerDown, {
+    capture: true
+  });
+  deps.container.addEventListener("pointermove", handlePointerMove, {
+    capture: true,
+    passive: false
+  });
+  deps.container.addEventListener("pointerup", handlePointerEnd, {
+    capture: true
+  });
+  deps.container.addEventListener("pointercancel", handlePointerEnd, {
     capture: true
   });
 
@@ -440,6 +499,9 @@ export function createTerminalTab(deps: {
     reconnect() {
       connect({ announce: true });
     },
+    scrollPage(direction: "back" | "forward") {
+      controller?.scroll(direction === "back" ? -terminal.rows : terminal.rows);
+    },
     toggleBrowserScroll() {
       browserScrollEnabled = !browserScrollEnabled;
       syncBrowserScrollMode();
@@ -473,6 +535,10 @@ export function createTerminalTab(deps: {
       deps.container.removeEventListener("touchmove", handleTouchMove, true);
       deps.container.removeEventListener("touchend", handleTouchEnd, true);
       deps.container.removeEventListener("touchcancel", handleTouchEnd, true);
+      deps.container.removeEventListener("pointerdown", handlePointerDown, true);
+      deps.container.removeEventListener("pointermove", handlePointerMove, true);
+      deps.container.removeEventListener("pointerup", handlePointerEnd, true);
+      deps.container.removeEventListener("pointercancel", handlePointerEnd, true);
       window.removeEventListener("resize", handleWindowResize);
       socket?.removeEventListener("open", attach);
       controller?.destroy();

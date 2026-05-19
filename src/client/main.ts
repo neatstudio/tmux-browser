@@ -16,6 +16,7 @@ import {
   type TerminalInputPrompt
 } from "./terminal/inputPromptDetector";
 import { syncTerminalPanelVisibility } from "./terminal/panelVisibility";
+import { getCompactPageTitle } from "./pageTitle";
 import {
   applyTheme,
   getTheme,
@@ -32,6 +33,7 @@ type MountedTerminal = {
   clear: () => void;
   redraw: () => void;
   reconnect: () => void;
+  scrollPage: (direction: "back" | "forward") => void;
   toggleBrowserScroll: () => boolean;
   isBrowserScrollEnabled: () => boolean;
   setTheme: (theme: AppTheme["terminalTheme"]) => void;
@@ -61,6 +63,8 @@ app.innerHTML = `
 const tabsRoot = app.querySelector<HTMLElement>(".tabs-root")!;
 const dashboardRoot = app.querySelector<HTMLElement>(".dashboard-root")!;
 const panelsRoot = app.querySelector<HTMLElement>(".panels-root")!;
+
+document.title = getCompactPageTitle(window.location.hostname);
 
 let activeTheme = getTheme(loadThemeId());
 let draftSessionName = "";
@@ -282,6 +286,7 @@ function ensureTerminal(tab: BrowserTab) {
     clear: mounted.clear,
     redraw: mounted.redraw,
     reconnect: mounted.reconnect,
+    scrollPage: mounted.scrollPage,
     toggleBrowserScroll: mounted.toggleBrowserScroll,
     isBrowserScrollEnabled: mounted.isBrowserScrollEnabled,
     setTheme: mounted.setTheme,
@@ -745,6 +750,12 @@ function createSessionStatusActions(tab: BrowserTab, mounted: MountedTerminal) {
     },
     onReconnect: () => {
       mounted.reconnect();
+    },
+    onScrollHistoryBack: () => {
+      mounted.scrollPage("back");
+    },
+    onScrollHistoryForward: () => {
+      mounted.scrollPage("forward");
     },
     onToggleBrowserScroll: () => {
       mounted.toggleBrowserScroll();
