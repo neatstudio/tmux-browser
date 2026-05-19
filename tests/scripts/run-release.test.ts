@@ -38,6 +38,7 @@ describe("run release scripts", () => {
 
   it("loads node through nvm in non-interactive service shells", () => {
     expect(packScript).toContain('local node_version="\\${TMUX_UI_NODE_VERSION:-22}"');
+    expect(packScript).toContain('[[ -d "$directory" ]] || return 0');
     expect(packScript).toContain('prepend_path_if_dir "$HOME/.local/bin"');
     expect(packScript).toContain('prepend_path_if_dir "$HOME/.hermes/node/bin"');
     expect(packScript).toContain('prepend_path_if_dir "/opt/homebrew/bin"');

@@ -69,7 +69,7 @@ load_node_runtime() {
 
   prepend_path_if_dir() {
     local directory="$1"
-    [[ -d "$directory" ]] || return
+    [[ -d "$directory" ]] || return 0
 
     case ":$PATH:" in
       *":$directory:"*) ;;
@@ -145,7 +145,7 @@ load_node_runtime() {
 
   prepend_path_if_dir() {
     local directory="$1"
-    [[ -d "$directory" ]] || return
+    [[ -d "$directory" ]] || return 0
 
     case ":$PATH:" in
       *":$directory:"*) ;;
@@ -350,7 +350,7 @@ load_node_runtime() {
 
   prepend_path_if_dir() {
     local directory="$1"
-    [[ -d "$directory" ]] || return
+    [[ -d "$directory" ]] || return 0
 
     case ":$PATH:" in
       *":$directory:"*) ;;
