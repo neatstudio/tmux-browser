@@ -65,10 +65,20 @@ cd "$(dirname "$0")"
 
 load_node_runtime() {
   export NVM_DIR="\${NVM_DIR:-$HOME/.nvm}"
+  local node_version="\${TMUX_UI_NODE_VERSION:-22}"
 
   if [[ -s "$NVM_DIR/nvm.sh" ]]; then
     # shellcheck disable=SC1090
     . "$NVM_DIR/nvm.sh"
+  fi
+
+  if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+    return
+  fi
+
+  if command -v nvm >/dev/null 2>&1; then
+    nvm install "$node_version"
+    nvm use "$node_version"
   fi
 }
 
@@ -107,10 +117,20 @@ cd "$(dirname "$0")"
 
 load_node_runtime() {
   export NVM_DIR="\${NVM_DIR:-$HOME/.nvm}"
+  local node_version="\${TMUX_UI_NODE_VERSION:-22}"
 
   if [[ -s "$NVM_DIR/nvm.sh" ]]; then
     # shellcheck disable=SC1090
     . "$NVM_DIR/nvm.sh"
+  fi
+
+  if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+    return
+  fi
+
+  if command -v nvm >/dev/null 2>&1; then
+    nvm install "$node_version"
+    nvm use "$node_version"
   fi
 }
 
@@ -275,10 +295,20 @@ require_command() {
 
 load_node_runtime() {
   export NVM_DIR="\${NVM_DIR:-$HOME/.nvm}"
+  local node_version="\${TMUX_UI_NODE_VERSION:-22}"
 
   if [[ -s "$NVM_DIR/nvm.sh" ]]; then
     # shellcheck disable=SC1090
     . "$NVM_DIR/nvm.sh"
+  fi
+
+  if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+    return
+  fi
+
+  if command -v nvm >/dev/null 2>&1; then
+    nvm install "$node_version"
+    nvm use "$node_version"
   fi
 }
 

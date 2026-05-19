@@ -36,6 +36,12 @@ describe("run release scripts", () => {
     expect(packScript).toContain('export TMUX_UI_BUILT_AT="\\${TMUX_UI_BUILT_AT:-');
   });
 
+  it("loads node through nvm in non-interactive service shells", () => {
+    expect(packScript).toContain('local node_version="\\${TMUX_UI_NODE_VERSION:-22}"');
+    expect(packScript).toContain('nvm install "$node_version"');
+    expect(packScript).toContain('nvm use "$node_version"');
+  });
+
   it("uses ~/.tmux-ui and a dedicated tmux-ui tmux session", () => {
     expect(packScript).toContain('APP_HOME="\\${TMUX_UI_HOME:-$HOME/.tmux-ui}"');
     expect(packScript).toContain('APP_SESSION="\\${TMUX_UI_SESSION:-tmux-ui}"');
