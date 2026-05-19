@@ -1,3 +1,5 @@
+import type { TerminalInputPrompt } from "../../../shared/inputPromptDetector.js";
+
 export type TmuxSessionSummary = {
   name: string;
   windows: number;
@@ -12,6 +14,7 @@ export type TmuxSessionSummary = {
   paneDead: boolean;
   paneDeadStatus: number | null;
   preview: string | null;
+  inputPrompt: TerminalInputPrompt | null;
   panes?: TmuxPaneSummary[];
 };
 
@@ -60,7 +63,8 @@ export function parseTmuxListOutput(output: string): TmuxSessionSummary[] {
         gitDirty: null,
         paneDead: false,
         paneDeadStatus: null,
-        preview: null
+        preview: null,
+        inputPrompt: null
       };
     });
 }
@@ -152,7 +156,8 @@ export function mergeTmuxPaneSummaries(
       gitDirty: null,
       paneDead: activePane?.paneDead ?? false,
       paneDeadStatus: activePane?.paneDeadStatus ?? null,
-      preview: session.preview
+      preview: session.preview,
+      inputPrompt: session.inputPrompt
     };
 
     return options.includePanes ? { ...merged, panes: sessionPanes } : merged;

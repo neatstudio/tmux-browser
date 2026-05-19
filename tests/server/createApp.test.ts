@@ -384,7 +384,8 @@ describe("createApp", () => {
     ]);
     expect(listSessions).toHaveBeenCalledWith({
       includePreview: true,
-      includePanes: true
+      includePanes: true,
+      includeInputPrompt: true
     });
   });
 
@@ -436,7 +437,8 @@ describe("createApp", () => {
     expect(response.body[0]).not.toHaveProperty("preview");
     expect(listSessions).toHaveBeenCalledWith({
       includePreview: false,
-      includePanes: true
+      includePanes: true,
+      includeInputPrompt: true
     });
   });
 });

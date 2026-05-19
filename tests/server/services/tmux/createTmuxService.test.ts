@@ -35,7 +35,8 @@ describe("createTmuxService", () => {
         gitDirty: true,
         paneDead: false,
         paneDeadStatus: null,
-        preview: null
+        preview: null,
+        inputPrompt: null
       },
       {
         name: "ops",
@@ -50,7 +51,8 @@ describe("createTmuxService", () => {
         gitDirty: null,
         paneDead: false,
         paneDeadStatus: null,
-        preview: null
+        preview: null,
+        inputPrompt: null
       }
     ]);
     expect(run).toHaveBeenNthCalledWith(1, "list-sessions", [
@@ -101,6 +103,44 @@ describe("createTmuxService", () => {
       "-S",
       "-20"
     ]);
+  });
+
+  it("detects input prompts from captured panes when requested", async () => {
+    const run = vi
+      .fn()
+      .mockResolvedValueOnce({
+        stdout: "build\t1\t0\t1714200000",
+        stderr: ""
+      })
+      .mockResolvedValueOnce({
+        stdout: "build\t%1\t0\tzsh\t1\t0\t1\tcodex\t/home/app\t0\t\t100",
+        stderr: ""
+      })
+      .mockResolvedValueOnce({
+        stdout:
+          "1. Yes, proceed (y)\n2. Yes, and don't ask again for these files (a)\n3. No, and tell Codex what to do differently (esc)\n",
+        stderr: ""
+      });
+    const service = createTmuxService({
+      run,
+      getGitSummary: vi.fn().mockResolvedValue(null)
+    });
+
+    await expect(
+      service.listSessions({ includeInputPrompt: true })
+    ).resolves.toMatchObject([
+      {
+        name: "build",
+        inputPrompt: {
+          actions: [
+            { label: "y", input: "y\r" },
+            { label: "a", input: "a\r" },
+            { label: "esc", input: "\u001b" }
+          ]
+        }
+      }
+    ]);
+    expect(run.mock.calls.filter(([command]) => command === "capture-pane")).toHaveLength(1);
   });
 
   it("creates a detached session under the user home with color-capable terminal environment", async () => {
@@ -203,6 +243,10 @@ describe("createTmuxService", () => {
         stdout:
           "build\t%1\t0\tzsh\t1\t0\t0\tzsh\t/home/app\t0\t\t100\nbuild\t%2\t0\tzsh\t1\t1\t1\ttail\t/home/app/logs\t0\t\t101",
         stderr: ""
+      })
+      .mockResolvedValueOnce({
+        stdout: "Do you want to continue? [y/a/n]\n",
+        stderr: ""
       });
     const service = createTmuxService({
       run,
@@ -261,6 +305,13 @@ describe("createTmuxService", () => {
         { paneId: "%2", paneIndex: 1 }
       ]
     });
+    expect(run).toHaveBeenNthCalledWith(3, "capture-pane", [
+      "-p",
+      "-t",
+      "build",
+      "-S",
+      "-20"
+    ]);
     expect(run).toHaveBeenNthCalledWith(1, "list-sessions", [
       "-F",
       "#{session_name}\t#{session_windows}\t#{session_attached}\t#{session_activity}"

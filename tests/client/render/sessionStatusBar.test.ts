@@ -22,6 +22,7 @@ const SESSION: SessionSummary = {
   paneDead: false,
   paneDeadStatus: null,
   preview: null,
+  inputPrompt: null,
   panes: [
     {
       sessionName: "build",
@@ -149,7 +150,7 @@ describe("sessionStatusBar", () => {
     const onRename = vi.fn();
     const onKill = vi.fn();
     const onSendCommand = vi.fn();
-    const onViewSession = vi.fn();
+    const onSwitchSession = vi.fn();
     const onPreviewImage = vi.fn();
     const onSplitHorizontal = vi.fn();
     const onSplitVertical = vi.fn();
@@ -166,7 +167,7 @@ describe("sessionStatusBar", () => {
       onRename,
       onKill,
       onSendCommand,
-      onViewSession,
+      onSwitchSession,
       onPreviewImage,
       onSplitHorizontal,
       onSplitVertical,
@@ -185,7 +186,7 @@ describe("sessionStatusBar", () => {
     root.querySelector<HTMLButtonElement>("[data-action='config']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='rename']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='send']")?.click();
-    root.querySelector<HTMLButtonElement>("[data-action='view']")?.click();
+    root.querySelector<HTMLButtonElement>("[data-action='switch-session']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='preview-image']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='split-horizontal']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='split-vertical']")?.click();
@@ -201,7 +202,7 @@ describe("sessionStatusBar", () => {
     expect(onConfig).toHaveBeenCalledOnce();
     expect(onRename).toHaveBeenCalledOnce();
     expect(onSendCommand).toHaveBeenCalledOnce();
-    expect(onViewSession).toHaveBeenCalledOnce();
+    expect(onSwitchSession).toHaveBeenCalledOnce();
     expect(onPreviewImage).toHaveBeenCalledOnce();
     expect(onSplitHorizontal).toHaveBeenCalledOnce();
     expect(onSplitVertical).toHaveBeenCalledOnce();
@@ -209,6 +210,24 @@ describe("sessionStatusBar", () => {
     expect(onScrollHistoryBack).toHaveBeenCalledOnce();
     expect(onScrollHistoryForward).toHaveBeenCalledOnce();
     expect(onKill).toHaveBeenCalledOnce();
+  });
+
+  it("keeps switch session wording on the status bar action", () => {
+    const root = document.createElement("div");
+    const onSwitchSession = vi.fn();
+
+    renderSessionStatusBar(root, SESSION, {
+      onSwitchSession
+    });
+
+    const switchButton = root.querySelector<HTMLButtonElement>(
+      "[data-action='switch-session']"
+    )!;
+
+    expect(switchButton.textContent).toBe("Switch");
+    expect(switchButton.title).toBe("Switch session");
+    switchButton.click();
+    expect(onSwitchSession).toHaveBeenCalledOnce();
   });
 
   it("uses readable compact labels for status bar actions", () => {
@@ -223,7 +242,7 @@ describe("sessionStatusBar", () => {
       onRename: vi.fn(),
       onKill: vi.fn(),
       onSendCommand: vi.fn(),
-      onViewSession: vi.fn(),
+      onSwitchSession: vi.fn(),
       onPreviewImage: vi.fn(),
       onSplitHorizontal: vi.fn(),
       onSplitVertical: vi.fn(),
@@ -244,7 +263,7 @@ describe("sessionStatusBar", () => {
       "Cfg",
       "Ren",
       "Send",
-      "View",
+      "Switch",
       "Img",
       "Split",
       "Stack",
@@ -324,7 +343,7 @@ describe("sessionStatusBar", () => {
       root.querySelector<HTMLButtonElement>("[data-action='send']")?.disabled
     ).toBe(true);
     expect(
-      root.querySelector<HTMLButtonElement>("[data-action='view']")?.disabled
+      root.querySelector<HTMLButtonElement>("[data-action='switch-session']")?.disabled
     ).toBe(true);
     expect(
       root.querySelector<HTMLButtonElement>("[data-action='preview-image']")?.disabled

@@ -80,6 +80,8 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
         session.paneDead === nextSession.paneDead &&
         session.paneDeadStatus === nextSession.paneDeadStatus &&
         session.preview === nextSession.preview &&
+        JSON.stringify(session.inputPrompt ?? null) ===
+          JSON.stringify(nextSession.inputPrompt ?? null) &&
         JSON.stringify(session.panes ?? null) ===
           JSON.stringify(nextSession.panes ?? null)
       );

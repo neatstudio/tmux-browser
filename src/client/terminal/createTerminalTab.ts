@@ -45,6 +45,38 @@ export function createTerminalTabController(deps: {
   onClosed: () => void;
 }) {
   let closedByApp = false;
+  const pendingMessages: string[] = [];
+
+  function isSocketOpen() {
+    if (deps.socket.readyState === undefined) {
+      return true;
+    }
+
+    const openState = deps.socket.OPEN ?? WebSocket.OPEN;
+
+    return deps.socket.readyState === openState;
+  }
+
+  function sendOrQueue(message: unknown) {
+    const payload = JSON.stringify(message);
+
+    if (isSocketOpen()) {
+      deps.socket.send(payload);
+      return;
+    }
+
+    pendingMessages.push(payload);
+  }
+
+  function flushPendingMessages() {
+    while (pendingMessages.length > 0 && isSocketOpen()) {
+      const payload = pendingMessages.shift();
+
+      if (payload) {
+        deps.socket.send(payload);
+      }
+    }
+  }
 
   function handleMessage(message: ServerMessage) {
     if (message.type === "output") {
@@ -76,25 +108,27 @@ export function createTerminalTabController(deps: {
 
   deps.socket.addEventListener("message", handleSocketMessage);
   deps.socket.addEventListener("close", handleSocketClose);
+  deps.socket.addEventListener("open", flushPendingMessages);
 
   return {
     handleMessage,
     attach(message: AttachMessage) {
-      deps.socket.send(JSON.stringify(message));
+      sendOrQueue(message);
     },
     sendInput(data: string) {
-      deps.socket.send(JSON.stringify({ type: "input", data }));
+      sendOrQueue({ type: "input", data });
     },
     resize(cols: number, rows: number) {
-      deps.socket.send(JSON.stringify({ type: "resize", cols, rows }));
+      sendOrQueue({ type: "resize", cols, rows });
     },
     scroll(lines: number) {
-      deps.socket.send(JSON.stringify({ type: "scroll", lines }));
+      sendOrQueue({ type: "scroll", lines });
     },
     destroy() {
       closedByApp = true;
       deps.socket.removeEventListener?.("message", handleSocketMessage);
       deps.socket.removeEventListener?.("close", handleSocketClose);
+      deps.socket.removeEventListener?.("open", flushPendingMessages);
       deps.socket.close();
     }
   };
@@ -318,7 +352,6 @@ export function createTerminalTab(deps: {
   };
 
   function connect(options: { announce?: boolean } = {}) {
-    socket?.removeEventListener("open", attach);
     controller?.destroy();
     socket = createTerminalSocket();
     controller = createTerminalTabController({
@@ -328,7 +361,7 @@ export function createTerminalTab(deps: {
       },
       onClosed: deps.onClosed
     });
-    socket.addEventListener("open", attach);
+    attach();
 
     if (options.announce) {
       outputBuffer.write("\r\n[reconnecting]\r\n");
@@ -567,7 +600,6 @@ export function createTerminalTab(deps: {
       deps.container.removeEventListener("pointerup", handlePointerEnd, true);
       deps.container.removeEventListener("pointercancel", handlePointerEnd, true);
       window.removeEventListener("resize", handleWindowResize);
-      socket?.removeEventListener("open", attach);
       controller?.destroy();
       controller = null;
       socket = null;

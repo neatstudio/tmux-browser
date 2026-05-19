@@ -232,6 +232,53 @@ describe("createTerminalTabController", () => {
     expect(onOutput).toHaveBeenCalledWith("\r\n[disconnected]\r\n");
   });
 
+  it("queues input until the websocket is open and attached", () => {
+    const listeners = new Map<string, (event?: Event) => void>();
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      addEventListener: vi.fn((type: string, listener: (event?: Event) => void) => {
+        listeners.set(type, listener);
+      }),
+      readyState: 0,
+      OPEN: 1
+    };
+    const controller = createTerminalTabController({
+      socket,
+      onClosed: vi.fn(),
+      onOutput: vi.fn()
+    });
+
+    controller.attach({
+      type: "attach",
+      tabId: "tab-1",
+      sessionName: "build",
+      cols: 120,
+      rows: 40
+    });
+    controller.sendInput("y\r");
+
+    expect(socket.send).not.toHaveBeenCalled();
+
+    socket.readyState = 1;
+    listeners.get("open")?.(new Event("open"));
+
+    expect(socket.send).toHaveBeenNthCalledWith(
+      1,
+      JSON.stringify({
+        type: "attach",
+        tabId: "tab-1",
+        sessionName: "build",
+        cols: 120,
+        rows: 40
+      })
+    );
+    expect(socket.send).toHaveBeenNthCalledWith(
+      2,
+      JSON.stringify({ type: "input", data: "y\r" })
+    );
+  });
+
   it("does not erase a pinned tab from storage during page reload socket close", () => {
     localStorage.clear();
     sessionStorage.clear();
@@ -590,12 +637,14 @@ describe("createTerminalTab", () => {
       sessionName: "build",
       onClosed: vi.fn()
     });
+    socket.send.mockClear();
+    terminalTestState.fitAddons[0]?.fit.mockClear();
 
     mounted.clear();
     mounted.redraw();
 
     expect(terminalTestState.terminals[0]?.instance.clear).toHaveBeenCalledOnce();
-    expect(terminalTestState.fitAddons[0]?.fit).toHaveBeenCalledTimes(2);
+    expect(terminalTestState.fitAddons[0]?.fit).toHaveBeenCalledOnce();
     expect(socket.send).toHaveBeenCalledWith(
       JSON.stringify({ type: "resize", cols: 120, rows: 40 })
     );
@@ -835,6 +884,7 @@ describe("createTerminalTab", () => {
     });
     const terminal = terminalTestState.terminals[0]?.instance;
     terminal!.modes.bracketedPasteMode = true;
+    socket.send.mockClear();
 
     const handled = terminal?.customKeyEventHandler?.({
       type: "keydown",
@@ -879,6 +929,7 @@ describe("createTerminalTab", () => {
       sessionName: "build",
       onClosed: vi.fn()
     });
+    socket.send.mockClear();
 
     const handled = terminalTestState.terminals[0]?.instance.customKeyEventHandler?.({
       type: "keydown",
@@ -1177,6 +1228,7 @@ describe("createTerminalTab", () => {
       sessionName: "build",
       onClosed: vi.fn()
     });
+    socket.send.mockClear();
 
     mounted.scrollPage("back");
     mounted.scrollPage("forward");
@@ -1268,6 +1320,7 @@ describe("createTerminalTab", () => {
       sessionName: "build",
       onClosed: vi.fn()
     });
+    socket.send.mockClear();
 
     const pageUpHandled = terminalTestState.terminals[0]?.instance.customKeyEventHandler?.({
       type: "keydown",

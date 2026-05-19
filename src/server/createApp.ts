@@ -356,7 +356,8 @@ export function createApp(options: {
       res.json(
         await tmuxService.listSessions({
           includePreview: true,
-          includePanes: true
+          includePanes: true,
+          includeInputPrompt: true
         })
       );
     } catch (error) {
@@ -370,7 +371,8 @@ export function createApp(options: {
         (
           await tmuxService.listSessions({
             includePreview: false,
-            includePanes: true
+            includePanes: true,
+            includeInputPrompt: true
           })
         ).map(stripPreview)
       );

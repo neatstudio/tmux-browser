@@ -27,7 +27,8 @@ describe("parseTmuxListOutput", () => {
         gitDirty: null,
         paneDead: false,
         paneDeadStatus: null,
-        preview: null
+        preview: null,
+        inputPrompt: null
       },
       {
         name: "ops",
@@ -42,7 +43,8 @@ describe("parseTmuxListOutput", () => {
         gitDirty: null,
         paneDead: false,
         paneDeadStatus: null,
-        preview: null
+        preview: null,
+        inputPrompt: null
       }
     ]);
   });
@@ -70,7 +72,8 @@ describe("parseTmuxListOutput", () => {
         gitDirty: null,
         paneDead: true,
         paneDeadStatus: 1,
-        preview: null
+        preview: null,
+        inputPrompt: null
       }
     ]);
   });
@@ -99,6 +102,7 @@ describe("parseTmuxListOutput", () => {
         paneDead: false,
         paneDeadStatus: null,
         preview: null,
+        inputPrompt: null,
         panes: [
           {
             sessionName: "build",

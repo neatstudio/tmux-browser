@@ -1,3 +1,5 @@
+import type { TerminalInputPrompt } from "../../shared/inputPromptDetector";
+
 export type SessionSummary = {
   name: string;
   windows: number;
@@ -12,6 +14,7 @@ export type SessionSummary = {
   paneDead: boolean;
   paneDeadStatus: number | null;
   preview: string | null;
+  inputPrompt: TerminalInputPrompt | null;
   panes?: PaneSummary[];
 };
 

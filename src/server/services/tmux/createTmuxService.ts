@@ -5,6 +5,7 @@ import {
   type TmuxSessionSummary
 } from "./parseTmuxListOutput.js";
 import { homedir } from "node:os";
+import { detectTerminalInputPrompt } from "../../../shared/inputPromptDetector.js";
 import {
   getGitSummary,
   type GitSummary
@@ -23,6 +24,7 @@ export type SplitPaneDirection = "horizontal" | "vertical";
 export type ListSessionsOptions = {
   includePreview?: boolean;
   includePanes?: boolean;
+  includeInputPrompt?: boolean;
 };
 
 export type TmuxService = {
@@ -134,6 +136,22 @@ export function createTmuxService(deps: {
     }
   }
 
+  async function getSessionInputPrompt(sessionName: string) {
+    try {
+      const result = await run("capture-pane", [
+        "-p",
+        "-t",
+        sessionName,
+        "-S",
+        `-${PREVIEW_LINE_LIMIT}`
+      ]);
+
+      return detectTerminalInputPrompt(result.stdout);
+    } catch {
+      return null;
+    }
+  }
+
   return {
     async listSessions(options: ListSessionsOptions = {}) {
       try {
@@ -155,16 +173,18 @@ export function createTmuxService(deps: {
 
         return Promise.all(
           sessions.map(async (session) => {
-            const [gitSummary, preview] = await Promise.all([
+            const [gitSummary, preview, inputPrompt] = await Promise.all([
               getSessionGitSummary(session.currentPath),
-              options.includePreview ? getSessionPreview(session.name) : null
+              options.includePreview ? getSessionPreview(session.name) : null,
+              options.includeInputPrompt ? getSessionInputPrompt(session.name) : null
             ]);
 
             return {
               ...session,
               gitBranch: gitSummary?.branch ?? null,
               gitDirty: gitSummary?.dirty ?? null,
-              preview
+              preview,
+              inputPrompt
             };
           })
         );
@@ -206,12 +226,16 @@ export function createTmuxService(deps: {
         throw new Error("Tmux session not found");
       }
 
-      const gitSummary = await getSessionGitSummary(session.currentPath);
+      const [gitSummary, inputPrompt] = await Promise.all([
+        getSessionGitSummary(session.currentPath),
+        getSessionInputPrompt(session.name)
+      ]);
 
       return {
         ...session,
         gitBranch: gitSummary?.branch ?? null,
-        gitDirty: gitSummary?.dirty ?? null
+        gitDirty: gitSummary?.dirty ?? null,
+        inputPrompt
       };
     },
     async createSession(name: string) {

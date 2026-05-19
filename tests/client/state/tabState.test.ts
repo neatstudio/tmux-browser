@@ -35,6 +35,21 @@ describe("createTabState", () => {
     expect(state.getActiveTabId()).toBeNull();
   });
 
+  it("activates an existing tab instead of opening duplicate session tabs", () => {
+    const state = createTabState();
+    const first = state.openTab("build");
+    state.openTab("logs");
+
+    const reopened = state.openTab("build");
+
+    expect(reopened).toBe(first);
+    expect(state.getTabs()).toEqual([
+      { id: first.id, sessionName: "build", title: "build" },
+      { id: expect.any(String), sessionName: "logs", title: "logs" }
+    ]);
+    expect(state.getActiveTabId()).toBe(first.id);
+  });
+
   it("renames open tabs without closing the active terminal", () => {
     const state = createTabState();
     const opened = state.openTab("build");

@@ -76,11 +76,12 @@ let activeTheme = getTheme(loadThemeId());
 let draftSessionName = "";
 let activeConfigSessionName: string | null = null;
 let activeSendSessionName: string | null = null;
+let activeSwitchSessionName: string | null = null;
 let draftSendTargetName = "";
 let draftSendCommand = "";
 let activeInputPrompt:
   | {
-      tabId: string;
+      tabId: string | null;
       sessionName: string;
       prompt: TerminalInputPrompt;
       signature: string;
@@ -144,6 +145,12 @@ function getOrOpenTab(sessionName: string) {
   }
 
   return tabState.openTab(sessionName);
+}
+
+function getTabForSession(sessionName: string) {
+  return tabState
+    .getTabs()
+    .find((tab) => tab.sessionName === sessionName) ?? null;
 }
 
 function closeTab(tabId: string, options: { force?: boolean } = {}) {
@@ -223,6 +230,36 @@ function rememberTerminalOutput(tabId: string, visibleText: string) {
     signature
   };
   scheduleRender();
+}
+
+function rememberSessionInputPrompt(sessionName: string, prompt: TerminalInputPrompt | null) {
+  if (!prompt) {
+    return;
+  }
+
+  const tab = getTabForSession(sessionName);
+  const signature = `${sessionName}:${prompt.snippet}:${prompt.actions
+    .map((action) => action.label)
+    .join(",")}`;
+  const signatureKey = tab?.id ?? `session:${sessionName}`;
+
+  if (terminalPromptSignatures.get(signatureKey) === signature) {
+    return;
+  }
+
+  terminalPromptSignatures.set(signatureKey, signature);
+  activeInputPrompt = {
+    tabId: tab?.id ?? null,
+    sessionName,
+    prompt,
+    signature
+  };
+}
+
+function rememberSessionInputPrompts() {
+  store.getState().sessions.forEach((session) => {
+    rememberSessionInputPrompt(session.name, session.inputPrompt ?? null);
+  });
 }
 
 function handleTerminalOutput(tabId: string, _data: string, visibleText: string) {
@@ -483,18 +520,19 @@ function getSessionNames() {
   return store.getState().sessions.map((session) => session.name);
 }
 
-function promptViewSession(currentSessionName: string) {
-  const sessionNames = getSessionNames();
-  const targetSessionName = window.prompt(
-    `View session: ${sessionNames.join(", ")}`,
-    currentSessionName
-  )?.trim();
+function switchToSession(sessionName: string) {
+  getOrOpenTab(sessionName);
+  activeSwitchSessionName = null;
+  scheduleRender();
+}
 
-  if (!targetSessionName || !sessionNames.includes(targetSessionName)) {
-    return;
-  }
+function openSwitchSessionPanel(currentSessionName: string) {
+  activeSwitchSessionName = currentSessionName;
+  scheduleRender();
+}
 
-  getOrOpenTab(targetSessionName);
+function closeSwitchSessionPanel() {
+  activeSwitchSessionName = null;
   scheduleRender();
 }
 
@@ -939,6 +977,66 @@ function renderSendCommandPanel() {
   input.focus();
 }
 
+function renderSwitchSessionPanel() {
+  panelsRoot.querySelector(".switch-session-backdrop")?.remove();
+
+  if (!activeSwitchSessionName) {
+    return;
+  }
+
+  const sessions = store.getState().sessions;
+  const backdrop = document.createElement("div");
+  backdrop.className = "send-command-backdrop switch-session-backdrop";
+  backdrop.addEventListener("click", (event) => {
+    if (event.target === backdrop) {
+      closeSwitchSessionPanel();
+    }
+  });
+
+  const panel = document.createElement("section");
+  panel.className = "send-command-panel switch-session-panel";
+  panel.setAttribute("role", "dialog");
+  panel.setAttribute("aria-modal", "true");
+  panel.setAttribute("aria-label", "Switch session");
+
+  const header = document.createElement("div");
+  header.className = "send-command-header";
+
+  const title = document.createElement("h2");
+  title.textContent = "Switch session";
+
+  const closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.textContent = "Close";
+  closeButton.addEventListener("click", closeSwitchSessionPanel);
+
+  header.append(title, closeButton);
+
+  const sessionList = document.createElement("div");
+  sessionList.className = "send-command-targets switch-session-targets";
+  sessionList.setAttribute("aria-label", "Sessions");
+
+  sessions.forEach((session) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className =
+      session.name === activeSwitchSessionName ? "is-selected" : "";
+    button.textContent = session.name;
+    button.title = [
+      session.name,
+      session.currentPath,
+      session.currentCommand
+    ].filter(Boolean).join(" · ");
+    button.addEventListener("click", () => switchToSession(session.name));
+    sessionList.append(button);
+  });
+
+  panel.append(header, sessionList);
+  backdrop.append(panel);
+  panelsRoot.append(backdrop);
+  sessionList.querySelector<HTMLButtonElement>("button")?.focus();
+}
+
 function closeInputPrompt() {
   activeInputPrompt = null;
   scheduleRender();
@@ -951,14 +1049,16 @@ function sendInputPromptAction(input: string) {
 
   const tab = tabState
     .getTabs()
-    .find((item) => item.id === activeInputPrompt?.tabId);
+    .find((item) =>
+      activeInputPrompt?.tabId
+        ? item.id === activeInputPrompt.tabId
+        : item.sessionName === activeInputPrompt?.sessionName
+    ) ?? getOrOpenTab(activeInputPrompt.sessionName);
 
-  if (tab) {
-    tabState.setActiveTab(tab.id);
-    ensureTerminal(tab);
-  }
+  tabState.setActiveTab(tab.id);
+  ensureTerminal(tab);
 
-  mountedTerminals.get(activeInputPrompt.tabId)?.sendInput(input);
+  mountedTerminals.get(tab.id)?.sendInput(input);
   closeInputPrompt();
 }
 
@@ -967,7 +1067,15 @@ function openInputPromptTab() {
     return;
   }
 
-  tabState.setActiveTab(activeInputPrompt.tabId);
+  const tab =
+    activeInputPrompt.tabId
+      ? tabState.getTabs().find((item) => item.id === activeInputPrompt?.tabId)
+      : getOrOpenTab(activeInputPrompt.sessionName);
+
+  if (tab) {
+    tabState.setActiveTab(tab.id);
+  }
+
   scheduleRender();
 }
 
@@ -1106,7 +1214,7 @@ function createSessionStatusActions(tab: BrowserTab, mounted: MountedTerminal) {
     },
     onRename: () => promptRenameSession(tab.sessionName),
     onSendCommand: () => openSendCommandPanel(tab.sessionName),
-    onViewSession: () => promptViewSession(tab.sessionName),
+    onSwitchSession: () => openSwitchSessionPanel(tab.sessionName),
     onPreviewImage: () => openImagePreviewPanel(tab.sessionName),
     onSplitHorizontal: () => splitPane(tab.sessionName, "horizontal"),
     onSplitVertical: () => splitPane(tab.sessionName, "vertical"),
@@ -1117,6 +1225,7 @@ function createSessionStatusActions(tab: BrowserTab, mounted: MountedTerminal) {
 }
 
 function render() {
+  rememberSessionInputPrompts();
   const tabs = tabState.getTabs();
   const activeTabId = tabState.getActiveTabId();
   const isDashboardActive = activeTabId === null;
@@ -1201,6 +1310,7 @@ function render() {
   panelsRoot.querySelector(".session-config-backdrop")?.remove();
   renderImagePreviewPanel();
   renderSendCommandPanel();
+  renderSwitchSessionPanel();
   renderInputPromptToast();
 
   if (activeTabId !== null && activeConfigSessionName) {

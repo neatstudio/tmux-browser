@@ -44,6 +44,13 @@ export function createTabState() {
       return activeTabId;
     },
     openTab(sessionName: string) {
+      const existing = tabs.find((tab) => tab.sessionName === sessionName);
+
+      if (existing) {
+        activeTabId = existing.id;
+        return existing;
+      }
+
       const tab: BrowserTab = {
         id: `${sessionName}-${Date.now()}`,
         sessionName,

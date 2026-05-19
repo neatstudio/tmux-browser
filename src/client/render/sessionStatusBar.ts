@@ -12,7 +12,7 @@ export type SessionStatusBarActions = {
   onConfig?: () => void;
   onRename?: () => void;
   onSendCommand?: () => void;
-  onViewSession?: () => void;
+  onSwitchSession?: () => void;
   onPreviewImage?: () => void;
   onSplitHorizontal?: () => void;
   onSplitVertical?: () => void;
@@ -203,7 +203,7 @@ function renderStatusActions(
     createActionButton("config", "Cfg", () => actions.onConfig?.(), !actions.onConfig, "Config session"),
     createActionButton("rename", "Ren", () => actions.onRename?.(), !actions.onRename, "Rename session"),
     createActionButton("send", "Send", () => actions.onSendCommand?.(), !actions.onSendCommand, "Send command"),
-    createActionButton("view", "View", () => actions.onViewSession?.(), !actions.onViewSession, "View session"),
+    createActionButton("switch-session", "Switch", () => actions.onSwitchSession?.(), !actions.onSwitchSession, "Switch session"),
     createActionButton("preview-image", "Img", () => actions.onPreviewImage?.(), !actions.onPreviewImage, "Preview image file"),
     createActionButton("split-horizontal", "Split", () => actions.onSplitHorizontal?.(), !actions.onSplitHorizontal, "Split pane horizontally"),
     createActionButton("split-vertical", "Stack", () => actions.onSplitVertical?.(), !actions.onSplitVertical, "Split pane vertically"),

@@ -18,6 +18,32 @@ describe("detectTerminalInputPrompt", () => {
     });
   });
 
+  it("detects numbered approval choices with explicit shortcut keys", () => {
+    expect(
+      detectTerminalInputPrompt(
+        [
+          "1. Yes, proceed (y)",
+          "2. Yes, and don't ask again for these files (a)",
+          "3. No, and tell Codex what to do differently (esc)",
+          "4. Pause and show details (p)"
+        ].join("\n")
+      )
+    ).toEqual({
+      snippet: [
+        "1. Yes, proceed (y)",
+        "2. Yes, and don't ask again for these files (a)",
+        "3. No, and tell Codex what to do differently (esc)",
+        "4. Pause and show details (p)"
+      ].join("\n"),
+      actions: [
+        { label: "y", input: "y\r" },
+        { label: "a", input: "a\r" },
+        { label: "esc", input: "\u001b" },
+        { label: "p", input: "p\r" }
+      ]
+    });
+  });
+
   it("detects press-enter waits from terminal apps", () => {
     const prompt = detectTerminalInputPrompt(
       "Build finished.\nPress Enter to continue"
