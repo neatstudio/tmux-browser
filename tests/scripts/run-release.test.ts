@@ -44,6 +44,7 @@ describe("run release scripts", () => {
     expect(packScript).toContain('prepend_path_if_dir "/opt/homebrew/bin"');
     expect(packScript).toContain('prepend_path_if_dir "/usr/local/bin"');
     expect(packScript).toContain("require_command tmux");
+    expect(packScript).toContain("require_command()");
     expect(packScript).toContain('nvm install "$node_version"');
     expect(packScript).toContain('nvm use "$node_version"');
   });
@@ -93,6 +94,7 @@ describe("run release scripts", () => {
     expect(packScript).toContain('systemctl restart "$SERVICE_NAME.service"');
     expect(packScript).toContain("wait_for_systemd_active()");
     expect(packScript).toContain('systemctl is-active --quiet "$SERVICE_NAME.service"');
+    expect(packScript).toContain("wait_for_http_health_once()");
     expect(packScript).toContain('rm -f "$SYSTEMD_UNIT_PATH"');
   });
 
@@ -110,6 +112,7 @@ describe("run release scripts", () => {
     expect(packScript).toContain("print_launchd_status()");
     expect(packScript).toContain("wait_for_launchd_running()");
     expect(packScript).toContain("is_launchd_running()");
+    expect(packScript).toContain('curl -fsS "http://$host:$port/api/health"');
     expect(packScript).toContain('echo "launchd service: $LAUNCHD_LABEL"');
     expect(packScript).toContain('echo "state: \\${state:-unknown}"');
   });

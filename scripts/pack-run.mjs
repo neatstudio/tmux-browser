@@ -182,6 +182,13 @@ load_node_runtime() {
   fi
 }
 
+require_command() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo "Missing required command: $1" >&2
+    exit 1
+  fi
+}
+
 detect_tailscale_host_with_ip() {
   if ! command -v ip >/dev/null 2>&1; then
     return
@@ -606,7 +613,7 @@ wait_for_systemd_active() {
   local attempt
 
   for attempt in 1 2 3 4 5 6 7 8 9 10; do
-    if systemctl is-active --quiet "$SERVICE_NAME.service"; then
+    if systemctl is-active --quiet "$SERVICE_NAME.service" && wait_for_http_health_once; then
       systemctl status "$SERVICE_NAME.service" --no-pager
       return
     fi
@@ -622,7 +629,7 @@ wait_for_launchd_running() {
   local attempt
 
   for attempt in 1 2 3 4 5 6 7 8 9 10; do
-    if is_launchd_running; then
+    if is_launchd_running && wait_for_http_health_once; then
       print_launchd_status
       return
     fi
@@ -633,6 +640,31 @@ wait_for_launchd_running() {
   tail -n 80 "$APP_HOME/tmux-ui.log" 2>/dev/null || true
   tail -n 80 "$APP_HOME/tmux-ui.err.log" 2>/dev/null || true
   exit 1
+}
+
+wait_for_http_health_once() {
+  local host port
+  host="\${HOST:-}"
+  port="\${PORT:-3000}"
+
+  if [[ -z "$host" ]]; then
+    if command -v ip >/dev/null 2>&1; then
+      host="$(ip -o -4 addr show scope global | awk '{ print $4 }' | cut -d/ -f1 | awk '/^100\\./ { print; exit }')"
+    fi
+
+    if [[ -z "$host" ]] && command -v ifconfig >/dev/null 2>&1; then
+      host="$(ifconfig 2>/dev/null | awk '/inet / { print $2 }' | awk '/^100\\./ { print; exit }')"
+    fi
+  fi
+
+  [[ -n "$host" ]] || host="127.0.0.1"
+
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsS "http://$host:$port/api/health" >/dev/null 2>&1
+    return
+  fi
+
+  return 0
 }
 
 install_launchd_service() {
