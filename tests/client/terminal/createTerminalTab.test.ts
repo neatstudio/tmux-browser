@@ -44,6 +44,7 @@ const terminalTestState = vi.hoisted(() => {
     terminals,
     fitAddons,
     webglAddons,
+    fitShouldThrow: false,
     webglConstructShouldThrow: false,
     webglLoadShouldThrow: false
   };
@@ -135,7 +136,13 @@ vi.mock("@xterm/addon-webgl", () => ({
 
 vi.mock("@xterm/addon-fit", () => ({
   FitAddon: class {
-    fit = vi.fn();
+    fit = vi.fn(() => {
+      if (terminalTestState.fitShouldThrow) {
+        throw new DOMException(
+          "An attempt was made to use an object that is not, or is no longer, usable"
+        );
+      }
+    });
 
     constructor() {
       terminalTestState.fitAddons.push(this);
@@ -384,6 +391,7 @@ describe("createTerminalTab", () => {
     terminalTestState.terminals.length = 0;
     terminalTestState.fitAddons.length = 0;
     terminalTestState.webglAddons.length = 0;
+    terminalTestState.fitShouldThrow = false;
     terminalTestState.webglConstructShouldThrow = false;
     terminalTestState.webglLoadShouldThrow = false;
     vi.unstubAllGlobals();
@@ -649,6 +657,41 @@ describe("createTerminalTab", () => {
       JSON.stringify({ type: "resize", cols: 120, rows: 40 })
     );
 
+    mounted.destroy();
+  });
+
+  it("keeps redraw from throwing when the terminal renderer is no longer usable", () => {
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    };
+
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        constructor() {
+          return socket;
+        }
+      }
+    );
+
+    const mounted = createTerminalTab({
+      container: document.createElement("div"),
+      tabId: "tab-1",
+      sessionName: "build",
+      onClosed: vi.fn()
+    });
+
+    terminalTestState.fitShouldThrow = true;
+
+    expect(() => mounted.redraw()).not.toThrow();
+    expect(socket.send).not.toHaveBeenCalledWith(
+      JSON.stringify({ type: "resize", cols: 120, rows: 40 })
+    );
+
+    terminalTestState.fitShouldThrow = false;
     mounted.destroy();
   });
 

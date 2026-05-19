@@ -228,6 +228,8 @@ APP_HOME="\${TMUX_UI_HOME:-$HOME/.tmux-ui}"
 APP_SESSION="\${TMUX_UI_SESSION:-tmux-ui}"
 SERVICE_NAME="\${TMUX_UI_SERVICE_NAME:-tmux-ui}"
 SYSTEMD_UNIT_PATH="\${TMUX_UI_SYSTEMD_UNIT:-/etc/systemd/system/$SERVICE_NAME.service}"
+LAUNCHD_LABEL="\${TMUX_UI_LAUNCHD_LABEL:-com.neatstudio.$SERVICE_NAME}"
+LAUNCHD_PLIST_PATH="\${TMUX_UI_LAUNCHD_PLIST:-$HOME/Library/LaunchAgents/$LAUNCHD_LABEL.plist}"
 PID_FILE="\${APP_HOME}/tmux-ui.pid"
 APP_BIN_DIR="$APP_HOME/bin"
 USER_BIN_DIR="\${TMUX_UI_USER_BIN:-$HOME/.local/bin}"
@@ -337,6 +339,8 @@ Environment:
   TMUX_UI_SESSION   tmux session for restart/stop, default: tmux-ui
   TMUX_UI_SERVICE_NAME systemd service name, default: tmux-ui
   TMUX_UI_SYSTEMD_UNIT systemd unit path, default: /etc/systemd/system/$SERVICE_NAME.service
+  TMUX_UI_LAUNCHD_LABEL macOS launchd label, default: com.neatstudio.$SERVICE_NAME
+  TMUX_UI_LAUNCHD_PLIST macOS launchd plist path, default: ~/Library/LaunchAgents/$LAUNCHD_LABEL.plist
   HOST              Bind host for start, default: first Tailscale 100.x address
   PORT              Bind port for start, default: 3000
 
@@ -417,6 +421,20 @@ stop_systemd_service_if_present() {
   fi
 }
 
+is_macos() {
+  [[ "$(uname -s)" == "Darwin" ]]
+}
+
+stop_launchd_service_if_present() {
+  if ! is_macos || ! command -v launchctl >/dev/null 2>&1; then
+    return
+  fi
+
+  if [[ -f "$LAUNCHD_PLIST_PATH" ]]; then
+    launchctl bootout "gui/$(id -u)" "$LAUNCHD_PLIST_PATH" 2>/dev/null || true
+  fi
+}
+
 write_systemd_unit() {
   require_command systemctl
 
@@ -456,7 +474,107 @@ UNIT
   systemctl daemon-reload
 }
 
+write_launchd_plist() {
+  local plist_dir port_value host_value
+  plist_dir="$(dirname "$LAUNCHD_PLIST_PATH")"
+  port_value="\${PORT:-3000}"
+  host_value="\${HOST:-}"
+  mkdir -p "$plist_dir"
+
+  cat > "$LAUNCHD_PLIST_PATH" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>$LAUNCHD_LABEL</string>
+  <key>WorkingDirectory</key>
+  <string>$APP_HOME</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$APP_HOME/start.sh</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>$HOME</string>
+    <key>NVM_DIR</key>
+    <string>$NVM_DIR</string>
+    <key>PORT</key>
+    <string>$port_value</string>
+PLIST
+
+  if [[ -n "$host_value" ]]; then
+    cat >> "$LAUNCHD_PLIST_PATH" <<PLIST
+    <key>HOST</key>
+    <string>$host_value</string>
+PLIST
+  fi
+
+  cat >> "$LAUNCHD_PLIST_PATH" <<PLIST
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>$APP_HOME/tmux-ui.log</string>
+  <key>StandardErrorPath</key>
+  <string>$APP_HOME/tmux-ui.err.log</string>
+</dict>
+</plist>
+PLIST
+}
+
+install_launchd_service() {
+  load_node_runtime
+  require_command node
+  require_command npm
+  require_command launchctl
+  extract_payload
+  install_cli_entrypoint
+
+  if [[ ! -d "$APP_HOME/node_modules" ]]; then
+    "$APP_HOME/install.sh"
+  fi
+
+  stop_server
+  write_launchd_plist
+  launchctl bootout "gui/$(id -u)" "$LAUNCHD_PLIST_PATH" 2>/dev/null || true
+  launchctl bootstrap "gui/$(id -u)" "$LAUNCHD_PLIST_PATH"
+  launchctl kickstart -k "gui/$(id -u)/$LAUNCHD_LABEL"
+  launchctl print "gui/$(id -u)/$LAUNCHD_LABEL" || true
+}
+
+start_launchd_service() {
+  require_command launchctl
+  launchctl kickstart -k "gui/$(id -u)/$LAUNCHD_LABEL"
+  launchctl print "gui/$(id -u)/$LAUNCHD_LABEL" || true
+}
+
+stop_launchd_service() {
+  require_command launchctl
+  launchctl bootout "gui/$(id -u)" "$LAUNCHD_PLIST_PATH" 2>/dev/null || true
+}
+
+status_launchd_service() {
+  require_command launchctl
+  launchctl print "gui/$(id -u)/$LAUNCHD_LABEL"
+}
+
+uninstall_launchd_service() {
+  require_command launchctl
+  launchctl bootout "gui/$(id -u)" "$LAUNCHD_PLIST_PATH" 2>/dev/null || true
+  rm -f "$LAUNCHD_PLIST_PATH"
+  echo "Removed $LAUNCHD_PLIST_PATH"
+}
+
 install_service() {
+  if is_macos; then
+    install_launchd_service
+    return
+  fi
+
   load_node_runtime
   require_command node
   require_command npm
@@ -477,22 +595,42 @@ install_service() {
 }
 
 start_service() {
+  if is_macos; then
+    start_launchd_service
+    return
+  fi
+
   require_command systemctl
   systemctl start "$SERVICE_NAME.service"
   systemctl status "$SERVICE_NAME.service" --no-pager || true
 }
 
 stop_service() {
+  if is_macos; then
+    stop_launchd_service
+    return
+  fi
+
   require_command systemctl
   systemctl stop "$SERVICE_NAME.service"
 }
 
 status_service() {
+  if is_macos; then
+    status_launchd_service
+    return
+  fi
+
   require_command systemctl
   systemctl status "$SERVICE_NAME.service" --no-pager
 }
 
 uninstall_service() {
+  if is_macos; then
+    uninstall_launchd_service
+    return
+  fi
+
   require_command systemctl
   systemctl stop "$SERVICE_NAME.service" 2>/dev/null || true
   systemctl disable "$SERVICE_NAME.service" 2>/dev/null || true
@@ -517,6 +655,7 @@ start_server_in_tmux() {
 
 stop_server() {
   stop_systemd_service_if_present
+  stop_launchd_service_if_present
 
   if command -v tmux >/dev/null 2>&1 && tmux has-session -t "$APP_SESSION" 2>/dev/null; then
     tmux send-keys -t "$APP_SESSION" C-c
@@ -543,7 +682,9 @@ restart_server() {
 }
 
 uninstall_server() {
-  if command -v systemctl >/dev/null 2>&1 && [[ -f "$SYSTEMD_UNIT_PATH" ]]; then
+  if is_macos && [[ -f "$LAUNCHD_PLIST_PATH" ]]; then
+    uninstall_service
+  elif command -v systemctl >/dev/null 2>&1 && [[ -f "$SYSTEMD_UNIT_PATH" ]]; then
     uninstall_service
   fi
 

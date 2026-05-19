@@ -309,7 +309,6 @@ export function createTerminalTab(deps: {
   const fitAddon = new FitAddon();
   terminal.loadAddon(fitAddon);
   terminal.open(deps.container);
-  fitAddon.fit();
   const webglRenderer = createWebglRenderer(
     terminal,
     deps.rendererStatusElement ?? deps.container
@@ -327,6 +326,29 @@ export function createTerminalTab(deps: {
   let pointerScrollY: number | null = null;
   let activePointerId: number | null = null;
   const scrollStatusElement = deps.rendererStatusElement ?? deps.container;
+  let hasWarnedAboutFitFailure = false;
+
+  function safeFitTerminal() {
+    try {
+      fitAddon.fit();
+      hasWarnedAboutFitFailure = false;
+      return true;
+    } catch (error) {
+      if (!hasWarnedAboutFitFailure) {
+        console.warn("Terminal fit skipped; renderer is not usable.", error);
+        hasWarnedAboutFitFailure = true;
+      }
+      return false;
+    }
+  }
+
+  function safeFitAndResize() {
+    if (!safeFitTerminal()) {
+      return;
+    }
+
+    controller?.resize(terminal.cols, terminal.rows);
+  }
 
   function syncBrowserScrollMode() {
     scrollStatusElement.classList.toggle(
@@ -338,10 +360,11 @@ export function createTerminalTab(deps: {
       : "tmux";
   }
 
+  safeFitTerminal();
   syncBrowserScrollMode();
 
   const attach = () => {
-    fitAddon.fit();
+    safeFitTerminal();
     controller?.attach({
       type: "attach",
       tabId: deps.tabId,
@@ -532,8 +555,7 @@ export function createTerminalTab(deps: {
   });
 
   const handleWindowResize = () => {
-    fitAddon.fit();
-    controller?.resize(terminal.cols, terminal.rows);
+    safeFitAndResize();
   };
 
   window.addEventListener("resize", handleWindowResize);
@@ -553,8 +575,7 @@ export function createTerminalTab(deps: {
       terminal.clear();
     },
     redraw() {
-      fitAddon.fit();
-      controller?.resize(terminal.cols, terminal.rows);
+      safeFitAndResize();
     },
     reconnect() {
       connect({ announce: true });
@@ -576,18 +597,15 @@ export function createTerminalTab(deps: {
     },
     setFontSize(fontSize: number) {
       terminal.options.fontSize = fontSize;
-      fitAddon.fit();
-      controller?.resize(terminal.cols, terminal.rows);
+      safeFitAndResize();
     },
     setFontFamily(fontFamily: string) {
       terminal.options.fontFamily = fontFamily;
-      fitAddon.fit();
-      controller?.resize(terminal.cols, terminal.rows);
+      safeFitAndResize();
     },
     setLineHeight(lineHeight: number) {
       terminal.options.lineHeight = lineHeight;
-      fitAddon.fit();
-      controller?.resize(terminal.cols, terminal.rows);
+      safeFitAndResize();
     },
     destroy() {
       deps.container.removeEventListener("wheel", handleWheel, true);

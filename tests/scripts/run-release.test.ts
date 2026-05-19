@@ -87,6 +87,17 @@ describe("run release scripts", () => {
     expect(packScript).toContain('rm -f "$SYSTEMD_UNIT_PATH"');
   });
 
+  it("supports macOS launchd service mode for local installs", () => {
+    expect(packScript).toContain('LAUNCHD_LABEL="\\${TMUX_UI_LAUNCHD_LABEL:-com.neatstudio.$SERVICE_NAME}"');
+    expect(packScript).toContain('LAUNCHD_PLIST_PATH="\\${TMUX_UI_LAUNCHD_PLIST:-$HOME/Library/LaunchAgents/$LAUNCHD_LABEL.plist}"');
+    expect(packScript).toContain("write_launchd_plist()");
+    expect(packScript).toContain("<key>KeepAlive</key>");
+    expect(packScript).toContain('launchctl bootstrap "gui/$(id -u)" "$LAUNCHD_PLIST_PATH"');
+    expect(packScript).toContain('launchctl kickstart -k "gui/$(id -u)/$LAUNCHD_LABEL"');
+    expect(packScript).toContain('launchctl bootout "gui/$(id -u)" "$LAUNCHD_PLIST_PATH"');
+    expect(packScript).toContain("stop_launchd_service_if_present()");
+  });
+
   it("supports uninstall and does not default to starting the server", () => {
     expect(packScript).toContain('COMMAND="\\${1:-help}"');
     expect(packScript).toContain("uninstall    Stop tmux-ui and remove the install directory");

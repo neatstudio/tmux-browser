@@ -114,6 +114,19 @@ tmux session:
 The default unit is `/etc/systemd/system/tmux-ui.service`. Override the service
 name with `TMUX_UI_SERVICE_NAME` or the unit path with `TMUX_UI_SYSTEMD_UNIT`.
 
+On macOS/local, the same service commands install a user launchd service:
+
+```bash
+./tmux.run service-install
+./tmux.run service-status
+./tmux.run service-stop
+./tmux.run service-uninstall
+```
+
+The default launchd plist is
+`~/Library/LaunchAgents/com.neatstudio.tmux-ui.plist`. Logs are written to
+`~/.tmux-ui/tmux-ui.log` and `~/.tmux-ui/tmux-ui.err.log`.
+
 The default bind host is the first Tailscale IPv4 address matching `100.*`.
 Set `HOST` or `PORT` explicitly to override:
 
