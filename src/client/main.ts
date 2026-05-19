@@ -27,6 +27,8 @@ import {
 } from "./theme/themeState";
 import "./styles.css";
 
+declare const __TMUX_UI_CLIENT_VERSION__: string;
+
 type MountedTerminal = {
   destroy: () => void;
   sendInput: (data: string) => void;
@@ -65,7 +67,10 @@ const tabsRoot = app.querySelector<HTMLElement>(".tabs-root")!;
 const dashboardRoot = app.querySelector<HTMLElement>(".dashboard-root")!;
 const panelsRoot = app.querySelector<HTMLElement>(".panels-root")!;
 
-document.title = getCompactPageTitle(window.location.hostname);
+document.title = getCompactPageTitle(
+  window.location.hostname,
+  __TMUX_UI_CLIENT_VERSION__
+);
 
 let activeTheme = getTheme(loadThemeId());
 let draftSessionName = "";

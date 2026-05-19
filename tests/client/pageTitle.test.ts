@@ -10,6 +10,14 @@ describe("pageTitle", () => {
     expect(getCompactPageTitle("100.89.0.116")).toBe("BTD(116)");
   });
 
+  it("adds the client version when provided", () => {
+    expect(getCompactPageTitle("100.89.0.116", "0.1.14")).toBe("BTD(116) v0.1.14");
+  });
+
+  it("omits blank client versions", () => {
+    expect(getCompactPageTitle("100.89.0.116", "")).toBe("BTD(116)");
+  });
+
   it("uses local for localhost", () => {
     expect(getShortHostLabel("localhost")).toBe("local");
   });

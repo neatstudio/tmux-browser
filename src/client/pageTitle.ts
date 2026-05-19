@@ -13,6 +13,9 @@ export function getShortHostLabel(hostname: string) {
   return trimmedHostname.split(".")[0] || "host";
 }
 
-export function getCompactPageTitle(hostname: string) {
-  return `BTD(${getShortHostLabel(hostname)})`;
+export function getCompactPageTitle(hostname: string, version?: string) {
+  const trimmedVersion = version?.trim();
+  const versionSuffix = trimmedVersion ? ` v${trimmedVersion}` : "";
+
+  return `BTD(${getShortHostLabel(hostname)})${versionSuffix}`;
 }
