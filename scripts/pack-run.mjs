@@ -67,6 +67,30 @@ load_node_runtime() {
   export NVM_DIR="\${NVM_DIR:-$HOME/.nvm}"
   local node_version="\${TMUX_UI_NODE_VERSION:-22}"
 
+  prepend_path_if_dir() {
+    local directory="$1"
+    [[ -d "$directory" ]] || return
+
+    case ":$PATH:" in
+      *":$directory:"*) ;;
+      *) PATH="$directory:$PATH" ;;
+    esac
+  }
+
+  prepend_path_if_dir "$HOME/.local/bin"
+  prepend_path_if_dir "$HOME/.hermes/node/bin"
+  prepend_path_if_dir "/opt/homebrew/bin"
+  prepend_path_if_dir "/opt/homebrew/sbin"
+  prepend_path_if_dir "/usr/local/bin"
+  prepend_path_if_dir "/usr/local/sbin"
+
+  local version_dir
+  for version_dir in "$NVM_DIR"/versions/node/v"$node_version"*/bin; do
+    prepend_path_if_dir "$version_dir"
+  done
+
+  export PATH
+
   if [[ -s "$NVM_DIR/nvm.sh" ]]; then
     # shellcheck disable=SC1090
     . "$NVM_DIR/nvm.sh"
@@ -119,6 +143,30 @@ load_node_runtime() {
   export NVM_DIR="\${NVM_DIR:-$HOME/.nvm}"
   local node_version="\${TMUX_UI_NODE_VERSION:-22}"
 
+  prepend_path_if_dir() {
+    local directory="$1"
+    [[ -d "$directory" ]] || return
+
+    case ":$PATH:" in
+      *":$directory:"*) ;;
+      *) PATH="$directory:$PATH" ;;
+    esac
+  }
+
+  prepend_path_if_dir "$HOME/.local/bin"
+  prepend_path_if_dir "$HOME/.hermes/node/bin"
+  prepend_path_if_dir "/opt/homebrew/bin"
+  prepend_path_if_dir "/opt/homebrew/sbin"
+  prepend_path_if_dir "/usr/local/bin"
+  prepend_path_if_dir "/usr/local/sbin"
+
+  local version_dir
+  for version_dir in "$NVM_DIR"/versions/node/v"$node_version"*/bin; do
+    prepend_path_if_dir "$version_dir"
+  done
+
+  export PATH
+
   if [[ -s "$NVM_DIR/nvm.sh" ]]; then
     # shellcheck disable=SC1090
     . "$NVM_DIR/nvm.sh"
@@ -168,6 +216,7 @@ detect_tailscale_host() {
 }
 
 load_node_runtime
+require_command tmux
 HOST="\${HOST:-}"
 if [[ -z "$HOST" ]]; then
   HOST="$(detect_tailscale_host)"
@@ -298,6 +347,30 @@ require_command() {
 load_node_runtime() {
   export NVM_DIR="\${NVM_DIR:-$HOME/.nvm}"
   local node_version="\${TMUX_UI_NODE_VERSION:-22}"
+
+  prepend_path_if_dir() {
+    local directory="$1"
+    [[ -d "$directory" ]] || return
+
+    case ":$PATH:" in
+      *":$directory:"*) ;;
+      *) PATH="$directory:$PATH" ;;
+    esac
+  }
+
+  prepend_path_if_dir "$HOME/.local/bin"
+  prepend_path_if_dir "$HOME/.hermes/node/bin"
+  prepend_path_if_dir "/opt/homebrew/bin"
+  prepend_path_if_dir "/opt/homebrew/sbin"
+  prepend_path_if_dir "/usr/local/bin"
+  prepend_path_if_dir "/usr/local/sbin"
+
+  local version_dir
+  for version_dir in "$NVM_DIR"/versions/node/v"$node_version"*/bin; do
+    prepend_path_if_dir "$version_dir"
+  done
+
+  export PATH
 
   if [[ -s "$NVM_DIR/nvm.sh" ]]; then
     # shellcheck disable=SC1090
@@ -462,6 +535,7 @@ UNIT
     fi
     cat <<UNIT
 ExecStart=$APP_HOME/start.sh
+Environment=PATH=$HOME/.local/bin:$HOME/.hermes/node/bin:$NVM_DIR/versions/node/v22/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 Restart=always
 RestartSec=2
 KillSignal=SIGINT
@@ -502,6 +576,8 @@ write_launchd_plist() {
     <string>$NVM_DIR</string>
     <key>PORT</key>
     <string>$port_value</string>
+    <key>PATH</key>
+    <string>$HOME/.local/bin:$HOME/.hermes/node/bin:$NVM_DIR/versions/node/v22/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin</string>
 PLIST
 
   if [[ -n "$host_value" ]]; then
@@ -526,6 +602,39 @@ PLIST
 PLIST
 }
 
+wait_for_systemd_active() {
+  local attempt
+
+  for attempt in 1 2 3 4 5 6 7 8 9 10; do
+    if systemctl is-active --quiet "$SERVICE_NAME.service"; then
+      systemctl status "$SERVICE_NAME.service" --no-pager
+      return
+    fi
+    sleep 1
+  done
+
+  systemctl status "$SERVICE_NAME.service" --no-pager || true
+  journalctl -u "$SERVICE_NAME.service" -n 80 --no-pager || true
+  exit 1
+}
+
+wait_for_launchd_running() {
+  local attempt
+
+  for attempt in 1 2 3 4 5 6 7 8 9 10; do
+    if is_launchd_running; then
+      print_launchd_status
+      return
+    fi
+    sleep 1
+  done
+
+  print_launchd_status || true
+  tail -n 80 "$APP_HOME/tmux-ui.log" 2>/dev/null || true
+  tail -n 80 "$APP_HOME/tmux-ui.err.log" 2>/dev/null || true
+  exit 1
+}
+
 install_launchd_service() {
   load_node_runtime
   require_command node
@@ -543,14 +652,14 @@ install_launchd_service() {
   launchctl bootout "gui/$(id -u)" "$LAUNCHD_PLIST_PATH" 2>/dev/null || true
   launchctl bootstrap "gui/$(id -u)" "$LAUNCHD_PLIST_PATH"
   launchctl kickstart -k "gui/$(id -u)/$LAUNCHD_LABEL"
-  print_launchd_status
+  wait_for_launchd_running
 }
 
 start_launchd_service() {
   require_command launchctl
   bootstrap_launchd_service_if_needed
   launchctl kickstart -k "gui/$(id -u)/$LAUNCHD_LABEL"
-  print_launchd_status
+  wait_for_launchd_running
 }
 
 stop_launchd_service() {
@@ -608,6 +717,13 @@ print_launchd_status() {
   echo "errors: $APP_HOME/tmux-ui.err.log"
 }
 
+is_launchd_running() {
+  local output
+  output="$(launchctl print "gui/$(id -u)/$LAUNCHD_LABEL" 2>/dev/null || true)"
+
+  [[ "$output" == *"state = running"* ]] && [[ "$output" == *"pid ="* ]]
+}
+
 install_service() {
   if is_macos; then
     install_launchd_service
@@ -630,7 +746,7 @@ install_service() {
   write_systemd_unit
   systemctl enable "$SERVICE_NAME.service"
   systemctl restart "$SERVICE_NAME.service"
-  systemctl status "$SERVICE_NAME.service" --no-pager || true
+  wait_for_systemd_active
 }
 
 start_service() {
@@ -641,7 +757,7 @@ start_service() {
 
   require_command systemctl
   systemctl start "$SERVICE_NAME.service"
-  systemctl status "$SERVICE_NAME.service" --no-pager || true
+  wait_for_systemd_active
 }
 
 stop_service() {

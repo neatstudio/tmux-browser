@@ -38,6 +38,11 @@ describe("run release scripts", () => {
 
   it("loads node through nvm in non-interactive service shells", () => {
     expect(packScript).toContain('local node_version="\\${TMUX_UI_NODE_VERSION:-22}"');
+    expect(packScript).toContain('prepend_path_if_dir "$HOME/.local/bin"');
+    expect(packScript).toContain('prepend_path_if_dir "$HOME/.hermes/node/bin"');
+    expect(packScript).toContain('prepend_path_if_dir "/opt/homebrew/bin"');
+    expect(packScript).toContain('prepend_path_if_dir "/usr/local/bin"');
+    expect(packScript).toContain("require_command tmux");
     expect(packScript).toContain('nvm install "$node_version"');
     expect(packScript).toContain('nvm use "$node_version"');
   });
@@ -80,10 +85,13 @@ describe("run release scripts", () => {
     expect(packScript).toContain("service-uninstall Stop and remove systemd/launchd service");
     expect(packScript).toContain("write_systemd_unit()");
     expect(packScript).toContain('ExecStart=$APP_HOME/start.sh');
+    expect(packScript).toContain("Environment=PATH=$HOME/.local/bin:$HOME/.hermes/node/bin");
+    expect(packScript).toContain("/opt/homebrew/bin:/opt/homebrew/sbin");
     expect(packScript).toContain("systemctl daemon-reload");
     expect(packScript).toContain('systemctl enable "$SERVICE_NAME.service"');
     expect(packScript).toContain('systemctl restart "$SERVICE_NAME.service"');
-    expect(packScript).toContain('systemctl status "$SERVICE_NAME.service"');
+    expect(packScript).toContain("wait_for_systemd_active()");
+    expect(packScript).toContain('systemctl is-active --quiet "$SERVICE_NAME.service"');
     expect(packScript).toContain('rm -f "$SYSTEMD_UNIT_PATH"');
   });
 
@@ -92,12 +100,15 @@ describe("run release scripts", () => {
     expect(packScript).toContain('LAUNCHD_PLIST_PATH="\\${TMUX_UI_LAUNCHD_PLIST:-$HOME/Library/LaunchAgents/$LAUNCHD_LABEL.plist}"');
     expect(packScript).toContain("write_launchd_plist()");
     expect(packScript).toContain("<key>KeepAlive</key>");
+    expect(packScript).toContain("<key>PATH</key>");
     expect(packScript).toContain('launchctl bootstrap "gui/$(id -u)" "$LAUNCHD_PLIST_PATH"');
     expect(packScript).toContain('launchctl kickstart -k "gui/$(id -u)/$LAUNCHD_LABEL"');
     expect(packScript).toContain('launchctl bootout "gui/$(id -u)" "$LAUNCHD_PLIST_PATH"');
     expect(packScript).toContain("stop_launchd_service_if_present()");
     expect(packScript).toContain("bootstrap_launchd_service_if_needed()");
     expect(packScript).toContain("print_launchd_status()");
+    expect(packScript).toContain("wait_for_launchd_running()");
+    expect(packScript).toContain("is_launchd_running()");
     expect(packScript).toContain('echo "launchd service: $LAUNCHD_LABEL"');
     expect(packScript).toContain('echo "state: \\${state:-unknown}"');
   });
