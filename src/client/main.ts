@@ -607,7 +607,20 @@ function formatImageSize(size: number) {
   return `${(size / 1024 / 1024).toFixed(1)}MB`;
 }
 
+function resetPreviewImage(
+  panel: HTMLElement,
+  image: HTMLImageElement,
+  error: HTMLElement
+) {
+  panel.classList.add("is-compact");
+  panel.classList.remove("has-image");
+  image.removeAttribute("src");
+  image.alt = "";
+  error.hidden = true;
+}
+
 function setPreviewImage(
+  panel: HTMLElement,
   image: HTMLImageElement,
   error: HTMLElement,
   sessionName: string,
@@ -617,9 +630,39 @@ function setPreviewImage(
   const imageUrl = getImagePreviewUrl(imagePath, basePath);
 
   storeImagePreviewPath(imagePath);
+  panel.classList.remove("is-compact");
+  panel.classList.add("has-image");
   error.hidden = true;
   image.src = imageUrl;
   image.alt = imagePath;
+}
+
+async function loadPreviewImage(
+  panel: HTMLElement,
+  image: HTMLImageElement,
+  error: HTMLElement,
+  status: HTMLElement,
+  input: HTMLInputElement,
+  sessionName: string,
+  imagePath: string
+) {
+  const basePath = getSessionCurrentPath(sessionName);
+  status.hidden = false;
+  status.textContent = "Checking image";
+
+  const info = await verifyImagePath(imagePath, basePath);
+
+  if (!info) {
+    resetPreviewImage(panel, image, error);
+    status.textContent = "Image not found or not allowed";
+    return null;
+  }
+
+  input.value = info.path;
+  status.hidden = true;
+  setPreviewImage(panel, image, error, sessionName, info.path);
+
+  return info;
 }
 
 function renderImagePreviewPanel() {
@@ -651,7 +694,7 @@ function renderImagePreviewPanel() {
   });
 
   const panel = document.createElement("section");
-  panel.className = "image-preview-panel";
+  panel.className = "image-preview-panel is-compact";
   panel.setAttribute("role", "dialog");
   panel.setAttribute("aria-modal", "true");
   panel.setAttribute("aria-label", "Image preview");
@@ -689,12 +732,18 @@ function renderImagePreviewPanel() {
 
   const scanToken = (imagePreviewScanToken += 1);
   const basePath = getSessionCurrentPath(tab.sessionName);
+  let autoPreviewed = false;
 
   const loading = document.createElement("span");
   loading.textContent = detectedPaths.length > 0
     ? `Checking ${detectedPaths.length} image path${detectedPaths.length === 1 ? "" : "s"}`
     : "No image paths in visible terminal output";
   candidateList.append(loading);
+
+  const manualStatus = document.createElement("span");
+  manualStatus.className = "image-preview-status";
+  manualStatus.hidden = true;
+  candidateList.append(manualStatus);
 
   detectedPaths.forEach((imagePath) => {
     void verifyImagePath(imagePath, basePath).then((info) => {
@@ -712,9 +761,15 @@ function renderImagePreviewPanel() {
       button.title = info.path;
       button.addEventListener("click", () => {
         input.value = info.path;
-        setPreviewImage(image, error, tab.sessionName, info.path);
+        setPreviewImage(panel, image, error, tab.sessionName, info.path);
       });
       candidateList.append(button);
+
+      if (!autoPreviewed) {
+        autoPreviewed = true;
+        input.value = info.path;
+        setPreviewImage(panel, image, error, tab.sessionName, info.path);
+      }
     });
   });
 
@@ -749,7 +804,15 @@ function renderImagePreviewPanel() {
     const imagePath = input.value.trim();
 
     if (imagePath) {
-      setPreviewImage(image, error, tab.sessionName, imagePath);
+      void loadPreviewImage(
+        panel,
+        image,
+        error,
+        manualStatus,
+        input,
+        tab.sessionName,
+        imagePath
+      );
     }
   });
 
@@ -757,10 +820,6 @@ function renderImagePreviewPanel() {
   panel.append(header, candidateList, body);
   backdrop.append(panel);
   mounted.panel.append(backdrop);
-
-  if (defaultPath) {
-    setPreviewImage(image, error, tab.sessionName, defaultPath);
-  }
 
   input.focus();
   input.select();

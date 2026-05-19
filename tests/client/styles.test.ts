@@ -237,4 +237,19 @@ describe("client layout styles", () => {
       /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.session-rename-form\s*\{[^}]*grid-column:\s*1\s*\/\s*-1;/s
     );
   });
+
+  it("keeps the image preview overlay compact until a real image is selected", () => {
+    expect(styles).toMatch(
+      /\.image-preview-panel\s*\{[^}]*grid-template-rows:\s*auto\s+auto\s+minmax\(0,\s*1fr\);/s
+    );
+    expect(styles).toMatch(
+      /\.image-preview-panel\.is-compact\s*\{[^}]*height:\s*auto;[^}]*min-height:\s*0;/s
+    );
+    expect(styles).toMatch(
+      /\.image-preview-panel\.is-compact\s+\.image-preview-body\s*\{[^}]*display:\s*none;/s
+    );
+    expect(styles).toMatch(
+      /\.image-preview-panel\.has-image\s+\.image-preview-body\s*\{[^}]*display:\s*grid;/s
+    );
+  });
 });

@@ -652,7 +652,7 @@ select {
 
 .image-preview-panel {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   width: min(1120px, 96vw);
   height: min(760px, 84vh);
   min-height: 260px;
@@ -661,6 +661,21 @@ select {
   border-radius: 5px;
   background: linear-gradient(180deg, rgba(28, 36, 45, 0.98), rgba(8, 12, 16, 0.98));
   box-shadow: 0 24px 100px rgba(0, 0, 0, 0.58);
+}
+
+.image-preview-panel.is-compact {
+  grid-template-rows: auto auto;
+  width: min(780px, 96vw);
+  height: auto;
+  min-height: 0;
+}
+
+.image-preview-panel.is-compact .image-preview-body {
+  display: none;
+}
+
+.image-preview-panel.has-image .image-preview-body {
+  display: grid;
 }
 
 .image-preview-header {
