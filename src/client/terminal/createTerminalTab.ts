@@ -10,6 +10,7 @@ import type {
 
 const TERMINAL_SCROLLBACK = 5000;
 const PIXELS_PER_SCROLL_LINE = 40;
+const TOUCH_PIXELS_PER_SCROLL_LINE = 24;
 const SHIFT_ENTER_SEQUENCE = "\x1b[13;2u";
 
 type FrameDeps = {
@@ -263,6 +264,7 @@ export function createTerminalTab(deps: {
   let socket: WebSocket | null = null;
   let controller: ReturnType<typeof createTerminalTabController> | null = null;
   let browserScrollEnabled = false;
+  let touchScrollY: number | null = null;
   const scrollStatusElement = deps.rendererStatusElement ?? deps.container;
 
   function syncBrowserScrollMode() {
@@ -328,6 +330,62 @@ export function createTerminalTab(deps: {
   deps.container.addEventListener("wheel", handleWheel, {
     capture: true,
     passive: false
+  });
+
+  const handleTouchStart = (event: TouchEvent) => {
+    if (browserScrollEnabled || event.touches.length !== 1) {
+      touchScrollY = null;
+      return;
+    }
+
+    touchScrollY = event.touches[0]?.clientY ?? null;
+  };
+
+  const handleTouchMove = (event: TouchEvent) => {
+    if (
+      browserScrollEnabled ||
+      event.touches.length !== 1 ||
+      touchScrollY === null
+    ) {
+      return;
+    }
+
+    const nextY = event.touches[0]?.clientY;
+
+    if (nextY === undefined) {
+      return;
+    }
+
+    const deltaY = touchScrollY - nextY;
+    const lines = Math.trunc(deltaY / TOUCH_PIXELS_PER_SCROLL_LINE);
+
+    if (lines === 0) {
+      return;
+    }
+
+    touchScrollY = nextY;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    controller?.scroll(lines);
+  };
+
+  const handleTouchEnd = () => {
+    touchScrollY = null;
+  };
+
+  deps.container.addEventListener("touchstart", handleTouchStart, {
+    capture: true,
+    passive: true
+  });
+  deps.container.addEventListener("touchmove", handleTouchMove, {
+    capture: true,
+    passive: false
+  });
+  deps.container.addEventListener("touchend", handleTouchEnd, {
+    capture: true
+  });
+  deps.container.addEventListener("touchcancel", handleTouchEnd, {
+    capture: true
   });
 
   terminal.attachCustomKeyEventHandler((event) => {
@@ -411,6 +469,10 @@ export function createTerminalTab(deps: {
     },
     destroy() {
       deps.container.removeEventListener("wheel", handleWheel, true);
+      deps.container.removeEventListener("touchstart", handleTouchStart, true);
+      deps.container.removeEventListener("touchmove", handleTouchMove, true);
+      deps.container.removeEventListener("touchend", handleTouchEnd, true);
+      deps.container.removeEventListener("touchcancel", handleTouchEnd, true);
       window.removeEventListener("resize", handleWindowResize);
       socket?.removeEventListener("open", attach);
       controller?.destroy();

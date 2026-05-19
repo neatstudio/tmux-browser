@@ -124,6 +124,20 @@ import {
 } from "../../../src/client/terminal/createTerminalTab";
 import { createTabState } from "../../../src/client/state/tabState";
 
+function createTouchGestureEvent(type: string, clientY: number) {
+  const event = new Event(type, {
+    bubbles: true,
+    cancelable: true
+  });
+
+  Object.defineProperty(event, "touches", {
+    value: type === "touchend" || type === "touchcancel" ? [] : [{ clientY }],
+    configurable: true
+  });
+
+  return event;
+}
+
 describe("createTerminalTabController", () => {
   it("closes the browser tab when the server reports session exit", () => {
     const socket = {
@@ -862,6 +876,93 @@ describe("createTerminalTab", () => {
     expect(tmuxWheelEvent.defaultPrevented).toBe(true);
     expect(socket.send).toHaveBeenCalledWith(
       JSON.stringify({ type: "scroll", lines: 1 })
+    );
+
+    mounted.destroy();
+  });
+
+  it("maps touch drag gestures to tmux history scroll on tablets", () => {
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    };
+
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        constructor() {
+          return socket;
+        }
+      }
+    );
+
+    const container = document.createElement("div");
+    const target = document.createElement("div");
+    const bubbleListener = vi.fn();
+    container.append(target);
+    container.addEventListener("touchmove", bubbleListener);
+
+    const mounted = createTerminalTab({
+      container,
+      tabId: "tab-1",
+      sessionName: "build",
+      onClosed: vi.fn()
+    });
+
+    target.dispatchEvent(createTouchGestureEvent("touchstart", 200));
+    const moveEvent = createTouchGestureEvent("touchmove", 152);
+    target.dispatchEvent(moveEvent);
+
+    expect(bubbleListener).not.toHaveBeenCalled();
+    expect(moveEvent.defaultPrevented).toBe(true);
+    expect(socket.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: "scroll", lines: 2 })
+    );
+
+    mounted.destroy();
+  });
+
+  it("lets browser scroll handle touch gestures in browser scroll mode", () => {
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    };
+
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        constructor() {
+          return socket;
+        }
+      }
+    );
+
+    const container = document.createElement("div");
+    const target = document.createElement("div");
+    const bubbleListener = vi.fn();
+    container.append(target);
+    container.addEventListener("touchmove", bubbleListener);
+
+    const mounted = createTerminalTab({
+      container,
+      tabId: "tab-1",
+      sessionName: "build",
+      onClosed: vi.fn()
+    });
+
+    mounted.toggleBrowserScroll();
+    target.dispatchEvent(createTouchGestureEvent("touchstart", 200));
+    const moveEvent = createTouchGestureEvent("touchmove", 152);
+    target.dispatchEvent(moveEvent);
+
+    expect(bubbleListener).toHaveBeenCalledOnce();
+    expect(moveEvent.defaultPrevented).toBe(false);
+    expect(socket.send).not.toHaveBeenCalledWith(
+      JSON.stringify({ type: "scroll", lines: 2 })
     );
 
     mounted.destroy();
