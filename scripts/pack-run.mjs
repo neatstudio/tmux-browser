@@ -312,6 +312,8 @@ CLI_NAME="\${TMUX_UI_CLI_NAME:-tmux-ui}"
 LEGACY_APP_HOME="\${TMUX_UI_LEGACY_HOME:-$HOME/.local/share/gemm4-node}"
 COMMAND="\${1:-help}"
 MARKER="${payloadMarker}"
+ORIGINAL_PATH="\${PATH:-}"
+TMUX_UI_PROFILE_UPDATED=""
 
 archive_line() {
   awk "/^\${MARKER}$/ { print NR + 1; exit 0; }" "$0"
@@ -334,13 +336,48 @@ extract_payload() {
   chmod +x "$APP_HOME/start.sh" "$APP_HOME/install.sh" 2>/dev/null || true
 }
 
+path_contains_dir_in() {
+  local search_path="$1"
+  local directory="$2"
+
+  case ":$search_path:" in
+    *":$directory:"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+path_contains_dir() {
+  path_contains_dir_in "$PATH" "$1"
+}
+
+original_path_contains_dir() {
+  path_contains_dir_in "$ORIGINAL_PATH" "$1"
+}
+
 ensure_user_bin_on_path() {
+  local bin_dir="$1"
   local profile
-  local path_line='export PATH="$HOME/.local/bin:$PATH"'
+  local path_line
+  local grep_token
   local profiles=("$HOME/.zprofile" "$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.bashrc" "$HOME/.profile")
 
+  TMUX_UI_PROFILE_UPDATED=""
+
+  if original_path_contains_dir "$bin_dir"; then
+    return
+  fi
+
+  if [[ "$bin_dir" == "$HOME/.local/bin" ]]; then
+    path_line='export PATH="$HOME/.local/bin:$PATH"'
+    grep_token='$HOME/.local/bin'
+  else
+    path_line="export PATH=\\"$bin_dir:\\$PATH\\""
+    grep_token="$bin_dir"
+  fi
+
   for profile in "\${profiles[@]}"; do
-    if [[ -f "$profile" ]] && grep -F '$HOME/.local/bin' "$profile" >/dev/null 2>&1; then
+    if [[ -f "$profile" ]] && grep -F "$grep_token" "$profile" >/dev/null 2>&1; then
+      TMUX_UI_PROFILE_UPDATED="$profile"
       return
     fi
   done
@@ -348,19 +385,78 @@ ensure_user_bin_on_path() {
   for profile in "\${profiles[@]}"; do
     if [[ -f "$profile" ]]; then
       printf '\\n# Added by tmux-ui installer\\n%s\\n' "$path_line" >> "$profile"
+      TMUX_UI_PROFILE_UPDATED="$profile"
       return
     fi
   done
 
   printf '# Added by tmux-ui installer\\n%s\\n' "$path_line" > "$HOME/.profile"
+  TMUX_UI_PROFILE_UPDATED="$HOME/.profile"
+}
+
+prepare_cli_bin_dir() {
+  local directory="$1"
+
+  mkdir -p "$directory" 2>/dev/null || return 1
+  [[ -d "$directory" && -w "$directory" ]]
+}
+
+choose_cli_bin_dir() {
+  local candidate
+
+  if [[ -n "\${TMUX_UI_USER_BIN:-}" ]]; then
+    if prepare_cli_bin_dir "$TMUX_UI_USER_BIN"; then
+      echo "$TMUX_UI_USER_BIN"
+      return
+    fi
+
+    echo "Cannot write TMUX_UI_USER_BIN: $TMUX_UI_USER_BIN" >&2
+    exit 1
+  fi
+
+  for candidate in "$HOME/.local/bin" "/usr/local/bin"; do
+    if prepare_cli_bin_dir "$candidate"; then
+      echo "$candidate"
+      return
+    fi
+  done
+
+  echo "Cannot install CLI into $HOME/.local/bin or /usr/local/bin." >&2
+  echo "Create a writable bin directory and rerun with TMUX_UI_USER_BIN=/path/to/bin $0 install" >&2
+  echo "Or link manually after install: sudo ln -s $APP_BIN_DIR/$CLI_NAME /usr/local/bin/$CLI_NAME" >&2
+  exit 1
 }
 
 install_cli_entrypoint() {
-  mkdir -p "$APP_BIN_DIR" "$USER_BIN_DIR"
+  local link_path
+
+  USER_BIN_DIR="$(choose_cli_bin_dir)"
+  link_path="$USER_BIN_DIR/$CLI_NAME"
+
+  mkdir -p "$APP_BIN_DIR"
   cp "$0" "$APP_BIN_DIR/$CLI_NAME"
   chmod +x "$APP_BIN_DIR/$CLI_NAME"
-  ln -sfn "$APP_BIN_DIR/$CLI_NAME" "$USER_BIN_DIR/$CLI_NAME"
-  ensure_user_bin_on_path
+
+  if [[ -e "$link_path" && ! -L "$link_path" ]]; then
+    echo "$link_path already exists and is not a symlink." >&2
+    echo "Set TMUX_UI_CLI_NAME or TMUX_UI_USER_BIN to choose another CLI path." >&2
+    exit 1
+  fi
+
+  ln -sfn "$APP_BIN_DIR/$CLI_NAME" "$link_path"
+  ensure_user_bin_on_path "$USER_BIN_DIR"
+
+  echo "Installed CLI: $USER_BIN_DIR/$CLI_NAME"
+  echo "Run commands with: $CLI_NAME restart"
+
+  if ! original_path_contains_dir "$USER_BIN_DIR"; then
+    echo "PATH does not currently include $USER_BIN_DIR."
+    if [[ -n "$TMUX_UI_PROFILE_UPDATED" ]]; then
+      echo "Restart your shell or run: source \\"$TMUX_UI_PROFILE_UPDATED\\""
+    else
+      echo "Add it for this shell with: export PATH=\\"$USER_BIN_DIR:\\$PATH\\""
+    fi
+  fi
 }
 
 require_command() {

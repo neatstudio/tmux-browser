@@ -152,7 +152,14 @@ describe("run release scripts", () => {
     expect(packScript).toContain('CLI_NAME="\\${TMUX_UI_CLI_NAME:-tmux-ui}"');
     expect(packScript).toContain("install_cli_entrypoint()");
     expect(packScript).toContain('cp "$0" "$APP_BIN_DIR/$CLI_NAME"');
-    expect(packScript).toContain('ln -sfn "$APP_BIN_DIR/$CLI_NAME" "$USER_BIN_DIR/$CLI_NAME"');
+    expect(packScript).toContain('link_path="$USER_BIN_DIR/$CLI_NAME"');
+    expect(packScript).toContain('ln -sfn "$APP_BIN_DIR/$CLI_NAME" "$link_path"');
+    expect(packScript).toContain("choose_cli_bin_dir()");
+    expect(packScript).toContain('/usr/local/bin');
+    expect(packScript).toContain('echo "Installed CLI: $USER_BIN_DIR/$CLI_NAME"');
+    expect(packScript).toContain('echo "Run commands with: $CLI_NAME restart"');
+    expect(packScript).toContain("PATH does not currently include");
+    expect(packScript).toContain('source \\\\"$TMUX_UI_PROFILE_UPDATED\\\\"');
   });
 
   it("adds the user bin directory to common shell profile files", () => {
@@ -244,14 +251,16 @@ describe("run release scripts", () => {
     expect(readmeZh).toContain(".tmux-ui.publish.json.example");
     expect(readme).toContain("local `~/.ssh/config`");
     expect(readmeZh).toContain("本机 `~/.ssh/config`");
-    expect(readme).toContain("./tmux.run service-status");
-    expect(readmeZh).toContain("./tmux.run service-status");
+    expect(readme).toContain("tmux-ui service-status");
+    expect(readmeZh).toContain("tmux-ui service-status");
+    expect(readme).toContain("After install, use the stable `tmux-ui` command");
+    expect(readmeZh).toContain("安装完成后，使用稳定命令 `tmux-ui`");
     expect(readme).toContain("systemctl status tmux-ui");
     expect(readmeZh).toContain("systemctl status tmux-ui");
     expect(readme).toContain("launchctl print");
     expect(readmeZh).toContain("launchctl print");
-    expect(readme).toContain("./tmux.run tmux-install");
-    expect(readmeZh).toContain("./tmux.run tmux-install");
+    expect(readme).toContain("tmux-ui tmux-install");
+    expect(readmeZh).toContain("tmux-ui tmux-install");
     expect(readme).toContain("tmux-resurrect cannot restore process memory");
     expect(readmeZh).toContain("tmux-resurrect 不能恢复进程内存状态");
   });

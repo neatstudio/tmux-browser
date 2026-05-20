@@ -101,7 +101,30 @@ curl -L -o tmux.run https://github.com/neatstudio/tmux-browser/releases/latest/d
 chmod +x tmux.run
 ./tmux.run help
 ./tmux.run install
-./tmux.run start
+```
+
+`./tmux.run` is the bootstrap file you downloaded. During `install`, tmux-ui
+copies the run file into `~/.tmux-ui/bin/tmux-ui` and links it as
+`~/.local/bin/tmux-ui` when possible. If `~/.local/bin` is not writable, it
+tries `/usr/local/bin`. The installer also updates a common shell profile when
+the chosen bin directory is not already on `PATH`.
+
+After install, use the stable `tmux-ui` command:
+
+```bash
+tmux-ui help
+tmux-ui start
+tmux-ui restart
+tmux-ui stop
+tmux-ui uninstall
+```
+
+If your current shell still says `tmux-ui: command not found`, restart the
+shell or run the `source ...` command printed by the installer. For a temporary
+one-shell fix, run:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
 If `start` is run outside tmux, the script automatically starts tmux-ui inside
@@ -111,7 +134,7 @@ server. When already inside tmux, `start` runs in the current pane.
 For a clean long-running restart, use `restart`:
 
 ```bash
-./tmux.run restart
+tmux-ui restart
 ```
 
 That command extracts the app into `~/.tmux-ui`, installs production
@@ -119,20 +142,20 @@ dependencies if needed, and starts the server inside a dedicated tmux session
 named `tmux-ui`. Stop or remove it with:
 
 ```bash
-./tmux.run stop
-./tmux.run uninstall
+tmux-ui stop
+tmux-ui uninstall
 ```
 
 On Linux/systemd servers, prefer service mode when you do not want a keeper
 tmux session:
 
 ```bash
-./tmux.run service-install
-./tmux.run service-status
-./tmux.run service-start
-./tmux.run service-restart
-./tmux.run service-stop
-./tmux.run service-uninstall
+tmux-ui service-install
+tmux-ui service-status
+tmux-ui service-start
+tmux-ui service-restart
+tmux-ui service-stop
+tmux-ui service-uninstall
 ```
 
 The default unit is `/etc/systemd/system/tmux-ui.service`. Override the service
@@ -153,12 +176,12 @@ systemctl stop tmux-ui
 On macOS/local, the same service commands install a user launchd service:
 
 ```bash
-./tmux.run service-install
-./tmux.run service-status
-./tmux.run service-start
-./tmux.run service-restart
-./tmux.run service-stop
-./tmux.run service-uninstall
+tmux-ui service-install
+tmux-ui service-status
+tmux-ui service-start
+tmux-ui service-restart
+tmux-ui service-stop
+tmux-ui service-uninstall
 ```
 
 The default launchd plist is
@@ -219,11 +242,11 @@ modifies `~/.tmux.conf`, installs TPM plugins under `~/.tmux/plugins`, and needs
 GitHub access during plugin installation.
 
 ```bash
-./tmux.run tmux-install
-./tmux.run tmux-status
-./tmux.run tmux-save
-./tmux.run tmux-restore
-./tmux.run tmux-update
+tmux-ui tmux-install
+tmux-ui tmux-status
+tmux-ui tmux-save
+tmux-ui tmux-restore
+tmux-ui tmux-update
 ```
 
 What this adds:

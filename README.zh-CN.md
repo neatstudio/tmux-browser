@@ -96,7 +96,28 @@ curl -L -o tmux.run https://github.com/neatstudio/tmux-browser/releases/latest/d
 chmod +x tmux.run
 ./tmux.run help
 ./tmux.run install
-./tmux.run start
+```
+
+`./tmux.run` 是首次下载用的 bootstrap 文件。执行 `install` 时，tmux-ui
+会把 run 文件复制到 `~/.tmux-ui/bin/tmux-ui`，并优先软链到
+`~/.local/bin/tmux-ui`。如果 `~/.local/bin` 不可写，会尝试
+`/usr/local/bin`。如果选择的 bin 目录不在 `PATH` 中，安装器会写入常见
+shell profile。
+
+安装完成后，使用稳定命令 `tmux-ui`：
+
+```bash
+tmux-ui help
+tmux-ui start
+tmux-ui restart
+tmux-ui stop
+tmux-ui uninstall
+```
+
+如果当前 shell 仍然提示 `tmux-ui: command not found`，重开 shell，或者执行安装器输出的 `source ...` 命令。临时只在当前 shell 生效，可以运行：
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
 如果在 tmux 外执行 `start`，脚本会自动把 tmux-ui 放进专用的 `tmux-ui` tmux session 中运行，避免关闭终端后服务退出。如果已经在 tmux 内，`start` 会在当前 pane 前台运行。
@@ -104,14 +125,14 @@ chmod +x tmux.run
 长期运行建议使用：
 
 ```bash
-./tmux.run restart
+tmux-ui restart
 ```
 
 这会解压应用到 `~/.tmux-ui`，按需安装生产依赖，并在专用 tmux session `tmux-ui` 中启动服务。停止或移除：
 
 ```bash
-./tmux.run stop
-./tmux.run uninstall
+tmux-ui stop
+tmux-ui uninstall
 ```
 
 ## 服务模式
@@ -119,12 +140,12 @@ chmod +x tmux.run
 Linux/systemd 服务器如果不想依赖一个 keeper tmux session，可以使用服务模式：
 
 ```bash
-./tmux.run service-install
-./tmux.run service-status
-./tmux.run service-start
-./tmux.run service-restart
-./tmux.run service-stop
-./tmux.run service-uninstall
+tmux-ui service-install
+tmux-ui service-status
+tmux-ui service-start
+tmux-ui service-restart
+tmux-ui service-stop
+tmux-ui service-uninstall
 ```
 
 默认 unit 文件是 `/etc/systemd/system/tmux-ui.service`。可以用 `TMUX_UI_SERVICE_NAME` 修改服务名，或用 `TMUX_UI_SYSTEMD_UNIT` 指定 unit 路径。
@@ -144,12 +165,12 @@ systemctl stop tmux-ui
 macOS 本地同样使用 service 命令安装用户级 launchd 服务：
 
 ```bash
-./tmux.run service-install
-./tmux.run service-status
-./tmux.run service-start
-./tmux.run service-restart
-./tmux.run service-stop
-./tmux.run service-uninstall
+tmux-ui service-install
+tmux-ui service-status
+tmux-ui service-start
+tmux-ui service-restart
+tmux-ui service-stop
+tmux-ui service-uninstall
 ```
 
 默认 plist 是 `~/Library/LaunchAgents/com.neatstudio.tmux-ui.plist`。日志写入：
@@ -205,11 +226,11 @@ ssh server-a
 tmux-ui 可以选择性安装并管理 `tmux-resurrect` 和 `tmux-continuum`，用于在服务器重启或异常退出后恢复 tmux session。它不会放进默认 `install`，因为这个操作会修改 `~/.tmux.conf`、在 `~/.tmux/plugins` 下安装 TPM 插件，并且安装插件时需要访问 GitHub。
 
 ```bash
-./tmux.run tmux-install
-./tmux.run tmux-status
-./tmux.run tmux-save
-./tmux.run tmux-restore
-./tmux.run tmux-update
+tmux-ui tmux-install
+tmux-ui tmux-status
+tmux-ui tmux-save
+tmux-ui tmux-restore
+tmux-ui tmux-update
 ```
 
 安装后会增加：
