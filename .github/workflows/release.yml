@@ -46,7 +46,7 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Generate release notes
-        run: npm run release:notes -- --out release/release-notes.md
+        run: npm run release:notes -- --out release/release-notes.md --zh-out release/release-notes.zh-CN.md
 
       - name: Upload run artifact
         uses: actions/upload-artifact@v7
@@ -55,6 +55,7 @@ jobs:
           path: |
             release/release.run
             release/release-notes.md
+            release/release-notes.zh-CN.md
 
       - name: Publish GitHub Release
         env:

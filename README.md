@@ -1,5 +1,7 @@
 # tmux-ui
 
+[简体中文](README.zh-CN.md)
+
 Lightweight browser UI for listing tmux sessions, opening browser terminal tabs,
 creating sessions, configuring per-session terminal rendering, and killing
 sessions from the UI.
@@ -65,11 +67,13 @@ Preview the release notes before publishing:
 
 ```bash
 npm run release:notes
-npm run release:notes -- --out release/release-notes.md
+npm run release:notes -- --out release/release-notes.md --zh-out release/release-notes.zh-CN.md
 ```
 
 Release notes list every commit from the previous `v<version>` tag to the
 current build, grouped by area and repeated in a complete `All Commits` section.
+The default console output includes English and Chinese sections. Use
+`--zh-out` when you want a separate Chinese markdown file.
 
 The run file defaults to installing into `~/.tmux-ui`:
 
@@ -125,6 +129,7 @@ tmux session:
 ```bash
 ./tmux.run service-install
 ./tmux.run service-status
+./tmux.run service-start
 ./tmux.run service-restart
 ./tmux.run service-stop
 ./tmux.run service-uninstall
@@ -132,12 +137,26 @@ tmux session:
 
 The default unit is `/etc/systemd/system/tmux-ui.service`. Override the service
 name with `TMUX_UI_SERVICE_NAME` or the unit path with `TMUX_UI_SYSTEMD_UNIT`.
+If you have installed service mode, these native commands are useful for
+checking whether the service exists and whether it is running:
+
+```bash
+systemctl status tmux-ui
+systemctl is-enabled tmux-ui
+systemctl is-active tmux-ui
+journalctl -u tmux-ui -n 100 --no-pager
+systemctl start tmux-ui
+systemctl restart tmux-ui
+systemctl stop tmux-ui
+```
 
 On macOS/local, the same service commands install a user launchd service:
 
 ```bash
 ./tmux.run service-install
 ./tmux.run service-status
+./tmux.run service-start
+./tmux.run service-restart
 ./tmux.run service-stop
 ./tmux.run service-uninstall
 ```
@@ -145,6 +164,16 @@ On macOS/local, the same service commands install a user launchd service:
 The default launchd plist is
 `~/Library/LaunchAgents/com.neatstudio.tmux-ui.plist`. Logs are written to
 `~/.tmux-ui/tmux-ui.log` and `~/.tmux-ui/tmux-ui.err.log`.
+If you have installed service mode, use these native launchd commands to check
+or operate it:
+
+```bash
+launchctl print "gui/$(id -u)/com.neatstudio.tmux-ui"
+launchctl kickstart -k "gui/$(id -u)/com.neatstudio.tmux-ui"
+launchctl bootout "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.neatstudio.tmux-ui.plist"
+tail -n 100 ~/.tmux-ui/tmux-ui.log
+tail -n 100 ~/.tmux-ui/tmux-ui.err.log
+```
 
 The default bind host is the first Tailscale IPv4 address matching `100.*`.
 Set `HOST` or `PORT` explicitly to override:
@@ -161,10 +190,60 @@ npm run publish -- --target tw0:/root/tmux --install --restart
 
 Without `--target`, `publish` reads `.tmux-ui.publish.json` when present. That
 file is ignored by Git so private server names do not enter the public repo.
+Copy `.tmux-ui.publish.json.example` to `.tmux-ui.publish.json` for local
+multi-server publishing:
+
+```bash
+cp .tmux-ui.publish.json.example .tmux-ui.publish.json
+```
+
+Publish targets must use SSH hosts that are already usable from this machine.
+In practice, each host name in the target list must be resolvable from your
+local `~/.ssh/config` or by normal SSH hostname resolution. For example, a target
+like `server-a:/root/tmux` expects this to work first:
+
+```bash
+ssh server-a
+```
 
 On GitHub, pushing to `main` creates tag `v<package.json version>` when it does
 not already exist. That tag builds the same two run files and publishes them as
 a GitHub Release.
+
+## tmux Restoration
+
+tmux-ui can optionally install and manage `tmux-resurrect` plus
+`tmux-continuum` so tmux sessions can be saved and restored after a reboot or an
+unexpected exit. This is not part of the default `install` command because it
+modifies `~/.tmux.conf`, installs TPM plugins under `~/.tmux/plugins`, and needs
+GitHub access during plugin installation.
+
+```bash
+./tmux.run tmux-install
+./tmux.run tmux-status
+./tmux.run tmux-save
+./tmux.run tmux-restore
+./tmux.run tmux-update
+```
+
+What this adds:
+
+- TPM at `~/.tmux/plugins/tpm`
+- `tmux-resurrect` and `tmux-continuum`
+- a managed block in `~/.tmux.conf`
+- automatic tmux saves every 15 minutes
+- automatic restore when tmux starts
+- manual save with `Ctrl-b` then `Ctrl-s`
+- manual restore with `Ctrl-b` then `Ctrl-r`
+
+When tmux restoration is installed, tmux-ui also attempts a safe automatic
+restore before starting the server: it only restores when tmux currently has no
+sessions. Set `TMUX_UI_TMUX_AUTO_RESTORE=0` to disable that behavior.
+
+Important limitation: tmux-resurrect cannot restore process memory. It can
+restore sessions, windows, panes, layouts, current directories, pane contents,
+and restart some commands, but an interrupted process must support its own
+resume/checkpoint behavior.
 
 ## Image Uploads
 

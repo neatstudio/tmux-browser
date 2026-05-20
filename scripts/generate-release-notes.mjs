@@ -8,10 +8,19 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const rootDir = resolve(scriptDir, "..");
 const packageJson = JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8"));
 
+const groupLabels = {
+  "Terminal and UI": "终端与界面",
+  Fixes: "修复",
+  "Release and Operations": "发布与运维",
+  "Docs and Release": "文档与发布",
+  Other: "其他"
+};
+
 function parseArgs(argv) {
   const options = {
     from: "",
     out: "",
+    zhOut: "",
     to: "HEAD",
     version: packageJson.version ?? "0.0.0",
     help: false
@@ -32,6 +41,11 @@ function parseArgs(argv) {
 
     if (arg === "--out") {
       options.out = resolve(rootDir, argv[++index] ?? "");
+      continue;
+    }
+
+    if (arg === "--zh-out") {
+      options.zhOut = resolve(rootDir, argv[++index] ?? "");
       continue;
     }
 
@@ -173,6 +187,23 @@ function formatCommit(commit) {
   return `- ${commit.subject} (\`${commit.hash}\`)`;
 }
 
+function formatChineseCommit(commit) {
+  return `- ${commit.subject} (\`${commit.hash}\`)`;
+}
+
+function groupCommits(commits) {
+  const groups = new Map();
+
+  for (const commit of commits) {
+    const group = categorizeCommit(commit.subject);
+    const entries = groups.get(group) ?? [];
+    entries.push(commit);
+    groups.set(group, entries);
+  }
+
+  return groups;
+}
+
 export function formatReleaseNotes({ commits, from, version }) {
   const title = `# tmux-ui v${version}`;
   const rangeLabel = from ? `Changes since ${from}.` : "Initial release notes.";
@@ -190,14 +221,7 @@ export function formatReleaseNotes({ commits, from, version }) {
     return `${lines.join("\n").trimEnd()}\n`;
   }
 
-  const groups = new Map();
-
-  for (const commit of commits) {
-    const group = categorizeCommit(commit.subject);
-    const entries = groups.get(group) ?? [];
-    entries.push(commit);
-    groups.set(group, entries);
-  }
+  const groups = groupCommits(commits);
 
   for (const group of [
     "Terminal and UI",
@@ -222,18 +246,73 @@ export function formatReleaseNotes({ commits, from, version }) {
   return `${lines.join("\n").trimEnd()}\n`;
 }
 
+export function formatChineseReleaseNotes({ commits, from, version }) {
+  const title = `# tmux-ui v${version} 更新说明`;
+  const rangeLabel = from ? `自 ${from} 以来的更新。` : "初始版本说明。";
+  const lines = [
+    "## 中文",
+    "",
+    title,
+    "",
+    rangeLabel,
+    "",
+    `提交总数：${commits.length}`,
+    ""
+  ];
+
+  if (commits.length === 0) {
+    lines.push("本次发布没有找到新的提交。", "");
+    return `${lines.join("\n").trimEnd()}\n`;
+  }
+
+  const groups = groupCommits(commits);
+
+  for (const group of [
+    "Terminal and UI",
+    "Fixes",
+    "Release and Operations",
+    "Docs and Release",
+    "Other"
+  ]) {
+    const entries = groups.get(group);
+
+    if (!entries?.length) {
+      continue;
+    }
+
+    lines.push(`## ${groupLabels[group]}`, "");
+    lines.push(...entries.map(formatChineseCommit), "");
+  }
+
+  lines.push("## 全部提交", "");
+  lines.push(...commits.map(formatChineseCommit), "");
+
+  return `${lines.join("\n").trimEnd()}\n`;
+}
+
 function showHelp() {
   console.log(`tmux-ui release notes
 
 Usage:
-  npm run release:notes -- [--from v0.1.8] [--to HEAD] [--out release/release-notes.md]
+  npm run release:notes -- [--from v0.1.8] [--to HEAD] [--out release/release-notes.md] [--zh-out release/release-notes.zh-CN.md]
 
 Options:
   --from tag       Previous release tag. Defaults to latest lower v<version> tag.
   --to ref         Git ref to include. Default: HEAD.
   --version value  Release version. Default: package.json version.
   --out path       Write markdown to a file instead of stdout.
+  --zh-out path    Write Chinese markdown release notes to a file.
 `);
+}
+
+function writeMarkdownFile(path, markdown) {
+  const outputDir = dirname(path);
+
+  if (!existsSync(outputDir)) {
+    mkdirSync(outputDir, { recursive: true });
+  }
+
+  writeFileSync(path, markdown, "utf8");
 }
 
 try {
@@ -251,17 +330,20 @@ try {
     from,
     version: options.version
   });
+  const chineseNotes = formatChineseReleaseNotes({
+    commits,
+    from,
+    version: options.version
+  });
 
   if (options.out) {
-    const outputDir = dirname(options.out);
-
-    if (!existsSync(outputDir)) {
-      mkdirSync(outputDir, { recursive: true });
-    }
-
-    writeFileSync(options.out, notes, "utf8");
+    writeMarkdownFile(options.out, notes);
   } else {
-    process.stdout.write(notes);
+    process.stdout.write(`${notes}\n${chineseNotes}`);
+  }
+
+  if (options.zhOut) {
+    writeMarkdownFile(options.zhOut, chineseNotes);
   }
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));

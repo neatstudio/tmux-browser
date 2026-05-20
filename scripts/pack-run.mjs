@@ -4,6 +4,7 @@ import {
   chmodSync,
   copyFileSync,
   cpSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -24,6 +25,7 @@ const version = packageJson.version ?? "0.0.0";
 const versionOutputFile = join(releaseDir, `${projectName}-${version}.run`);
 const releaseOutputFile = join(releaseDir, "release.run");
 const payloadMarker = "__TMUX_UI_PAYLOAD_BELOW__";
+const tmuxResurrectSource = join(rootDir, "scripts", "helpers", "tmux-resurrect.sh");
 const commit = spawnSync("git", ["rev-parse", "--short", "HEAD"], {
   cwd: rootDir,
   encoding: "utf8"
@@ -139,6 +141,8 @@ function createStartScript() {
 set -euo pipefail
 cd "$(dirname "$0")"
 
+TMUX_UI_TMUX_AUTO_RESTORE="\${TMUX_UI_TMUX_AUTO_RESTORE:-1}"
+
 load_node_runtime() {
   export NVM_DIR="\${NVM_DIR:-$HOME/.nvm}"
   local node_version="\${TMUX_UI_NODE_VERSION:-22}"
@@ -224,6 +228,9 @@ detect_tailscale_host() {
 
 load_node_runtime
 require_command tmux
+if [[ "$TMUX_UI_TMUX_AUTO_RESTORE" != "0" && -x "./tmux-resurrect.sh" ]]; then
+  ./tmux-resurrect.sh restore-if-empty || true
+fi
 HOST="\${HOST:-}"
 if [[ -z "$HOST" ]]; then
   HOST="$(detect_tailscale_host)"
@@ -273,6 +280,18 @@ The default tmux session used by \`restart\` is \`tmux-ui\`.
 The default systemd service name is \`tmux-ui\`.
 The server binds to the first Tailscale IPv4 address matching \`100.*\` unless
 \`HOST\` is set explicitly.
+
+Optional tmux restoration:
+
+\`\`\`bash
+./tmux-ui.run tmux-install
+./tmux-ui.run tmux-status
+./tmux-ui.run tmux-save
+./tmux-ui.run tmux-restore
+\`\`\`
+
+tmux-resurrect restores tmux sessions, panes, layouts, directories, and pane
+contents. It cannot restore process memory after a reboot or crash.
 `;
 }
 
@@ -410,6 +429,11 @@ Commands:
   service-status   Show systemd/launchd service status
   service-stop     Stop systemd/launchd service
   service-uninstall Stop and remove systemd/launchd service
+  tmux-install  Install tmux-resurrect and tmux-continuum
+  tmux-status   Show tmux resurrection status
+  tmux-save     Save tmux sessions now
+  tmux-restore  Restore saved tmux sessions
+  tmux-update   Update tmux resurrection plugins
   uninstall    Stop tmux-ui and remove the install directory
   extract      Extract files only
   dir          Print install directory
@@ -421,6 +445,7 @@ Environment:
   TMUX_UI_SYSTEMD_UNIT systemd unit path, default: /etc/systemd/system/$SERVICE_NAME.service
   TMUX_UI_LAUNCHD_LABEL macOS launchd label, default: com.neatstudio.$SERVICE_NAME
   TMUX_UI_LAUNCHD_PLIST macOS launchd plist path, default: ~/Library/LaunchAgents/$LAUNCHD_LABEL.plist
+  TMUX_UI_TMUX_AUTO_RESTORE set to 0 to disable automatic restore when tmux is empty
   HOST              Bind host for start, default: first Tailscale 100.x address
   PORT              Bind port for start, default: 3000
 
@@ -431,6 +456,25 @@ HELP
 is_pid_running() {
   local pid="$1"
   [[ -n "$pid" ]] && kill -0 "$pid" >/dev/null 2>&1
+}
+
+run_tmux_resurrect() {
+  extract_payload
+
+  if [[ ! -x "$APP_HOME/tmux-resurrect.sh" ]]; then
+    echo "tmux resurrection helper not found in $APP_HOME" >&2
+    exit 1
+  fi
+
+  "$APP_HOME/tmux-resurrect.sh" "$@"
+}
+
+install_tmux_resurrection() {
+  run_tmux_resurrect install "$@"
+}
+
+restore_tmux_if_empty() {
+  run_tmux_resurrect restore-if-empty
 }
 
 stop_pid_file_process() {
@@ -865,6 +909,7 @@ restart_server() {
   fi
 
   stop_server
+  restore_tmux_if_empty || true
   start_server_in_tmux
 }
 
@@ -933,6 +978,21 @@ case "$COMMAND" in
   service-uninstall)
     uninstall_service
     ;;
+  tmux-install)
+    install_tmux_resurrection
+    ;;
+  tmux-update)
+    run_tmux_resurrect install --update
+    ;;
+  tmux-status)
+    run_tmux_resurrect status
+    ;;
+  tmux-save)
+    run_tmux_resurrect save
+    ;;
+  tmux-restore)
+    run_tmux_resurrect restore
+    ;;
   stop)
     stop_server
     ;;
@@ -974,10 +1034,15 @@ try {
   cpSync(join(rootDir, "dist"), join(payloadDir, "dist"), { recursive: true });
   cpSync(join(rootDir, "package.json"), join(payloadDir, "package.json"));
   cpSync(join(rootDir, "package-lock.json"), join(payloadDir, "package-lock.json"));
+  if (!existsSync(tmuxResurrectSource)) {
+    throw new Error(`Missing tmux resurrection helper: ${tmuxResurrectSource}`);
+  }
+  cpSync(tmuxResurrectSource, join(payloadDir, "tmux-resurrect.sh"));
   stripMacExtendedAttributes(payloadDir);
 
   writeExecutable(join(payloadDir, "install.sh"), createInstallScript());
   writeExecutable(join(payloadDir, "start.sh"), createStartScript());
+  chmodSync(join(payloadDir, "tmux-resurrect.sh"), 0o755);
   writeFileSync(join(payloadDir, "README_DEPLOY.md"), createDeployReadme());
 
   run("tar", ["--format", "ustar", "-czf", payloadArchive, "-C", payloadDir, "."], {

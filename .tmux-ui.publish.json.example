@@ -1,0 +1,6 @@
+{
+  "targets": [
+    "server-a:/root/tmux",
+    "server-b:/root/tmux"
+  ]
+}

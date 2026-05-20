@@ -10,6 +10,9 @@ const packScript = readFileSync("scripts/pack-run.mjs", "utf8");
 const publishScript = readFileSync("scripts/publish-run.mjs", "utf8");
 const releaseNotesScript = readFileSync("scripts/generate-release-notes.mjs", "utf8");
 const workflow = readFileSync(".github/workflows/release.yml", "utf8");
+const readme = readFileSync("README.md", "utf8");
+const readmeZh = readFileSync("README.zh-CN.md", "utf8");
+const publishExample = readFileSync(".tmux-ui.publish.json.example", "utf8");
 
 describe("run release scripts", () => {
   it("uses tmux-ui as the public package identity", () => {
@@ -128,6 +131,21 @@ describe("run release scripts", () => {
     expect(packScript).toContain('rm -rf "$APP_HOME"');
   });
 
+  it("exposes short tmux resurrection management commands", () => {
+    expect(packScript).toContain("tmux-install  Install tmux-resurrect and tmux-continuum");
+    expect(packScript).toContain("tmux-status   Show tmux resurrection status");
+    expect(packScript).toContain("tmux-save     Save tmux sessions now");
+    expect(packScript).toContain("tmux-restore  Restore saved tmux sessions");
+    expect(packScript).toContain("tmux-update   Update tmux resurrection plugins");
+    expect(packScript).toContain("install_tmux_resurrection()");
+    expect(packScript).toContain("restore_tmux_if_empty()");
+    expect(packScript).toContain('TMUX_UI_TMUX_AUTO_RESTORE="\\${TMUX_UI_TMUX_AUTO_RESTORE:-1}"');
+    expect(packScript).toContain('tmux-install)');
+    expect(packScript).toContain('tmux-restore)');
+    expect(packScript).toContain('tmux-save)');
+    expect(packScript).not.toContain("tmux-resurrect-install");
+  });
+
   it("installs a stable tmux-ui command into the user bin directory", () => {
     expect(packScript).toContain('APP_BIN_DIR="$APP_HOME/bin"');
     expect(packScript).toContain('USER_BIN_DIR="\\${TMUX_UI_USER_BIN:-$HOME/.local/bin}"');
@@ -185,9 +203,12 @@ describe("run release scripts", () => {
 
   it("builds GitHub Release artifacts from pack:run", () => {
     expect(workflow).toContain("npm run pack:run");
-    expect(workflow).toContain("npm run release:notes -- --out release/release-notes.md");
+    expect(workflow).toContain(
+      "npm run release:notes -- --out release/release-notes.md --zh-out release/release-notes.zh-CN.md"
+    );
     expect(workflow).toContain("release/release.run");
     expect(workflow).toContain("release/tmux-ui-${VERSION}.run");
+    expect(workflow).toContain("release/release-notes.zh-CN.md");
     expect(workflow).toContain('TAG="v${VERSION}"');
     expect(workflow).toContain("gh release create \"$TAG\"");
     expect(workflow).toContain("--target \"$GITHUB_SHA\"");
@@ -208,8 +229,39 @@ describe("run release scripts", () => {
     expect(releaseNotesScript).toContain("findPreviousVersionTag");
     expect(releaseNotesScript).toContain("gitLog");
     expect(releaseNotesScript).toContain("formatReleaseNotes");
+    expect(releaseNotesScript).toContain("formatChineseReleaseNotes");
     expect(releaseNotesScript).toContain("Changes since");
+    expect(releaseNotesScript).toContain("## 中文");
+    expect(releaseNotesScript).toContain("--zh-out");
     expect(releaseNotesScript).toContain("## All Commits");
     expect(releaseNotesScript).toContain("--out");
+  });
+
+  it("documents bilingual readmes and service management commands", () => {
+    expect(readme).toContain("[简体中文](README.zh-CN.md)");
+    expect(readmeZh).toContain("[English](README.md)");
+    expect(readme).toContain(".tmux-ui.publish.json.example");
+    expect(readmeZh).toContain(".tmux-ui.publish.json.example");
+    expect(readme).toContain("local `~/.ssh/config`");
+    expect(readmeZh).toContain("本机 `~/.ssh/config`");
+    expect(readme).toContain("./tmux.run service-status");
+    expect(readmeZh).toContain("./tmux.run service-status");
+    expect(readme).toContain("systemctl status tmux-ui");
+    expect(readmeZh).toContain("systemctl status tmux-ui");
+    expect(readme).toContain("launchctl print");
+    expect(readmeZh).toContain("launchctl print");
+    expect(readme).toContain("./tmux.run tmux-install");
+    expect(readmeZh).toContain("./tmux.run tmux-install");
+    expect(readme).toContain("tmux-resurrect cannot restore process memory");
+    expect(readmeZh).toContain("tmux-resurrect 不能恢复进程内存状态");
+  });
+
+  it("ships a publish target example without committing private targets", () => {
+    expect(publishExample).toContain('"targets"');
+    expect(publishExample).toContain("server-a:/root/tmux");
+    expect(publishExample).not.toContain("tw0");
+    expect(publishExample).not.toContain("tw1");
+    expect(publishExample).not.toContain("vn");
+    expect(publishExample).not.toContain("cc2");
   });
 });
