@@ -52,6 +52,7 @@ npm run dev:client
 Build a standalone run file:
 
 ```bash
+npm version patch --no-git-tag-version
 npm run pack:run
 ```
 
@@ -69,6 +70,14 @@ The run file defaults to installing into `~/.tmux-ui`:
 ./release/release.run restart
 ./release/release.run service-install
 ./release/release.run uninstall
+```
+
+For every publishable build, bump the patch version before packing. The
+dashboard and `/api/health` expose `version`, `commit`, and `builtAt`, so the
+browser title and health checks can tell whether the running server is current:
+
+```bash
+curl -s http://<host>:3000/api/health
 ```
 
 Download and run a GitHub Release build:
@@ -146,6 +155,23 @@ file is ignored by Git so private server names do not enter the public repo.
 On GitHub, pushing to `main` creates tag `v<package.json version>` when it does
 not already exist. That tag builds the same two run files and publishes them as
 a GitHub Release.
+
+## Image Uploads
+
+In a terminal session page, paste or drag an image into the terminal. tmux-ui
+uploads it to the server and inserts the saved absolute file path into the
+current tmux input line without pressing Enter.
+
+Uploaded images are stored under:
+
+```text
+~/.tmux-ui/uploads/<session-name>/
+```
+
+The server accepts PNG, JPEG, GIF, and WebP by image signature instead of only
+trusting the filename or browser MIME type. Uploads are capped at 10MB per file.
+Old upload files are cleaned during upload; the default retention is 7 days and
+the default total upload budget is 1GB.
 
 ## tmux Lifecycle Rules
 
