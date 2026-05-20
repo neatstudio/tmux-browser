@@ -8,6 +8,7 @@ const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
 };
 const packScript = readFileSync("scripts/pack-run.mjs", "utf8");
 const publishScript = readFileSync("scripts/publish-run.mjs", "utf8");
+const releaseNotesScript = readFileSync("scripts/generate-release-notes.mjs", "utf8");
 const workflow = readFileSync(".github/workflows/release.yml", "utf8");
 
 describe("run release scripts", () => {
@@ -18,6 +19,9 @@ describe("run release scripts", () => {
   it("splits pack and publish commands", () => {
     expect(packageJson.scripts["pack:run"]).toBe("node scripts/pack-run.mjs");
     expect(packageJson.scripts.publish).toBe("node scripts/publish-run.mjs");
+    expect(packageJson.scripts["release:notes"]).toBe(
+      "node scripts/generate-release-notes.mjs"
+    );
     expect(packageJson.scripts.release).toBeUndefined();
   });
 
@@ -181,10 +185,21 @@ describe("run release scripts", () => {
 
   it("builds GitHub Release artifacts from pack:run", () => {
     expect(workflow).toContain("npm run pack:run");
+    expect(workflow).toContain("npm run release:notes -- --out release/release-notes.md");
     expect(workflow).toContain("release/release.run");
     expect(workflow).toContain("release/tmux-ui-${VERSION}.run");
     expect(workflow).toContain('TAG="v${VERSION}"');
     expect(workflow).toContain("gh release create \"$TAG\"");
     expect(workflow).toContain("--target \"$GITHUB_SHA\"");
+    expect(workflow).toContain("--notes-file release/release-notes.md");
+  });
+
+  it("generates release notes from the previous version tag to the current build", () => {
+    expect(releaseNotesScript).toContain("findPreviousVersionTag");
+    expect(releaseNotesScript).toContain("gitLog");
+    expect(releaseNotesScript).toContain("formatReleaseNotes");
+    expect(releaseNotesScript).toContain("Changes since");
+    expect(releaseNotesScript).toContain("## All Commits");
+    expect(releaseNotesScript).toContain("--out");
   });
 });

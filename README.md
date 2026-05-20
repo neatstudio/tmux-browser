@@ -61,6 +61,16 @@ This creates:
 - `release/release.run`, stable filename for local publish/server upload
 - `release/tmux-ui-<version>.run`, versioned artifact for GitHub Releases
 
+Preview the release notes before publishing:
+
+```bash
+npm run release:notes
+npm run release:notes -- --out release/release-notes.md
+```
+
+Release notes list every commit from the previous `v<version>` tag to the
+current build, grouped by area and repeated in a complete `All Commits` section.
+
 The run file defaults to installing into `~/.tmux-ui`:
 
 ```bash

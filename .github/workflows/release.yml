@@ -42,11 +42,16 @@ jobs:
           VERSION=$(node -p "require('./package.json').version")
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
+      - name: Generate release notes
+        run: npm run release:notes -- --out release/release-notes.md
+
       - name: Upload run artifact
         uses: actions/upload-artifact@v4
         with:
           name: release.run
-          path: release/release.run
+          path: |
+            release/release.run
+            release/release-notes.md
 
       - name: Publish GitHub Release
         env:
@@ -71,4 +76,4 @@ jobs:
             "release/tmux-ui-${VERSION}.run" \
             --target "$GITHUB_SHA" \
             --title "$TAG" \
-            --notes "tmux-ui ${VERSION}"
+            --notes-file release/release-notes.md

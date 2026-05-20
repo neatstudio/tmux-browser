@@ -9,6 +9,7 @@
     "build": "tsc -p tsconfig.server.json && vite build",
     "pack:run": "node scripts/pack-run.mjs",
     "publish": "node scripts/publish-run.mjs",
+    "release:notes": "node scripts/generate-release-notes.mjs",
     "start": "node dist/server/index.js",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest"
