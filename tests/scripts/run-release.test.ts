@@ -194,6 +194,16 @@ describe("run release scripts", () => {
     expect(workflow).toContain("--notes-file release/release-notes.md");
   });
 
+  it("opts GitHub-hosted JavaScript actions into the Node 24 runtime", () => {
+    expect(workflow).toContain("FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: \"true\"");
+    expect(workflow).toContain("uses: actions/checkout@v6");
+    expect(workflow).toContain("uses: actions/setup-node@v6");
+    expect(workflow).toContain("uses: actions/upload-artifact@v7");
+    expect(workflow).not.toContain("uses: actions/checkout@v4");
+    expect(workflow).not.toContain("uses: actions/setup-node@v4");
+    expect(workflow).not.toContain("uses: actions/upload-artifact@v4");
+  });
+
   it("generates release notes from the previous version tag to the current build", () => {
     expect(releaseNotesScript).toContain("findPreviousVersionTag");
     expect(releaseNotesScript).toContain("gitLog");
