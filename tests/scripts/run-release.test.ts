@@ -213,13 +213,19 @@ describe("run release scripts", () => {
     expect(workflow).toContain(
       "npm run release:notes -- --out release/release-notes.md --zh-out release/release-notes.zh-CN.md"
     );
+    expect(workflow).toContain("cat release/release-notes.md release/release-notes.zh-CN.md > release/release-notes.combined.md");
     expect(workflow).toContain("release/release.run");
     expect(workflow).toContain("release/tmux-ui-${VERSION}.run");
     expect(workflow).toContain("release/release-notes.zh-CN.md");
+    expect(workflow).toContain("release/release-notes.combined.md");
     expect(workflow).toContain('TAG="v${VERSION}"');
     expect(workflow).toContain("gh release create \"$TAG\"");
+    expect(workflow).toContain("gh release edit \"$TAG\"");
+    expect(workflow).toContain("gh release upload \"$TAG\"");
+    expect(workflow).toContain("--clobber");
     expect(workflow).toContain("--target \"$GITHUB_SHA\"");
-    expect(workflow).toContain("--notes-file release/release-notes.md");
+    expect(workflow).toContain("--notes-file release/release-notes.combined.md");
+    expect(workflow).not.toContain("skip publishing");
   });
 
   it("opts GitHub-hosted JavaScript actions into the Node 24 runtime", () => {

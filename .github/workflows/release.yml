@@ -46,7 +46,9 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Generate release notes
-        run: npm run release:notes -- --out release/release-notes.md --zh-out release/release-notes.zh-CN.md
+        run: |
+          npm run release:notes -- --out release/release-notes.md --zh-out release/release-notes.zh-CN.md
+          cat release/release-notes.md release/release-notes.zh-CN.md > release/release-notes.combined.md
 
       - name: Upload run artifact
         uses: actions/upload-artifact@v7
@@ -56,6 +58,7 @@ jobs:
             release/release.run
             release/release-notes.md
             release/release-notes.zh-CN.md
+            release/release-notes.combined.md
 
       - name: Publish GitHub Release
         env:
@@ -71,7 +74,15 @@ jobs:
           fi
 
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "$TAG already has a GitHub Release; skip publishing"
+            gh release edit "$TAG" \
+              --target "$GITHUB_SHA" \
+              --title "$TAG" \
+              --notes-file release/release-notes.combined.md
+
+            gh release upload "$TAG" \
+              release/release.run \
+              "release/tmux-ui-${VERSION}.run" \
+              --clobber
             exit 0
           fi
 
@@ -80,4 +91,4 @@ jobs:
             "release/tmux-ui-${VERSION}.run" \
             --target "$GITHUB_SHA" \
             --title "$TAG" \
-            --notes-file release/release-notes.md
+            --notes-file release/release-notes.combined.md
