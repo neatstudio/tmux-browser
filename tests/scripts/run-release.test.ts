@@ -1,6 +1,10 @@
 import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
+import {
+  formatChineseReleaseNotes,
+  formatReleaseNotes
+} from "../../scripts/generate-release-notes.mjs";
 
 const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
   name: string;
@@ -246,8 +250,43 @@ describe("run release scripts", () => {
     expect(releaseNotesScript).toContain("Changes since");
     expect(releaseNotesScript).toContain("## 中文");
     expect(releaseNotesScript).toContain("--zh-out");
-    expect(releaseNotesScript).toContain("## All Commits");
+    expect(releaseNotesScript).toContain("## Summary");
+    expect(releaseNotesScript).toContain("## Verification");
+    expect(releaseNotesScript).not.toContain("## All Commits");
+    expect(releaseNotesScript).not.toContain("## 全部提交");
     expect(releaseNotesScript).toContain("--out");
+  });
+
+  it("formats release notes as a human summary instead of duplicate commit lists", () => {
+    const commits = [
+      {
+        hash: "3c635df",
+        subject: "Update GitHub release notes publishing"
+      }
+    ];
+    const english = formatReleaseNotes({
+      commits,
+      from: "v0.1.17",
+      version: "0.1.18"
+    });
+    const chinese = formatChineseReleaseNotes({
+      commits,
+      from: "v0.1.17",
+      version: "0.1.18"
+    });
+
+    expect(english).toContain("## Summary");
+    expect(english).toContain("## Fixed");
+    expect(english).toContain("GitHub Release notes now use the combined English and Chinese release notes");
+    expect(english).toContain("Existing GitHub Releases are updated instead of being skipped");
+    expect(english).toContain("## Verification");
+    expect(english).not.toContain("## All Commits");
+    expect(english).not.toContain("## Release and Operations");
+    expect(chinese).toContain("## 摘要");
+    expect(chinese).toContain("## 已修复");
+    expect(chinese).toContain("GitHub Release 正文现在使用英文和中文合并后的 release notes");
+    expect(chinese).not.toContain("## 全部提交");
+    expect(chinese).not.toContain("## 发布与运维");
   });
 
   it("documents bilingual readmes and service management commands", () => {
