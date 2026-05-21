@@ -155,7 +155,10 @@ describe("run release scripts", () => {
     expect(packScript).toContain('USER_BIN_DIR="\\${TMUX_UI_USER_BIN:-$HOME/.local/bin}"');
     expect(packScript).toContain('CLI_NAME="\\${TMUX_UI_CLI_NAME:-tmux-ui}"');
     expect(packScript).toContain("install_cli_entrypoint()");
-    expect(packScript).toContain('cp "$0" "$APP_BIN_DIR/$CLI_NAME"');
+    expect(packScript).toContain("same_file()");
+    expect(packScript).toContain("script_source_path=");
+    expect(packScript).toContain("if ! same_file \"$script_source_path\" \"$APP_BIN_DIR/$CLI_NAME\"; then");
+    expect(packScript).toContain('cp "$script_source_path" "$APP_BIN_DIR/$CLI_NAME"');
     expect(packScript).toContain('link_path="$USER_BIN_DIR/$CLI_NAME"');
     expect(packScript).toContain('ln -sfn "$APP_BIN_DIR/$CLI_NAME" "$link_path"');
     expect(packScript).toContain("choose_cli_bin_dir()");

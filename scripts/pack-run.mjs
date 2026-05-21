@@ -401,6 +401,17 @@ prepare_cli_bin_dir() {
   [[ -d "$directory" && -w "$directory" ]]
 }
 
+same_file() {
+  [[ -e "$1" && -e "$2" ]] || return 1
+
+  if command -v realpath >/dev/null 2>&1; then
+    [[ "$(realpath "$1")" == "$(realpath "$2")" ]]
+    return
+  fi
+
+  [[ "$1" -ef "$2" ]]
+}
+
 choose_cli_bin_dir() {
   local candidate
 
@@ -428,13 +439,16 @@ choose_cli_bin_dir() {
 }
 
 install_cli_entrypoint() {
-  local link_path
+  local link_path script_source_path
 
   USER_BIN_DIR="$(choose_cli_bin_dir)"
   link_path="$USER_BIN_DIR/$CLI_NAME"
+  script_source_path="$0"
 
   mkdir -p "$APP_BIN_DIR"
-  cp "$0" "$APP_BIN_DIR/$CLI_NAME"
+  if ! same_file "$script_source_path" "$APP_BIN_DIR/$CLI_NAME"; then
+    cp "$script_source_path" "$APP_BIN_DIR/$CLI_NAME"
+  fi
   chmod +x "$APP_BIN_DIR/$CLI_NAME"
 
   if [[ -e "$link_path" && ! -L "$link_path" ]]; then
