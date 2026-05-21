@@ -217,7 +217,9 @@ describe("run release scripts", () => {
     expect(workflow).toContain(
       "npm run release:notes -- --out release/release-notes.md --zh-out release/release-notes.zh-CN.md"
     );
-    expect(workflow).toContain("cat release/release-notes.md release/release-notes.zh-CN.md > release/release-notes.combined.md");
+    expect(workflow).toContain(
+      "{ cat release/release-notes.md; printf '\\n'; cat release/release-notes.zh-CN.md; } > release/release-notes.combined.md"
+    );
     expect(workflow).toContain("release/release.run");
     expect(workflow).toContain("release/tmux-ui-${VERSION}.run");
     expect(workflow).toContain("release/release-notes.zh-CN.md");
