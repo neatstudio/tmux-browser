@@ -251,7 +251,9 @@ describe("run release scripts", () => {
     expect(releaseNotesScript).toContain("## 中文");
     expect(releaseNotesScript).toContain("--zh-out");
     expect(releaseNotesScript).toContain("## Summary");
-    expect(releaseNotesScript).toContain("## Verification");
+    expect(releaseNotesScript).toContain("### Verification");
+    expect(releaseNotesScript).not.toContain("## Source");
+    expect(releaseNotesScript).not.toContain("## 来源");
     expect(releaseNotesScript).not.toContain("## All Commits");
     expect(releaseNotesScript).not.toContain("## 全部提交");
     expect(releaseNotesScript).toContain("--out");
@@ -276,17 +278,79 @@ describe("run release scripts", () => {
     });
 
     expect(english).toContain("## Summary");
-    expect(english).toContain("## Fixed");
+    expect(english).toContain("### Fixed");
     expect(english).toContain("GitHub Release notes now use the combined English and Chinese release notes");
     expect(english).toContain("Existing GitHub Releases are updated instead of being skipped");
-    expect(english).toContain("## Verification");
+    expect(english).toContain("### Verification");
+    expect(english).not.toContain("## Source");
+    expect(english).not.toContain("Source commit");
     expect(english).not.toContain("## All Commits");
     expect(english).not.toContain("## Release and Operations");
     expect(chinese).toContain("## 摘要");
-    expect(chinese).toContain("## 已修复");
+    expect(chinese).toContain("### 已修复");
     expect(chinese).toContain("GitHub Release 正文现在使用英文和中文合并后的 release notes");
+    expect(chinese).not.toContain("## 来源");
+    expect(chinese).not.toContain("来源提交");
     expect(chinese).not.toContain("## 全部提交");
     expect(chinese).not.toContain("## 发布与运维");
+  });
+
+  it("keeps commit references inline for multi-commit release notes", () => {
+    const commits = [
+      {
+        hash: "8d28173",
+        subject: "Improve release notes quality"
+      },
+      {
+        hash: "3c635df",
+        subject: "Update GitHub release notes publishing"
+      }
+    ];
+    const english = formatReleaseNotes({
+      commits,
+      from: "v0.1.18",
+      version: "0.1.19"
+    });
+    const chinese = formatChineseReleaseNotes({
+      commits,
+      from: "v0.1.18",
+      version: "0.1.19"
+    });
+
+    expect(english).toContain("## Summary");
+    expect(english).toContain("### Fixed");
+    expect(english).toContain("### Changed");
+    expect(english).toContain("### Verification");
+    expect(english).not.toContain("## Source");
+    expect(english).not.toContain("Source commits");
+    expect(english).toContain(
+      "- Release notes now read like an operational changelog instead of a duplicated commit list. (`8d28173`)"
+    );
+    expect(english).toContain(
+      "- Existing GitHub Releases are updated instead of being skipped. (`3c635df`)"
+    );
+    expect(english).toContain(
+      "- Release note formatting is covered by a content-level test. (`8d28173`)"
+    );
+    expect(english).toContain(
+      "- Published assets: `release.run` and `tmux-ui-0.1.19.run`."
+    );
+
+    expect(chinese).toContain("## 摘要");
+    expect(chinese).toContain("### 已修复");
+    expect(chinese).toContain("### 变更");
+    expect(chinese).toContain("### 验证");
+    expect(chinese).not.toContain("## 来源");
+    expect(chinese).not.toContain("来源提交");
+    expect(chinese).toContain(
+      "- Release notes 现在是面向用户的运维变更说明，不再是重复的 commit 列表。 (`8d28173`)"
+    );
+    expect(chinese).toContain(
+      "- 已存在的 GitHub Release 会被更新，而不是直接跳过。 (`3c635df`)"
+    );
+    expect(chinese).toContain(
+      "- release notes 的实际输出结构已经加入测试覆盖。 (`8d28173`)"
+    );
   });
 
   it("documents bilingual readmes and service management commands", () => {

@@ -187,6 +187,49 @@ function unique(values) {
   return [...new Set(values.filter(Boolean))];
 }
 
+function uniqueEntries(entries) {
+  const merged = [];
+
+  for (const entry of entries) {
+    if (!entry.text) {
+      continue;
+    }
+
+    const existing = merged.find((item) => item.text === entry.text);
+
+    if (existing) {
+      existing.hashes = unique([...existing.hashes, ...entry.hashes]);
+      continue;
+    }
+
+    merged.push({
+      text: entry.text,
+      hashes: unique(entry.hashes)
+    });
+  }
+
+  return merged;
+}
+
+function addCommitEntries(target, texts, commit) {
+  const hashes = commit.hash ? [commit.hash] : [];
+
+  for (const text of texts) {
+    if (!text) {
+      continue;
+    }
+
+    target.push({ text, hashes });
+  }
+}
+
+function releaseEntry(text) {
+  return {
+    text,
+    hashes: []
+  };
+}
+
 function releaseAssets(version) {
   return [`release.run`, `tmux-ui-${version}.run`];
 }
@@ -342,38 +385,35 @@ function buildReleaseSections(commits, describeCommit) {
   for (const commit of commits) {
     const description = describeCommit(commit);
 
-    sections.summary.push(...description.summary);
-    sections.fixed.push(...description.fixed);
-    sections.changed.push(...description.changed);
-    sections.verification.push(...description.verification);
+    addCommitEntries(sections.summary, description.summary, commit);
+    addCommitEntries(sections.fixed, description.fixed, commit);
+    addCommitEntries(sections.changed, description.changed, commit);
+    addCommitEntries(sections.verification, description.verification, commit);
   }
 
   return {
-    summary: unique(sections.summary),
-    fixed: unique(sections.fixed),
-    changed: unique(sections.changed),
-    verification: unique(sections.verification)
+    summary: uniqueEntries(sections.summary),
+    fixed: uniqueEntries(sections.fixed),
+    changed: uniqueEntries(sections.changed),
+    verification: uniqueEntries(sections.verification)
   };
 }
 
-function pushSection(lines, heading, entries) {
+function formatEntry(entry, includeHashes) {
+  if (!includeHashes || entry.hashes.length === 0) {
+    return entry.text;
+  }
+
+  return `${entry.text} (${entry.hashes.map((hash) => `\`${hash}\``).join(", ")})`;
+}
+
+function pushSection(lines, heading, entries, includeHashes) {
   if (!entries.length) {
     return;
   }
 
   lines.push(heading, "");
-  lines.push(...entries.map((entry) => `- ${entry}`), "");
-}
-
-function sourceLine(commits, singular, plural) {
-  if (!commits.length) {
-    return "";
-  }
-
-  const hashes = commits.map((commit) => `\`${commit.hash}\``).join(", ");
-  const label = commits.length === 1 ? singular : plural;
-
-  return `${label}: ${hashes}`;
+  lines.push(...entries.map((entry) => `- ${formatEntry(entry, includeHashes)}`), "");
 }
 
 export function formatReleaseNotes({ commits, from, version }) {
@@ -388,18 +428,16 @@ export function formatReleaseNotes({ commits, from, version }) {
 
   const sections = buildReleaseSections(commits, describeEnglishCommit);
   sections.verification.push(
-    `Published assets: ${releaseAssets(version).map((asset) => `\`${asset}\``).join(" and ")}.`
+    releaseEntry(
+      `Published assets: ${releaseAssets(version).map((asset) => `\`${asset}\``).join(" and ")}.`
+    )
   );
+  const includeHashes = commits.length > 1;
 
-  pushSection(lines, "## Summary", sections.summary);
-  pushSection(lines, "## Fixed", sections.fixed);
-  pushSection(lines, "## Changed", sections.changed);
-  pushSection(lines, "## Verification", unique(sections.verification));
-
-  const source = sourceLine(commits, "Source commit", "Source commits");
-  if (source) {
-    lines.push("## Source", "", source, "");
-  }
+  pushSection(lines, "## Summary", sections.summary, includeHashes);
+  pushSection(lines, "### Fixed", sections.fixed, includeHashes);
+  pushSection(lines, "### Changed", sections.changed, includeHashes);
+  pushSection(lines, "### Verification", uniqueEntries(sections.verification), includeHashes);
 
   return `${lines.join("\n").trimEnd()}\n`;
 }
@@ -416,18 +454,16 @@ export function formatChineseReleaseNotes({ commits, from, version }) {
 
   const sections = buildReleaseSections(commits, describeChineseCommit);
   sections.verification.push(
-    `发布资产：${releaseAssets(version).map((asset) => `\`${asset}\``).join(" 和 ")}。`
+    releaseEntry(
+      `发布资产：${releaseAssets(version).map((asset) => `\`${asset}\``).join(" 和 ")}。`
+    )
   );
+  const includeHashes = commits.length > 1;
 
-  pushSection(lines, "## 摘要", sections.summary);
-  pushSection(lines, "## 已修复", sections.fixed);
-  pushSection(lines, "## 变更", sections.changed);
-  pushSection(lines, "## 验证", unique(sections.verification));
-
-  const source = sourceLine(commits, "来源提交", "来源提交");
-  if (source) {
-    lines.push("## 来源", "", source, "");
-  }
+  pushSection(lines, "## 摘要", sections.summary, includeHashes);
+  pushSection(lines, "### 已修复", sections.fixed, includeHashes);
+  pushSection(lines, "### 变更", sections.changed, includeHashes);
+  pushSection(lines, "### 验证", uniqueEntries(sections.verification), includeHashes);
 
   return `${lines.join("\n").trimEnd()}\n`;
 }
