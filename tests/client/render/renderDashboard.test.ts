@@ -460,7 +460,7 @@ describe("renderDashboard", () => {
     expect(renameButton.textContent).toBe("✎");
     expect(headerActions.textContent).not.toContain("Rename");
     expect(headerActions.textContent).not.toContain("⚙");
-    expect(headerActions.textContent).toContain("attached");
+    expect(headerActions.textContent).toContain("tmux attached");
     expect(configButton).toBeTruthy();
     expect(configButton.classList.contains("session-icon-button")).toBe(true);
     expect(configButton.classList.contains("session-config-button")).toBe(true);
@@ -554,10 +554,59 @@ describe("renderDashboard", () => {
 
     const statusBadges = root.querySelectorAll<HTMLElement>(".session-status");
 
-    expect(statusBadges[0]?.textContent).toBe("attached");
+    expect(statusBadges[0]?.textContent).toBe("tmux attached");
     expect(statusBadges[0]?.classList.contains("is-attached")).toBe(true);
-    expect(statusBadges[1]?.textContent).toBe("detached");
+    expect(statusBadges[1]?.textContent).toBe("tmux detached");
     expect(statusBadges[1]?.classList.contains("is-detached")).toBe(true);
+  });
+
+  it("shows browser tab state separately from tmux attached state", () => {
+    const root = document.createElement("div");
+
+    renderDashboard(
+      root,
+      {
+        sessions: [
+          { name: "build", windows: 1, status: "detached" },
+          { name: "ops", windows: 1, status: "detached" }
+        ],
+        loading: false,
+        error: null
+      },
+      {
+        onCreateSession: vi.fn(),
+        onOpenSession: vi.fn(),
+        onKillSession: vi.fn(),
+        onRenameSession: vi.fn(),
+        getSessionSettings: vi.fn(() => SESSION_SETTINGS),
+        onSessionFontSizeChange: vi.fn(),
+        onSessionFontFamilyChange: vi.fn(),
+        onSessionLineHeightChange: vi.fn(),
+        onSessionThemeChange: vi.fn(),
+        activeConfigSessionName: null,
+        onOpenSessionConfig: vi.fn(),
+        onCloseSessionConfig: vi.fn(),
+        draftSessionName: "",
+        onDraftChange: vi.fn(),
+        themes: THEMES,
+        activeThemeId: THEMES[0]!.id,
+        onThemeChange: vi.fn(),
+        browserTabs: [
+          { sessionName: "build", active: true },
+          { sessionName: "ops", active: false }
+        ]
+      }
+    );
+
+    const statusBadges = root.querySelectorAll<HTMLElement>(".session-status");
+    const browserBadges = root.querySelectorAll<HTMLElement>(".session-browser-status");
+
+    expect(statusBadges[0]?.textContent).toBe("tmux detached");
+    expect(statusBadges[1]?.textContent).toBe("tmux detached");
+    expect(browserBadges[0]?.textContent).toBe("browser active");
+    expect(browserBadges[0]?.classList.contains("is-browser-active")).toBe(true);
+    expect(browserBadges[1]?.textContent).toBe("browser open");
+    expect(browserBadges[1]?.classList.contains("is-browser-open")).toBe(true);
   });
 
   it("shows path on its own row and compact activity/window/pane metadata near actions", () => {

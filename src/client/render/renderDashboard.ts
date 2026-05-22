@@ -167,6 +167,11 @@ function appendMetaItem(
   parent.append(item);
 }
 
+type BrowserSessionTabState = {
+  sessionName: string;
+  active: boolean;
+};
+
 export function renderDashboard(
   root: HTMLElement,
   state: DashboardState,
@@ -190,6 +195,7 @@ export function renderDashboard(
     activeThemeId: string;
     onThemeChange: (themeId: string) => void;
     onRefreshDashboard?: () => void;
+    browserTabs?: BrowserSessionTabState[];
   }
 ) {
   const previousInput = root.querySelector<HTMLInputElement>(
@@ -337,6 +343,9 @@ export function renderDashboard(
   table.className = "session-table";
 
   const body = document.createElement("tbody");
+  const browserTabsBySession = new Map(
+    (actions.browserTabs ?? []).map((tab) => [tab.sessionName, tab])
+  );
 
   state.sessions.forEach((session) => {
     const row = document.createElement("tr");
@@ -350,7 +359,17 @@ export function renderDashboard(
 
     const sessionStatus = document.createElement("span");
     sessionStatus.className = `session-status is-${session.status}`;
-    sessionStatus.textContent = session.status;
+    sessionStatus.textContent = `tmux ${session.status}`;
+
+    const browserTab = browserTabsBySession.get(session.name);
+    const browserStatus = document.createElement("span");
+    browserStatus.className = `session-browser-status ${
+      browserTab?.active ? "is-browser-active" : "is-browser-open"
+    }`;
+    browserStatus.textContent = browserTab?.active
+      ? "browser active"
+      : "browser open";
+    browserStatus.hidden = !browserTab;
 
     const sessionTitleCluster = document.createElement("div");
     sessionTitleCluster.className = "session-title-cluster";
@@ -406,7 +425,7 @@ export function renderDashboard(
     );
 
     sessionTitleCluster.append(sessionName, renameButton, configButton);
-    sessionHeaderActions.append(sessionStatus);
+    sessionHeaderActions.append(sessionStatus, browserStatus);
 
     const sessionNameHeader = document.createElement("div");
     sessionNameHeader.className = "session-name-header";

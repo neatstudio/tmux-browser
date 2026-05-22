@@ -104,6 +104,15 @@ describe("client layout styles", () => {
     );
   });
 
+  it("stacks multiple input prompts without letting the toast exceed the viewport", () => {
+    expect(styles).toMatch(
+      /\.input-prompt-toast\s*\{[^}]*max-height:\s*min\(70dvh,\s*34rem\);[^}]*overflow:\s*auto;[^}]*display:\s*grid;/s
+    );
+    expect(styles).toMatch(
+      /\.input-prompt-card\s*\{[^}]*border:\s*1px\s+solid\s+rgba\(191,\s*255,\s*196,\s*0\.28\);[^}]*background:/s
+    );
+  });
+
   it("styles tmux session status badges next to session names", () => {
     expect(styles).toMatch(
       /\.session-name-cell\s*\{[^}]*display:\s*grid;/s
@@ -113,6 +122,15 @@ describe("client layout styles", () => {
     );
     expect(styles).toMatch(
       /\.session-status\.is-detached\s*\{[^}]*color:\s*rgba\(217,\s*226,\s*234,\s*0\.62\);/s
+    );
+    expect(styles).toMatch(
+      /\.session-status,\s*\.session-browser-status\s*\{[^}]*text-transform:\s*uppercase;/s
+    );
+    expect(styles).toMatch(
+      /\.session-browser-status\.is-browser-active\s*\{[^}]*color:\s*#8fd9ff;/s
+    );
+    expect(styles).toMatch(
+      /\.session-browser-status\.is-browser-open\s*\{[^}]*color:\s*rgba\(143,\s*217,\s*255,\s*0\.72\);/s
     );
     expect(styles).toMatch(
       /\.session-meta\s*\{[^}]*display:\s*flex;[^}]*justify-content:\s*flex-start;/s

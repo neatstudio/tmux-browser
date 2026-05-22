@@ -408,7 +408,8 @@ select {
   min-width: 0;
 }
 
-.session-status {
+.session-status,
+.session-browser-status {
   border: 1px solid currentColor;
   border-radius: 2px;
   padding: 0.07rem 0.28rem;
@@ -419,6 +420,10 @@ select {
   white-space: nowrap;
 }
 
+.session-browser-status[hidden] {
+  display: none;
+}
+
 .session-status.is-attached {
   color: #bfffc4;
   background: rgba(94, 255, 130, 0.1);
@@ -427,6 +432,16 @@ select {
 .session-status.is-detached {
   color: rgba(217, 226, 234, 0.62);
   background: rgba(217, 226, 234, 0.06);
+}
+
+.session-browser-status.is-browser-active {
+  color: #8fd9ff;
+  background: rgba(91, 192, 255, 0.11);
+}
+
+.session-browser-status.is-browser-open {
+  color: rgba(143, 217, 255, 0.72);
+  background: rgba(91, 192, 255, 0.07);
 }
 
 .session-meta {
@@ -1205,6 +1220,15 @@ select {
   bottom: calc(1rem + env(safe-area-inset-bottom));
   z-index: 90;
   width: min(420px, calc(100vw - 2rem));
+  max-height: min(70dvh, 34rem);
+  overflow: auto;
+  border-radius: 6px;
+  scrollbar-width: thin;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.input-prompt-card {
   border: 1px solid rgba(191, 255, 196, 0.28);
   border-radius: 6px;
   background:
@@ -1212,6 +1236,15 @@ select {
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.34);
   color: rgba(239, 246, 252, 0.92);
   padding: 0.65rem;
+}
+
+.input-prompt-toast::-webkit-scrollbar {
+  width: 6px;
+}
+
+.input-prompt-toast::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(217, 226, 234, 0.22);
 }
 
 .input-prompt-header {
