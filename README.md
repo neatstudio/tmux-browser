@@ -38,10 +38,11 @@ npm run build
 npm run start
 ```
 
-This serves the built dashboard on `http://127.0.0.1:3000` by default. To make it
-reachable from another device, bind to a specific private interface IP, for
-example `HOST=100.x.y.z npm run start`. `HOST=0.0.0.0` is rejected because it is
-too easy to expose terminal control beyond the intended internal network.
+The development `npm run start` command still follows your environment. For
+packaged `.run` installs, tmux-ui auto-binds to the first `100.*` Tailscale IP
+when available, then falls back to `127.0.0.1`. Set `HOST=100.x.y.z` explicitly
+when you want a specific private interface. `HOST=0.0.0.0` is rejected because it
+is too easy to expose terminal control beyond the intended internal network.
 
 For split development:
 
@@ -199,7 +200,8 @@ tail -n 100 ~/.tmux-ui/tmux-ui.log
 tail -n 100 ~/.tmux-ui/tmux-ui.err.log
 ```
 
-The default bind host defaults to `127.0.0.1`. Set `HOST` or `PORT` explicitly to
+Packaged `.run` installs auto-bind to the first `100.*` Tailscale IP when
+available, then fall back to `127.0.0.1`. Set `HOST` or `PORT` explicitly to
 override, but use a specific private IP. `HOST=0.0.0.0` is rejected:
 
 ```bash

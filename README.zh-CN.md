@@ -36,7 +36,9 @@ npm run build
 npm run start
 ```
 
-默认会在 `http://127.0.0.1:3000` 提供 dashboard。如果需要让其他设备访问，请绑定到明确的内网 IP，例如：
+开发环境的 `npm run start` 仍然遵循当前环境变量。使用打包后的 `.run`
+安装时，tmux-ui 默认会自动绑定到第一个 `100.*` Tailscale IP；如果没有
+找到，则回退到 `127.0.0.1`。如果要指定某个内网地址，可以显式设置：
 
 ```bash
 HOST=100.x.y.z npm run start
@@ -194,7 +196,9 @@ tail -n 100 ~/.tmux-ui/tmux-ui.err.log
 
 ## 网络绑定
 
-默认绑定到 `127.0.0.1`。如果要手动指定监听地址或端口，请使用明确的内网 IP；`HOST=0.0.0.0` 会被拒绝：
+`.run` 安装默认会自动绑定到第一个 `100.*` Tailscale IP；如果没有找到，
+则回退到 `127.0.0.1`。如果要手动指定监听地址或端口，请使用明确的内网
+IP；`HOST=0.0.0.0` 会被拒绝：
 
 ```bash
 HOST=100.x.y.z PORT=3000 ./release/release.run start

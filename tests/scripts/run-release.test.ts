@@ -73,7 +73,7 @@ describe("run release scripts", () => {
     expect(packScript).toContain(
       'tmux respawn-pane -k -t "$APP_SESSION" -c "$APP_HOME"'
     );
-    expect(packScript).toContain('HOST=\'\\${HOST:-127.0.0.1}\' PORT=\'\\${PORT:-3000}\' ./start.sh');
+    expect(packScript).toContain('HOST=\'\\${HOST:-}\' PORT=\'\\${PORT:-3000}\' ./start.sh');
     expect(packScript).not.toContain("cd '$APP_HOME' && PORT=");
   });
 
@@ -189,11 +189,12 @@ describe("run release scripts", () => {
   });
 
   it("uses localhost host defaults and rejects wildcard binding", () => {
-    expect(packScript).not.toContain("detect_tailscale_host");
-    expect(packScript).not.toContain("100\\\\.");
-    expect(packScript).not.toContain("detect_tailscale_host_with_ip");
-    expect(packScript).not.toContain("detect_tailscale_host_with_ifconfig");
-    expect(packScript).toContain('HOST="\\${HOST:-127.0.0.1}"');
+    expect(packScript).toContain("detect_tailscale_host()");
+    expect(packScript).toContain("detect_tailscale_host_with_ip()");
+    expect(packScript).toContain("detect_tailscale_host_with_ifconfig()");
+    expect(packScript).toContain("detect_bind_host()");
+    expect(packScript).toContain("/^100\\\\./");
+    expect(packScript).toContain('HOST="$(detect_bind_host)"');
     expect(packScript).toContain("reject_wildcard_host");
     expect(packScript).toContain("HOST=0.0.0.0 is not allowed");
     expect(packScript).toContain("export HOST");
@@ -383,8 +384,8 @@ describe("run release scripts", () => {
     expect(readmeZh).toContain("tmux-ui tmux-install");
     expect(readme).toContain("tmux-resurrect cannot restore process memory");
     expect(readmeZh).toContain("tmux-resurrect 不能恢复进程内存状态");
-    expect(readme).toContain("defaults to `127.0.0.1`");
-    expect(readmeZh).toContain("默认绑定到 `127.0.0.1`");
+    expect(readme).toContain("auto-binds to the first `100.*` Tailscale IP");
+    expect(readmeZh).toContain("默认会自动绑定到第一个 `100.*` Tailscale IP");
     expect(readme).toContain("`HOST=0.0.0.0` is rejected");
     expect(readmeZh).toContain("`HOST=0.0.0.0` 会被拒绝");
   });

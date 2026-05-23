@@ -211,6 +211,37 @@ reject_wildcard_host() {
   fi
 }
 
+detect_tailscale_host_with_ip() {
+  command -v ip >/dev/null 2>&1 || return 1
+  ip -o -4 addr show 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | awk '/^100\\./ { print; exit }'
+}
+
+detect_tailscale_host_with_ifconfig() {
+  command -v ifconfig >/dev/null 2>&1 || return 1
+  ifconfig 2>/dev/null | awk '/inet / { print $2 }' | awk '/^100\\./ { print; exit }'
+}
+
+detect_tailscale_host() {
+  detect_tailscale_host_with_ip || detect_tailscale_host_with_ifconfig || true
+}
+
+detect_bind_host() {
+  if [[ -n "\${HOST:-}" ]]; then
+    echo "$HOST"
+    return
+  fi
+
+  local detected_host
+  detected_host="$(detect_tailscale_host)"
+
+  if [[ -n "$detected_host" ]]; then
+    echo "$detected_host"
+    return
+  fi
+
+  echo "127.0.0.1"
+}
+
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
     echo "Missing required command: $1" >&2
@@ -223,7 +254,7 @@ require_command tmux
 if [[ "$TMUX_UI_TMUX_AUTO_RESTORE" != "0" && -x "./tmux-resurrect.sh" ]]; then
   ./tmux-resurrect.sh restore-if-empty || true
 fi
-HOST="\${HOST:-127.0.0.1}"
+HOST="$(detect_bind_host)"
 reject_wildcard_host "$HOST"
 export HOST
 export PORT="\${PORT:-3000}"
@@ -268,8 +299,9 @@ keeper tmux window:
 The default install directory is \`~/.tmux-ui\`.
 The default tmux session used by \`restart\` is \`tmux-ui\`.
 The default systemd service name is \`tmux-ui\`.
-The server binds to \`127.0.0.1\` unless \`HOST\` is set explicitly. Wildcard
-binding with \`HOST=0.0.0.0\` is rejected; choose a specific private IP instead.
+The server auto-binds to the first \`100.*\` Tailscale IP when available, unless
+\`HOST\` is set explicitly. It falls back to \`127.0.0.1\`. Wildcard binding with
+\`HOST=0.0.0.0\` is rejected; choose a specific private IP instead.
 
 Optional tmux restoration:
 
@@ -546,7 +578,7 @@ Environment:
   TMUX_UI_LAUNCHD_LABEL macOS launchd label, default: com.neatstudio.$SERVICE_NAME
   TMUX_UI_LAUNCHD_PLIST macOS launchd plist path, default: ~/Library/LaunchAgents/$LAUNCHD_LABEL.plist
   TMUX_UI_TMUX_AUTO_RESTORE set to 0 to disable automatic restore when tmux is empty
-  HOST              Bind host for start, default: 127.0.0.1. 0.0.0.0 is rejected.
+  HOST              Bind host for start. Defaults to the first 100.* Tailscale IP, then 127.0.0.1. 0.0.0.0 is rejected.
   PORT              Bind port for start, default: 3000
 
 No command defaults to help. Use "start" or "restart" explicitly to run the server.
@@ -971,7 +1003,7 @@ ensure_tmux_session() {
 
 start_server_in_tmux() {
   ensure_tmux_session
-  tmux respawn-pane -k -t "$APP_SESSION" -c "$APP_HOME" "HOST='\${HOST:-127.0.0.1}' PORT='\${PORT:-3000}' ./start.sh"
+  tmux respawn-pane -k -t "$APP_SESSION" -c "$APP_HOME" "HOST='\${HOST:-}' PORT='\${PORT:-3000}' ./start.sh"
   tmux ls
 }
 
