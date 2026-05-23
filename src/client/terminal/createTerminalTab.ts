@@ -1,4 +1,5 @@
 import { FitAddon } from "@xterm/addon-fit";
+import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 
@@ -221,6 +222,25 @@ function getTmuxWheelScrollLines(event: WheelEvent, rows: number) {
   return event.altKey ? Math.sign(historyLines) * rows : historyLines;
 }
 
+function openTerminalWebLink(event: MouseEvent, uri: string) {
+  event.preventDefault();
+
+  const hasProtocol = /^[a-z][a-z0-9+.-]*:/i.test(uri);
+  const target = hasProtocol ? uri : `https://${uri}`;
+
+  try {
+    const url = new URL(target);
+
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return;
+    }
+
+    window.open(url.href, "_blank", "noopener,noreferrer");
+  } catch {
+    // Ignore malformed linkifier matches instead of forwarding unsafe strings.
+  }
+}
+
 function isShiftEnterEvent(event: KeyboardEvent) {
   return (
     event.shiftKey &&
@@ -271,6 +291,20 @@ function createWebglRenderer(
     );
 
     return null;
+  }
+}
+
+function refreshTerminalRenderer(terminal: Terminal) {
+  try {
+    terminal.clearTextureAtlas();
+  } catch {
+    // Non-WebGL renderers may not have an active texture atlas to clear.
+  }
+
+  try {
+    terminal.refresh(0, Math.max(0, terminal.rows - 1));
+  } catch (error) {
+    console.warn("Terminal refresh skipped; renderer is not usable.", error);
   }
 }
 
@@ -342,7 +376,9 @@ export function createTerminalTab(deps: {
     ...(deps.terminalTheme ? { theme: deps.terminalTheme } : {})
   });
   const fitAddon = new FitAddon();
+  const webLinksAddon = new WebLinksAddon(openTerminalWebLink);
   terminal.loadAddon(fitAddon);
+  terminal.loadAddon(webLinksAddon);
   terminal.open(deps.container);
 
   const outputBuffer = createTerminalOutputBuffer((data) => {
@@ -356,6 +392,7 @@ export function createTerminalTab(deps: {
   let touchScrollY: number | null = null;
   let pointerScrollY: number | null = null;
   let activePointerId: number | null = null;
+  let pendingResizeFrame: number | null = null;
   const scrollStatusElement = deps.rendererStatusElement ?? deps.container;
   let hasWarnedAboutFitFailure = false;
 
@@ -378,7 +415,19 @@ export function createTerminalTab(deps: {
       return;
     }
 
+    refreshTerminalRenderer(terminal);
     controller?.resize(terminal.cols, terminal.rows);
+  }
+
+  function scheduleFitAndResize() {
+    if (pendingResizeFrame !== null) {
+      return;
+    }
+
+    pendingResizeFrame = window.requestAnimationFrame(() => {
+      pendingResizeFrame = null;
+      safeFitAndResize();
+    });
   }
 
   function syncBrowserScrollMode() {
@@ -662,6 +711,13 @@ export function createTerminalTab(deps: {
   };
 
   window.addEventListener("resize", handleWindowResize);
+  const resizeObserver =
+    "ResizeObserver" in window
+      ? new ResizeObserver(() => {
+          scheduleFitAndResize();
+        })
+      : null;
+  resizeObserver?.observe(deps.container);
 
   terminal.onData((data) => {
     controller?.sendInput(data);
@@ -697,6 +753,7 @@ export function createTerminalTab(deps: {
     },
     setTheme(theme: TerminalTheme) {
       terminal.options.theme = theme;
+      refreshTerminalRenderer(terminal);
     },
     setFontSize(fontSize: number) {
       terminal.options.fontSize = fontSize;
@@ -711,6 +768,12 @@ export function createTerminalTab(deps: {
       safeFitAndResize();
     },
     destroy() {
+      if (pendingResizeFrame !== null) {
+        window.cancelAnimationFrame(pendingResizeFrame);
+        pendingResizeFrame = null;
+      }
+
+      resizeObserver?.disconnect();
       deps.container.removeEventListener("wheel", handleWheel, true);
       deps.container.removeEventListener("paste", handlePaste, true);
       deps.container.removeEventListener("drop", handleDrop, true);

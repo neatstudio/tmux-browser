@@ -7,6 +7,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync
@@ -47,6 +48,23 @@ function run(command, args, options = {}) {
 function writeExecutable(path, content) {
   writeFileSync(path, content, "utf8");
   chmodSync(path, 0o755);
+}
+
+function cleanupOldRunFiles() {
+  if (!existsSync(releaseDir)) {
+    return;
+  }
+
+  for (const entry of readdirSync(releaseDir)) {
+    if (
+      (entry.startsWith(`${projectName}-`) && entry.endsWith(".run")) ||
+      entry === "tmux-ui.run" ||
+      entry === "tmux.run" ||
+      entry === "gemm4-node-latest.run"
+    ) {
+      rmSync(join(releaseDir, entry), { force: true });
+    }
+  }
 }
 
 function stripMacExtendedAttributes(path) {
@@ -186,6 +204,13 @@ load_node_runtime() {
   fi
 }
 
+reject_wildcard_host() {
+  if [[ "$1" == "0.0.0.0" ]]; then
+    echo "HOST=0.0.0.0 is not allowed. Use 127.0.0.1 or a specific private interface IP." >&2
+    exit 1
+  fi
+}
+
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
     echo "Missing required command: $1" >&2
@@ -193,48 +218,13 @@ require_command() {
   fi
 }
 
-detect_tailscale_host_with_ip() {
-  if ! command -v ip >/dev/null 2>&1; then
-    return
-  fi
-
-  ip -o -4 addr show scope global | awk '{ print $4 }' | cut -d/ -f1 | awk '/^100\\./ { print; exit }'
-}
-
-detect_tailscale_host_with_ifconfig() {
-  if ! command -v ifconfig >/dev/null 2>&1; then
-    return
-  fi
-
-  ifconfig 2>/dev/null | awk '/inet / { print $2 }' | awk '/^100\\./ { print; exit }'
-}
-
-detect_tailscale_host() {
-  local host
-  host="$(detect_tailscale_host_with_ip)"
-
-  if [[ -z "$host" ]]; then
-    host="$(detect_tailscale_host_with_ifconfig)"
-  fi
-
-  if [[ -z "$host" ]]; then
-    echo "No Tailscale 100.x address found. Set HOST explicitly if you want another bind address." >&2
-    echo "Example: HOST=0.0.0.0 PORT=\${PORT:-3000} $0" >&2
-    exit 1
-  fi
-
-  echo "$host"
-}
-
 load_node_runtime
 require_command tmux
 if [[ "$TMUX_UI_TMUX_AUTO_RESTORE" != "0" && -x "./tmux-resurrect.sh" ]]; then
   ./tmux-resurrect.sh restore-if-empty || true
 fi
-HOST="\${HOST:-}"
-if [[ -z "$HOST" ]]; then
-  HOST="$(detect_tailscale_host)"
-fi
+HOST="\${HOST:-127.0.0.1}"
+reject_wildcard_host "$HOST"
 export HOST
 export PORT="\${PORT:-3000}"
 export TMUX_UI_COMMIT="\${TMUX_UI_COMMIT:-${commit || "unknown"}}"
@@ -278,8 +268,8 @@ keeper tmux window:
 The default install directory is \`~/.tmux-ui\`.
 The default tmux session used by \`restart\` is \`tmux-ui\`.
 The default systemd service name is \`tmux-ui\`.
-The server binds to the first Tailscale IPv4 address matching \`100.*\` unless
-\`HOST\` is set explicitly.
+The server binds to \`127.0.0.1\` unless \`HOST\` is set explicitly. Wildcard
+binding with \`HOST=0.0.0.0\` is rejected; choose a specific private IP instead.
 
 Optional tmux restoration:
 
@@ -556,7 +546,7 @@ Environment:
   TMUX_UI_LAUNCHD_LABEL macOS launchd label, default: com.neatstudio.$SERVICE_NAME
   TMUX_UI_LAUNCHD_PLIST macOS launchd plist path, default: ~/Library/LaunchAgents/$LAUNCHD_LABEL.plist
   TMUX_UI_TMUX_AUTO_RESTORE set to 0 to disable automatic restore when tmux is empty
-  HOST              Bind host for start, default: first Tailscale 100.x address
+  HOST              Bind host for start, default: 127.0.0.1. 0.0.0.0 is rejected.
   PORT              Bind port for start, default: 3000
 
 No command defaults to help. Use "start" or "restart" explicitly to run the server.
@@ -801,16 +791,7 @@ wait_for_http_health_once() {
   host="\${HOST:-}"
   port="\${PORT:-3000}"
 
-  if [[ -z "$host" ]]; then
-    if command -v ip >/dev/null 2>&1; then
-      host="$(ip -o -4 addr show scope global | awk '{ print $4 }' | cut -d/ -f1 | awk '/^100\\./ { print; exit }')"
-    fi
-
-    if [[ -z "$host" ]] && command -v ifconfig >/dev/null 2>&1; then
-      host="$(ifconfig 2>/dev/null | awk '/inet / { print $2 }' | awk '/^100\\./ { print; exit }')"
-    fi
-  fi
-
+  [[ "$host" == "0.0.0.0" ]] && host="127.0.0.1"
   [[ -n "$host" ]] || host="127.0.0.1"
 
   if command -v curl >/dev/null 2>&1; then
@@ -990,7 +971,7 @@ ensure_tmux_session() {
 
 start_server_in_tmux() {
   ensure_tmux_session
-  tmux respawn-pane -k -t "$APP_SESSION" -c "$APP_HOME" "PORT='\${PORT:-3000}' ./start.sh"
+  tmux respawn-pane -k -t "$APP_SESSION" -c "$APP_HOME" "HOST='\${HOST:-127.0.0.1}' PORT='\${PORT:-3000}' ./start.sh"
   tmux ls
 }
 
@@ -1134,6 +1115,7 @@ ${payloadMarker}
 run("npm", ["run", "build"]);
 
 mkdirSync(releaseDir, { recursive: true });
+cleanupOldRunFiles();
 
 const stageDir = mkdtempSync(join(tmpdir(), `${projectName}-release-`));
 const payloadDir = join(stageDir, "payload");

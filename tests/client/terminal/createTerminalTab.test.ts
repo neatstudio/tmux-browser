@@ -16,6 +16,8 @@ const terminalTestState = vi.hoisted(() => {
       write: ReturnType<typeof vi.fn>;
       paste: ReturnType<typeof vi.fn>;
       clear: ReturnType<typeof vi.fn>;
+      refresh: ReturnType<typeof vi.fn>;
+      clearTextureAtlas: ReturnType<typeof vi.fn>;
       dispose: ReturnType<typeof vi.fn>;
       modes: {
         bracketedPasteMode: boolean;
@@ -33,6 +35,10 @@ const terminalTestState = vi.hoisted(() => {
   const fitAddons: Array<{
     fit: ReturnType<typeof vi.fn>;
   }> = [];
+  const webLinksAddons: Array<{
+    dispose: ReturnType<typeof vi.fn>;
+    handler?: (event: MouseEvent, uri: string) => void;
+  }> = [];
   const webglAddons: Array<{
     dispose: ReturnType<typeof vi.fn>;
     onContextLoss: ReturnType<typeof vi.fn>;
@@ -43,6 +49,7 @@ const terminalTestState = vi.hoisted(() => {
   return {
     terminals,
     fitAddons,
+    webLinksAddons,
     webglAddons,
     fitShouldThrow: false,
     webglConstructShouldThrow: false,
@@ -76,6 +83,8 @@ vi.mock("@xterm/xterm", () => ({
     write = vi.fn();
     paste = vi.fn();
     clear = vi.fn();
+    refresh = vi.fn();
+    clearTextureAtlas = vi.fn();
     dispose = vi.fn();
     modes = {
       bracketedPasteMode: false
@@ -146,6 +155,18 @@ vi.mock("@xterm/addon-fit", () => ({
 
     constructor() {
       terminalTestState.fitAddons.push(this);
+    }
+  }
+}));
+
+vi.mock("@xterm/addon-web-links", () => ({
+  WebLinksAddon: class {
+    dispose = vi.fn();
+    handler?: (event: MouseEvent, uri: string) => void;
+
+    constructor(handler?: (event: MouseEvent, uri: string) => void) {
+      this.handler = handler;
+      terminalTestState.webLinksAddons.push(this);
     }
   }
 }));
@@ -390,6 +411,7 @@ describe("createTerminalTab", () => {
   beforeEach(() => {
     terminalTestState.terminals.length = 0;
     terminalTestState.fitAddons.length = 0;
+    terminalTestState.webLinksAddons.length = 0;
     terminalTestState.webglAddons.length = 0;
     terminalTestState.fitShouldThrow = false;
     terminalTestState.webglConstructShouldThrow = false;
@@ -653,11 +675,90 @@ describe("createTerminalTab", () => {
 
     expect(terminalTestState.terminals[0]?.instance.clear).toHaveBeenCalledOnce();
     expect(terminalTestState.fitAddons[0]?.fit).toHaveBeenCalledOnce();
+    expect(terminalTestState.terminals[0]?.instance.clearTextureAtlas).toHaveBeenCalled();
+    expect(terminalTestState.terminals[0]?.instance.refresh).toHaveBeenCalledWith(
+      0,
+      39
+    );
     expect(socket.send).toHaveBeenCalledWith(
       JSON.stringify({ type: "resize", cols: 120, rows: 40 })
     );
 
     mounted.destroy();
+  });
+
+  it("refits when the terminal frame size changes after layout updates", () => {
+    let scheduledCallback: FrameRequestCallback | null = null;
+    let resizeCallback: ResizeObserverCallback | null = null;
+    const resizeObservers: Array<{
+      observe: ReturnType<typeof vi.fn>;
+      disconnect: ReturnType<typeof vi.fn>;
+    }> = [];
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    };
+
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation(
+      (callback: FrameRequestCallback) => {
+        scheduledCallback = callback;
+
+        return 1;
+      }
+    );
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe = vi.fn();
+        disconnect = vi.fn();
+
+        constructor(callback: ResizeObserverCallback) {
+          resizeCallback = callback;
+          resizeObservers.push(this);
+        }
+      }
+    );
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        constructor() {
+          return socket;
+        }
+      }
+    );
+
+    const container = document.createElement("div");
+    const mounted = createTerminalTab({
+      container,
+      tabId: "tab-1",
+      sessionName: "build",
+      onClosed: vi.fn()
+    });
+    socket.send.mockClear();
+    terminalTestState.fitAddons[0]?.fit.mockClear();
+
+    resizeCallback?.([], resizeObservers[0] as ResizeObserver);
+
+    expect(terminalTestState.fitAddons[0]?.fit).not.toHaveBeenCalled();
+
+    scheduledCallback?.(performance.now());
+
+    expect(resizeObservers[0]?.observe).toHaveBeenCalledWith(container);
+    expect(terminalTestState.fitAddons[0]?.fit).toHaveBeenCalledOnce();
+    expect(terminalTestState.terminals[0]?.instance.clearTextureAtlas).toHaveBeenCalled();
+    expect(terminalTestState.terminals[0]?.instance.refresh).toHaveBeenCalledWith(
+      0,
+      39
+    );
+    expect(socket.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: "resize", cols: 120, rows: 40 })
+    );
+
+    mounted.destroy();
+
+    expect(resizeObservers[0]?.disconnect).toHaveBeenCalledOnce();
   });
 
   it("uploads pasted images and inserts the saved path without submitting", async () => {
@@ -855,7 +956,7 @@ describe("createTerminalTab", () => {
     expect(container.dataset.renderer).toBe("webgl");
     expect(terminalTestState.webglAddons).toHaveLength(1);
     expect(terminalTestState.terminals[0]?.instance.loadAddon).toHaveBeenNthCalledWith(
-      2,
+      3,
       terminalTestState.webglAddons[0]
     );
 
@@ -893,10 +994,60 @@ describe("createTerminalTab", () => {
 
     expect(container.dataset.renderer).toBe("dom");
     expect(terminalTestState.webglAddons).toHaveLength(0);
-    expect(terminalTestState.terminals[0]?.instance.loadAddon).toHaveBeenCalledOnce();
+    expect(terminalTestState.terminals[0]?.instance.loadAddon).toHaveBeenCalledTimes(2);
     expect(warn).toHaveBeenCalledWith(
       "WebGL terminal renderer unavailable; using DOM renderer.",
       expect.any(Error)
+    );
+
+    mounted.destroy();
+  });
+
+  it("loads safe clickable web links for terminal output", () => {
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    };
+    const open = vi.spyOn(window, "open").mockImplementation(() => null);
+
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        constructor() {
+          return socket;
+        }
+      }
+    );
+    const container = document.createElement("div");
+
+    const mounted = createTerminalTab({
+      container,
+      tabId: "tab-1",
+      sessionName: "build",
+      onClosed: vi.fn()
+    });
+    const clickEvent = new MouseEvent("click", { cancelable: true });
+    const preventDefault = vi.spyOn(clickEvent, "preventDefault");
+
+    expect(terminalTestState.webLinksAddons).toHaveLength(1);
+
+    terminalTestState.webLinksAddons[0]?.handler?.(
+      clickEvent,
+      "example.com/docs"
+    );
+    terminalTestState.webLinksAddons[0]?.handler?.(
+      clickEvent,
+      "file:///etc/passwd"
+    );
+
+    expect(preventDefault).toHaveBeenCalledTimes(2);
+    expect(open).toHaveBeenCalledOnce();
+    expect(open).toHaveBeenCalledWith(
+      "https://example.com/docs",
+      "_blank",
+      "noopener,noreferrer"
     );
 
     mounted.destroy();

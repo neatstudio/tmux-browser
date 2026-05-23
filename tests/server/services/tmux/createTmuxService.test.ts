@@ -192,6 +192,10 @@ describe("createTmuxService", () => {
         stderr: ""
       })
       .mockResolvedValueOnce({
+        stdout: "",
+        stderr: ""
+      })
+      .mockResolvedValueOnce({
         stdout: "build\t1\t0\t1714200002",
         stderr: ""
       })
@@ -218,17 +222,72 @@ describe("createTmuxService", () => {
     expect(run.mock.calls.filter(([command]) => command === "capture-pane")).toHaveLength(2);
   });
 
-  it("sends a command to a named session", async () => {
+  it("caches git summaries across dashboard refreshes", async () => {
+    let nowMs = 1000;
+    const run = vi
+      .fn()
+      .mockResolvedValueOnce({
+        stdout: "build\t1\t0\t1714200000",
+        stderr: ""
+      })
+      .mockResolvedValueOnce({
+        stdout: "build\t%1\t0\tzsh\t1\t0\t1\tzsh\t/home/app\t0\t\t100",
+        stderr: ""
+      })
+      .mockResolvedValueOnce({
+        stdout: "build\t1\t0\t1714200001",
+        stderr: ""
+      })
+      .mockResolvedValueOnce({
+        stdout: "build\t%1\t0\tzsh\t1\t0\t1\tzsh\t/home/app\t0\t\t100",
+        stderr: ""
+      })
+      .mockResolvedValueOnce({
+        stdout: "build\t1\t0\t1714200065",
+        stderr: ""
+      })
+      .mockResolvedValueOnce({
+        stdout: "build\t%1\t0\tzsh\t1\t0\t1\tzsh\t/home/app\t0\t\t100",
+        stderr: ""
+      });
+    const getGitSummary = vi
+      .fn()
+      .mockResolvedValueOnce({ branch: "main", dirty: false })
+      .mockResolvedValueOnce({ branch: "main", dirty: true });
+    const service = createTmuxService({
+      run,
+      getGitSummary,
+      now: () => nowMs,
+      gitSummaryTtlMs: 60_000
+    });
+
+    await service.listSessions();
+    nowMs = 2000;
+    await service.listSessions();
+    nowMs = 62_000;
+    await service.listSessions();
+
+    expect(getGitSummary).toHaveBeenCalledTimes(2);
+    expect(getGitSummary).toHaveBeenNthCalledWith(1, "/home/app");
+    expect(getGitSummary).toHaveBeenNthCalledWith(2, "/home/app");
+  });
+
+  it("types a command literally and sends enter to execute it", async () => {
     const run = vi.fn().mockResolvedValue({ stdout: "", stderr: "" });
     const service = createTmuxService({ run });
 
     await service.sendCommand("build", "npm test");
 
-    expect(run).toHaveBeenCalledWith("send-keys", [
+    expect(run).toHaveBeenNthCalledWith(1, "send-keys", [
       "-t",
       "build",
-      "npm test",
-      "C-m"
+      "-l",
+      "npm test"
+    ]);
+    expect(run).toHaveBeenNthCalledWith(2, "send-keys", [
+      "-t",
+      "build",
+      "Enter"
     ]);
   });
 

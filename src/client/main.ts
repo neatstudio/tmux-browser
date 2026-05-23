@@ -4,6 +4,7 @@ import { createSessionApi } from "./api/sessionApi";
 import { renderInputPromptToast } from "./render/inputPromptToast";
 import { renderDashboard } from "./render/renderDashboard";
 import { createAnimationFrameScheduler } from "./render/renderScheduler";
+import { renderSessionSidebar } from "./render/renderSessionSidebar";
 import { renderSessionConfigModal } from "./render/sessionConfigModal";
 import { renderSessionStatusBar } from "./render/sessionStatusBar";
 import { renderTabs, updateActiveTabItem } from "./render/renderTabs";
@@ -18,6 +19,7 @@ import {
   type TerminalInputPrompt
 } from "./terminal/inputPromptDetector";
 import { syncTerminalPanelVisibility } from "./terminal/panelVisibility";
+import { getVisibleImagePaths } from "./imagePreviewPaths";
 import { getCompactPageTitle } from "./pageTitle";
 import {
   applyTheme,
@@ -27,6 +29,7 @@ import {
   THEMES,
   type AppTheme
 } from "./theme/themeState";
+import { getLayoutMode } from "./layoutMode";
 import "./styles.css";
 
 declare const __TMUX_UI_CLIENT_VERSION__: string;
@@ -55,10 +58,14 @@ if (!app) {
   throw new Error("App root not found");
 }
 
+const layoutMode = getLayoutMode();
+const isSidebarLayout = layoutMode === "sidebar";
+
 app.innerHTML = `
-  <div class="app-shell">
+  <div class="app-shell${isSidebarLayout ? " app-shell--sidebar" : ""}">
     <div class="tabs-root"></div>
     <div class="content-root">
+      <div class="session-sidebar-root"></div>
       <div class="dashboard-root"></div>
       <div class="panels-root"></div>
     </div>
@@ -66,6 +73,7 @@ app.innerHTML = `
 `;
 
 const tabsRoot = app.querySelector<HTMLElement>(".tabs-root")!;
+const sessionSidebarRoot = app.querySelector<HTMLElement>(".session-sidebar-root")!;
 const dashboardRoot = app.querySelector<HTMLElement>(".dashboard-root")!;
 const panelsRoot = app.querySelector<HTMLElement>(".panels-root")!;
 
@@ -88,8 +96,18 @@ const store = createDashboardStore({
   api: createSessionApi(),
   pollMs: 10_000,
   pruneTabs: (validSessionNames) => tabState.pruneTabs(validSessionNames),
-  shouldIncludePreview: () => tabState.getActiveTabId() === null,
+  shouldIncludePreview: () =>
+    isSidebarLayout || tabState.getActiveTabId() === null,
   shouldIncludePanes: () => tabState.getActiveTabId() !== null,
+  getDashboardPollOptions: () =>
+    isSidebarLayout
+      ? {
+          includePreview: false,
+          includePanes: true,
+          includeServerStatus: false
+        }
+      : null,
+  preferActiveSessionStatus: !isSidebarLayout,
   isActiveSessionBusy: () => {
     const activeTabId = tabState.getActiveTabId();
 
@@ -110,15 +128,14 @@ const inactiveTerminalPruner = createInactiveTerminalPruner({
 const activeOutputTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const busyTerminalTabIds = new Set<string>();
 const terminalPromptSignatures = new Map<string, string>();
-const IMAGE_PREVIEW_PATH_STORAGE_KEY = "browser-tmux-dashboard.image-preview-path";
-const IMAGE_PATH_PATTERN =
-  /(?:~\/|\/|\.{1,2}\/)?[^\s'"<>|]+?\.(?:png|jpe?g|gif|webp|svg|avif|apng)(?:\?[^\s'"<>|]*)?/gi;
+const SIDEBAR_COLLAPSED_STORAGE_KEY = "browser-tmux-dashboard.sidebar-collapsed";
 let activeImageSessionName: string | null = null;
 let imagePreviewScanToken = 0;
 let lastRenderedTabListSignature = "";
 let lastRenderedActiveTabId: string | null | undefined;
 let visibleTerminalPanelId: string | null = null;
 let lastDashboardActive = tabState.getActiveTabId() === null;
+let isSidebarCollapsed = getStoredBoolean(SIDEBAR_COLLAPSED_STORAGE_KEY);
 
 applyTheme(activeTheme);
 
@@ -126,6 +143,31 @@ const renderScheduler = createAnimationFrameScheduler(render);
 
 function scheduleRender() {
   renderScheduler.schedule();
+}
+
+function getStoredBoolean(key: string) {
+  try {
+    return window.localStorage.getItem(key) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function setStoredBoolean(key: string, value: boolean) {
+  try {
+    window.localStorage.setItem(key, value ? "1" : "0");
+  } catch {
+    // Storage is optional; keep the current in-memory UI state.
+  }
+}
+
+function setSidebarCollapsed(collapsed: boolean) {
+  isSidebarCollapsed = collapsed;
+  setStoredBoolean(SIDEBAR_COLLAPSED_STORAGE_KEY, collapsed);
+  app
+    .querySelector(".app-shell")
+    ?.classList.toggle("is-sidebar-collapsed", collapsed);
+  scheduleRender();
 }
 
 function getOrOpenTab(sessionName: string) {
@@ -146,6 +188,21 @@ function getTabForSession(sessionName: string) {
   return tabState
     .getTabs()
     .find((tab) => tab.sessionName === sessionName) ?? null;
+}
+
+function getPinnedSessionNames() {
+  return new Set(
+    tabState
+      .getTabs()
+      .filter((tab) => tab.pinned)
+      .map((tab) => tab.sessionName)
+  );
+}
+
+function togglePinnedSession(sessionName: string) {
+  const tab = getOrOpenTab(sessionName);
+  tabState.togglePinned(tab.id);
+  scheduleRender();
 }
 
 function closeTab(tabId: string, options: { force?: boolean } = {}) {
@@ -561,50 +618,6 @@ function getImagePreviewInfoUrl(imagePath: string, basePath: string) {
   return `/api/image-preview-info?${params.toString()}`;
 }
 
-function getStoredImagePreviewPath() {
-  try {
-    return window.localStorage.getItem(IMAGE_PREVIEW_PATH_STORAGE_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function storeImagePreviewPath(imagePath: string) {
-  try {
-    window.localStorage.setItem(IMAGE_PREVIEW_PATH_STORAGE_KEY, imagePath);
-  } catch {
-    // Ignore storage failures; preview still works for the current click.
-  }
-}
-
-function normalizeImagePathCandidate(value: string) {
-  return value.replace(/[),.;:]+$/g, "");
-}
-
-function getVisibleImagePaths(tab: BrowserTab) {
-  const visibleText = mountedTerminals.get(tab.id)?.getVisibleText() ?? "";
-  const paths = new Set<string>();
-  let match: RegExpExecArray | null;
-
-  IMAGE_PATH_PATTERN.lastIndex = 0;
-
-  while ((match = IMAGE_PATH_PATTERN.exec(visibleText))) {
-    const candidate = normalizeImagePathCandidate(match[0] ?? "");
-
-    if (candidate) {
-      paths.add(candidate);
-    }
-  }
-
-  const storedPath = getStoredImagePreviewPath();
-
-  if (storedPath) {
-    paths.add(storedPath);
-  }
-
-  return [...paths];
-}
-
 function openImagePreviewPanel(sessionName: string) {
   activeImageSessionName = sessionName;
   scheduleRender();
@@ -669,7 +682,6 @@ function setPreviewImage(
   const basePath = getSessionCurrentPath(sessionName);
   const imageUrl = getImagePreviewUrl(imagePath, basePath);
 
-  storeImagePreviewPath(imagePath);
   panel.classList.remove("is-compact");
   panel.classList.add("has-image");
   error.hidden = true;
@@ -722,8 +734,8 @@ function renderImagePreviewPanel() {
     return;
   }
 
-  const detectedPaths = getVisibleImagePaths(tab);
-  const defaultPath = detectedPaths[0] ?? getStoredImagePreviewPath() ?? "";
+  const detectedPaths = getVisibleImagePaths(mounted.getVisibleText());
+  const defaultPath = detectedPaths[0] ?? "";
 
   const backdrop = document.createElement("div");
   backdrop.className = "image-preview-backdrop";
@@ -1254,6 +1266,55 @@ function render() {
     });
   }
 
+  if (isSidebarLayout) {
+    app
+      .querySelector(".app-shell")
+      ?.classList.toggle("is-sidebar-collapsed", isSidebarCollapsed);
+    const activeSessionName =
+      tabs.find((tab) => tab.id === activeTabId)?.sessionName ?? null;
+
+    renderSessionSidebar(sessionSidebarRoot, store.getState(), {
+      activeSessionName,
+      collapsed: isSidebarCollapsed,
+      draftSessionName,
+      browserTabs: tabs.map((tab) => ({
+        sessionName: tab.sessionName,
+        active: tab.id === activeTabId
+      })),
+      pinnedSessionNames: getPinnedSessionNames(),
+      onCreateSession: (name) => {
+        void store.createSession(name).then(() => {
+          draftSessionName = "";
+          getOrOpenTab(name);
+          scheduleRender();
+        });
+      },
+      onDraftChange: (value) => {
+        draftSessionName = value;
+      },
+      onOpenDashboard: () => {
+        tabState.setActiveTab(null);
+        scheduleRender();
+      },
+      onOpenSession: (name) => {
+        getOrOpenTab(name);
+        scheduleRender();
+      },
+      onTogglePinned: togglePinnedSession,
+      onRefresh: () =>
+        void store
+          .refresh({
+            includePreview: false,
+            includePanes: true,
+            includeServerStatus: true
+          })
+          .then(() => scheduleRender()),
+      onToggleCollapsed: () => setSidebarCollapsed(!isSidebarCollapsed)
+    });
+  } else {
+    sessionSidebarRoot.innerHTML = "";
+  }
+
   dashboardRoot.style.display = activeTabId === null ? "block" : "none";
   panelsRoot.style.display = activeTabId === null ? "none" : "block";
   syncPanels();
@@ -1300,8 +1361,8 @@ store.subscribe(() => {
 
   void store
     .refresh({
-      includePreview: isDashboardActive,
-      includePanes: !isDashboardActive
+      includePreview: isSidebarLayout ? false : isDashboardActive,
+      includePanes: isSidebarLayout ? true : !isDashboardActive
     })
     .then(() => {
       scheduleRender();

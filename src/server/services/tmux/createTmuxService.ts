@@ -88,16 +88,22 @@ export function createTmuxService(deps: {
   getGitSummary?: (cwd: string | null | undefined) => Promise<GitSummary | null>;
   homeDirectory?: string;
   previewTtlMs?: number;
+  gitSummaryTtlMs?: number;
   now?: () => number;
 } = {}): TmuxService {
   const run = deps.run ?? runTmuxCommand;
   const getSessionGitSummary = deps.getGitSummary ?? getGitSummary;
   const homeDirectory = deps.homeDirectory ?? homedir();
   const previewTtlMs = deps.previewTtlMs ?? 60_000;
+  const gitSummaryTtlMs = deps.gitSummaryTtlMs ?? 60_000;
   const now = deps.now ?? Date.now;
   const previewCache = new Map<
     string,
     { expiresAt: number; preview: string | null }
+  >();
+  const gitSummaryCache = new Map<
+    string,
+    { expiresAt: number; summary: GitSummary | null }
   >();
   const paneFormat =
     "#{session_name}\t#{pane_id}\t#{window_index}\t#{window_name}\t#{window_active}\t#{pane_index}\t#{pane_active}\t#{pane_current_command}\t#{pane_current_path}\t#{pane_dead}\t#{pane_dead_status}\t#{pane_pid}";
@@ -152,6 +158,32 @@ export function createTmuxService(deps: {
     }
   }
 
+  async function getCachedGitSummary(cwd: string | null | undefined) {
+    if (!cwd) {
+      return null;
+    }
+
+    const nowMs = now();
+    const cached = gitSummaryCache.get(cwd);
+
+    if (cached && cached.expiresAt > nowMs) {
+      return cached.summary;
+    }
+
+    const summary = await getSessionGitSummary(cwd);
+    gitSummaryCache.set(cwd, {
+      expiresAt: nowMs + gitSummaryTtlMs,
+      summary
+    });
+
+    return summary;
+  }
+
+  function invalidateSessionCaches(name: string) {
+    previewCache.delete(name);
+    gitSummaryCache.clear();
+  }
+
   return {
     async listSessions(options: ListSessionsOptions = {}) {
       try {
@@ -174,7 +206,7 @@ export function createTmuxService(deps: {
         return Promise.all(
           sessions.map(async (session) => {
             const [gitSummary, preview, inputPrompt] = await Promise.all([
-              getSessionGitSummary(session.currentPath),
+              getCachedGitSummary(session.currentPath),
               options.includePreview ? getSessionPreview(session.name) : null,
               options.includeInputPrompt ? getSessionInputPrompt(session.name) : null
             ]);
@@ -227,7 +259,7 @@ export function createTmuxService(deps: {
       }
 
       const [gitSummary, inputPrompt] = await Promise.all([
-        getSessionGitSummary(session.currentPath),
+        getCachedGitSummary(session.currentPath),
         getSessionInputPrompt(session.name)
       ]);
 
@@ -260,8 +292,10 @@ export function createTmuxService(deps: {
     },
     async sendCommand(name: string, command: string) {
       validateSessionName(name);
-      await run("send-keys", ["-t", name, validateCommand(command), "C-m"]);
-      previewCache.delete(name);
+      const normalizedCommand = validateCommand(command);
+      await run("send-keys", ["-t", name, "-l", normalizedCommand]);
+      await run("send-keys", ["-t", name, "Enter"]);
+      invalidateSessionCaches(name);
     },
     async splitPane(name: string, direction: SplitPaneDirection) {
       validateSessionName(name);
@@ -273,13 +307,13 @@ export function createTmuxService(deps: {
         "-c",
         "#{pane_current_path}"
       ]);
-      previewCache.delete(name);
+      invalidateSessionCaches(name);
     },
     async selectPane(name: string, paneId: string) {
       validateSessionName(name);
       validatePaneId(paneId);
       await run("select-pane", ["-t", paneId]);
-      previewCache.delete(name);
+      invalidateSessionCaches(name);
     },
     async killPane(name: string, paneId: string) {
       validateSessionName(name);
@@ -301,7 +335,7 @@ export function createTmuxService(deps: {
       }
 
       await run("kill-pane", ["-t", paneId]);
-      previewCache.delete(name);
+      invalidateSessionCaches(name);
     }
   };
 }

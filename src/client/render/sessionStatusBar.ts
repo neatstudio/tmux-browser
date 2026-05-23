@@ -1,8 +1,4 @@
 import type { PaneSummary, SessionSummary } from "../api/sessionApi";
-import { formatSessionActivity } from "./renderDashboard";
-
-type StatusBarMode = "compact" | "full" | "git";
-const STATUS_BAR_MODES: StatusBarMode[] = ["compact", "full", "git"];
 
 export type SessionStatusBarActions = {
   onClear?: () => void;
@@ -25,61 +21,10 @@ export type SessionStatusBarActions = {
   onKill?: () => void;
 };
 
-function formatWindowPaneSummary(
-  session: SessionSummary,
-  mode: StatusBarMode
-) {
-  if (mode === "full") {
-    return [
-      `${session.windows} ${session.windows === 1 ? "window" : "windows"}`,
-      `${session.paneCount} ${session.paneCount === 1 ? "pane" : "panes"}`
-    ];
-  }
-
-  return [`${session.windows}w ${session.paneCount}p`];
-}
-
-function formatGitSummary(session: SessionSummary) {
-  if (!session.gitBranch) {
-    return "no git repo";
-  }
-
-  return `git ${session.gitBranch}${session.gitDirty ? " dirty" : " clean"}`;
-}
-
 export function formatSessionStatusBar(
-  session: SessionSummary,
-  mode: StatusBarMode = "compact"
+  session: SessionSummary
 ) {
-  if (mode === "git") {
-    return [
-      session.name,
-      formatGitSummary(session),
-      session.currentPath,
-      formatSessionActivity(session.lastActivityAt)
-    ].filter((item): item is string => Boolean(item));
-  }
-
-  const items = [
-    session.name,
-    session.activeWindowName,
-    ...formatWindowPaneSummary(session, mode),
-    session.currentCommand,
-    session.currentPath,
-    session.paneDead
-      ? session.paneDeadStatus === 0
-        ? "exited 0"
-        : `failed ${session.paneDeadStatus ?? "unknown"}`
-      : session.status,
-    formatSessionActivity(session.lastActivityAt)
-  ];
-
-  return items.filter((item): item is string => Boolean(item));
-}
-
-function getNextStatusBarMode(mode: StatusBarMode) {
-  const index = STATUS_BAR_MODES.indexOf(mode);
-  return STATUS_BAR_MODES[(index + 1) % STATUS_BAR_MODES.length]!;
+  return [session.currentPath].filter((item): item is string => Boolean(item));
 }
 
 function createActionButton(
@@ -137,6 +82,7 @@ function renderPaneSwitches(
       pane.paneActive && pane.windowActive ? " is-active" : ""
     }`;
     paneButton.type = "button";
+    paneButton.dataset.action = "select-pane";
     paneButton.textContent = paneLabel;
     paneButton.title = `Switch to ${paneLabel}`;
     paneButton.disabled = !actions.onSelectPane;
@@ -164,13 +110,21 @@ function renderPaneSwitches(
   return panesRoot;
 }
 
-function renderStatusActions(
-  root: HTMLElement,
-  session: SessionSummary | null | undefined,
-  actions: SessionStatusBarActions
-) {
-  const actionsRoot = document.createElement("div");
-  actionsRoot.className = "terminal-status-actions";
+function createActionGroup(group: string, items: Array<HTMLElement | null>) {
+  const groupRoot = document.createElement("div");
+  groupRoot.className = "terminal-status-action-group";
+  groupRoot.dataset.group = group;
+
+  items.forEach((item) => {
+    if (item) {
+      groupRoot.append(item);
+    }
+  });
+
+  return groupRoot;
+}
+
+function createBrowserScrollButton(actions: SessionStatusBarActions) {
   const browserScrollButton = createActionButton(
     "browser-scroll",
     actions.browserScrollEnabled ? "Tmux" : "Page",
@@ -192,28 +146,56 @@ function renderStatusActions(
     Boolean(actions.browserScrollEnabled)
   );
 
-  actionsRoot.append(
-    createActionButton("clear", "Clear", () => actions.onClear?.(), !actions.onClear, "Clear terminal"),
-    createActionButton("redraw", "Draw", () => actions.onRedraw?.(), !actions.onRedraw, "Redraw terminal"),
-    createActionButton("reconnect", "Recon", () => actions.onReconnect?.(), !actions.onReconnect, "Reconnect terminal websocket"),
-    createActionButton("refresh", "Sync", () => {
-      actions.onRefresh?.();
-      renderSessionStatusBar(root, session, actions);
-    }, false, "Refresh tmux status"),
-    createActionButton("config", "Cfg", () => actions.onConfig?.(), !actions.onConfig, "Config session"),
-    createActionButton("rename", "Ren", () => actions.onRename?.(), !actions.onRename, "Rename session"),
-    createActionButton("send", "Send", () => actions.onSendCommand?.(), !actions.onSendCommand, "Send command"),
-    createActionButton("switch-session", "Switch", () => actions.onSwitchSession?.(), !actions.onSwitchSession, "Switch session"),
-    createActionButton("preview-image", "Img", () => actions.onPreviewImage?.(), !actions.onPreviewImage, "Preview image file"),
+  return browserScrollButton;
+}
+
+function renderLeftStatusActions(
+  session: SessionSummary | null | undefined,
+  actions: SessionStatusBarActions
+): HTMLElement[] {
+  const panesGroup = createActionGroup("panes", [
     createActionButton("split-horizontal", "Split", () => actions.onSplitHorizontal?.(), !actions.onSplitHorizontal, "Split pane horizontally"),
     createActionButton("split-vertical", "Stack", () => actions.onSplitVertical?.(), !actions.onSplitVertical, "Split pane vertically"),
-    createActionButton("scroll-history-back", "Hist", () => actions.onScrollHistoryBack?.(), !actions.onScrollHistoryBack, "Page back in tmux history"),
-    createActionButton("scroll-history-forward", "Live", () => actions.onScrollHistoryForward?.(), !actions.onScrollHistoryForward, "Page forward toward live output"),
-    browserScrollButton,
-    createActionButton("kill", "Kill", () => actions.onKill?.(), !actions.onKill, "Kill session")
-  );
+    renderPaneSwitches(session, actions)
+  ]);
+  const toolsGroup = createActionGroup("tools", [
+    createActionButton("reconnect", "Recon", () => actions.onReconnect?.(), !actions.onReconnect, "Reconnect terminal websocket"),
+    createActionButton("config", "Cfg", () => actions.onConfig?.(), !actions.onConfig, "Config session"),
+    createActionButton("rename", "Ren", () => actions.onRename?.(), !actions.onRename, "Rename session"),
+    createActionButton("preview-image", "Img", () => actions.onPreviewImage?.(), !actions.onPreviewImage, "Preview image file")
+  ]);
 
-  return actionsRoot;
+  panesGroup.classList.add("is-left");
+  toolsGroup.classList.add("is-left");
+
+  return [panesGroup, toolsGroup];
+}
+
+function renderRightStatusActions(
+  root: HTMLElement,
+  session: SessionSummary | null | undefined,
+  actions: SessionStatusBarActions
+): HTMLElement[] {
+  return [
+    createActionGroup("view", [
+      createBrowserScrollButton(actions),
+      createActionButton("scroll-history-forward", "Live", () => actions.onScrollHistoryForward?.(), !actions.onScrollHistoryForward, "Page forward toward live output"),
+      createActionButton("scroll-history-back", "Hist", () => actions.onScrollHistoryBack?.(), !actions.onScrollHistoryBack, "Page back in tmux history")
+    ]),
+    createActionGroup("routing", [
+      createActionButton("send", "Send", () => actions.onSendCommand?.(), !actions.onSendCommand, "Send command"),
+      createActionButton("switch-session", "Switch", () => actions.onSwitchSession?.(), !actions.onSwitchSession, "Switch session")
+    ]),
+    createActionGroup("recovery", [
+      createActionButton("clear", "Clear", () => actions.onClear?.(), !actions.onClear, "Clear terminal"),
+      createActionButton("redraw", "Draw", () => actions.onRedraw?.(), !actions.onRedraw, "Redraw terminal"),
+      createActionButton("refresh", "Sync", () => {
+        actions.onRefresh?.();
+        renderSessionStatusBar(root, session, actions);
+      }, false, "Refresh tmux status"),
+      createActionButton("kill", "Kill", () => actions.onKill?.(), !actions.onKill, "Kill session")
+    ])
+  ];
 }
 
 export function renderSessionStatusBar(
@@ -229,26 +211,12 @@ export function renderSessionStatusBar(
     root.append(statusBar);
   }
 
-  const mode = (statusBar.dataset.mode as StatusBarMode | undefined) ?? "compact";
-  statusBar.dataset.mode = mode;
-  statusBar.title = "Click to switch compact, full, and git status views";
-  statusBar.onclick = (event) => {
-    if (
-      (event.target as HTMLElement | null)?.closest(
-        ".terminal-status-action, .terminal-status-pane-button, .terminal-status-pane-kill"
-      )
-    ) {
-      return;
-    }
-
-    statusBar.dataset.mode = getNextStatusBarMode(
-      (statusBar.dataset.mode as StatusBarMode | undefined) ?? "compact"
-    );
-    renderSessionStatusBar(root, session, actions);
-  };
+  statusBar.removeAttribute("data-mode");
+  statusBar.title = "Current tmux path";
+  statusBar.onclick = null;
   statusBar.innerHTML = "";
 
-  const items = session ? formatSessionStatusBar(session, mode) : [];
+  const items = session ? formatSessionStatusBar(session) : [];
   const main = document.createElement("div");
   main.className = "terminal-status-main";
 
@@ -257,11 +225,10 @@ export function renderSessionStatusBar(
     emptyItem.className = "terminal-status-item is-muted";
     emptyItem.textContent = "waiting for tmux status";
     main.append(emptyItem);
-    const paneSwitches = renderPaneSwitches(session, actions);
     statusBar.append(
+      ...renderLeftStatusActions(session, actions),
       main,
-      ...(paneSwitches ? [paneSwitches] : []),
-      renderStatusActions(root, session, actions)
+      ...renderRightStatusActions(root, session, actions)
     );
     return;
   }
@@ -274,10 +241,9 @@ export function renderSessionStatusBar(
     main.append(statusItem);
   });
 
-  const paneSwitches = renderPaneSwitches(session, actions);
   statusBar.append(
+    ...renderLeftStatusActions(session, actions),
     main,
-    ...(paneSwitches ? [paneSwitches] : []),
-    renderStatusActions(root, session, actions)
+    ...renderRightStatusActions(root, session, actions)
   );
 }

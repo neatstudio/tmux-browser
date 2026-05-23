@@ -49,10 +49,19 @@ describe("client layout styles", () => {
       /\.terminal-status-bar\s*\{[^}]*display:\s*flex;[^}]*min-height:\s*32px;/s
     );
     expect(styles).toMatch(
+      /\.terminal-status-bar\s*\{[^}]*height:\s*32px;/s
+    );
+    expect(styles).toMatch(
+      /\.terminal-status-bar\s*\{[^}]*flex:\s*0\s+0\s+32px;/s
+    );
+    expect(styles).toMatch(
       /\.terminal-status-main\s*\{[^}]*flex:\s*1\s+1\s+auto;/s
     );
     expect(styles).toMatch(
-      /\.terminal-status-actions\s*\{[^}]*margin-left:\s*auto;/s
+      /\.terminal-status-action-group\s*\{[^}]*display:\s*inline-flex;[^}]*border-left:\s*1px\s+solid\s+rgba\(217,\s*226,\s*234,\s*0\.12\);/s
+    );
+    expect(styles).toMatch(
+      /\.terminal-status-action-group\.is-left\s*\{[^}]*border-left:\s*0;[^}]*border-right:\s*1px\s+solid\s+rgba\(217,\s*226,\s*234,\s*0\.12\);/s
     );
   });
 
@@ -94,13 +103,64 @@ describe("client layout styles", () => {
       /\.tab-context-menu\s*\{[^}]*position:\s*fixed;/s
     );
     expect(styles).toMatch(
-      /\.tab-item\.is-pinned\s+\.tab-label::before\s*\{[^}]*content:\s*"";/s
+      /\.tab-item\.is-pinned\s+\.tab-label::before\s*\{[^}]*content:\s*"★";[^}]*color:\s*#ffd37a;/s
     );
   });
 
   it("uses dynamic viewport height for mobile browser chrome", () => {
     expect(styles).toMatch(
       /\.app-shell\s*\{[^}]*height:\s*100dvh;/s
+    );
+  });
+
+  it("supports an isolated sidebar layout without the top tab strip", () => {
+    expect(styles).toMatch(
+      /\.app-shell--sidebar\s*\{[^}]*grid-template-rows:\s*1fr;/s
+    );
+    expect(styles).toMatch(
+      /\.app-shell--sidebar\s+\.tabs-root\s*\{[^}]*display:\s*none;/s
+    );
+    expect(styles).toMatch(
+      /\.app-shell--sidebar\s+\.content-root\s*\{[^}]*grid-template-columns:\s*clamp\(13rem,\s*22vw,\s*18rem\)\s+minmax\(0,\s*1fr\);/s
+    );
+    expect(styles).toMatch(
+      /\.session-sidebar-root\s*\{[^}]*display:\s*none;/s
+    );
+    expect(styles).toMatch(
+      /\.app-shell--sidebar\s+\.session-sidebar-root\s*\{[^}]*display:\s*block;/s
+    );
+    expect(styles).toMatch(
+      /\.app-shell--sidebar\.is-sidebar-collapsed\s+\.content-root\s*\{[^}]*grid-template-columns:\s*3\.35rem\s+minmax\(0,\s*1fr\);/s
+    );
+    expect(styles).toMatch(
+      /\.session-sidebar\.is-collapsed\s+\.session-sidebar-text\s*\{[^}]*display:\s*none;/s
+    );
+    expect(styles).toMatch(
+      /\.session-sidebar-icon\s*\{[^}]*display:\s*none;/s
+    );
+    expect(styles).toMatch(
+      /\.session-sidebar\.is-collapsed\s+\.session-sidebar-icon\s*\{[^}]*display:\s*grid;/s
+    );
+    expect(styles).toMatch(
+      /\.session-sidebar-item\.is-pinned\s*\{[^}]*border-color:\s*rgba\(255,\s*211,\s*122,\s*0\.58\);[^}]*box-shadow:\s*inset\s+3px\s+0\s+0\s+#ffd37a;/s
+    );
+    expect(styles).toMatch(
+      /\.session-sidebar-group-title\s*\{[^}]*letter-spacing:\s*0\.11em;[^}]*text-transform:\s*uppercase;/s
+    );
+    expect(styles).toMatch(
+      /\.session-sidebar-group\.is-pinned\s+\.session-sidebar-group-title\s*\{[^}]*color:\s*#ffd37a;/s
+    );
+    expect(styles).toMatch(
+      /\.session-sidebar-pin\[aria-pressed="true"\]\s*\{[^}]*color:\s*#ffd37a;/s
+    );
+    expect(styles).toMatch(
+      /\.session-sidebar-tool-button\[data-action="refresh-sidebar"\]\s*\{[^}]*font-size:\s*1\.05rem;/s
+    );
+    expect(styles).toMatch(
+      /\.session-sidebar\s*\{[^}]*grid-template-rows:\s*auto\s+auto\s+minmax\(0,\s*1fr\)\s+auto;/s
+    );
+    expect(styles).toMatch(
+      /\.session-sidebar-toolbar\s*\{[^}]*margin-top:\s*0\.45rem;[^}]*border-top:\s*1px\s+solid\s+rgba\(217,\s*226,\s*234,\s*0\.1\);/s
     );
   });
 

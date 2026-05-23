@@ -36,11 +36,13 @@ npm run build
 npm run start
 ```
 
-默认会在 `http://0.0.0.0:3000` 提供 dashboard，因此可以通过局域网 IP、Tailscale IP 或 MagicDNS 访问。如果只想监听本机，使用：
+默认会在 `http://127.0.0.1:3000` 提供 dashboard。如果需要让其他设备访问，请绑定到明确的内网 IP，例如：
 
 ```bash
-HOST=127.0.0.1 npm run start
+HOST=100.x.y.z npm run start
 ```
+
+`HOST=0.0.0.0` 会被拒绝，避免误把终端控制能力暴露到非预期网络。
 
 开发时也可以拆分运行：
 
@@ -192,10 +194,10 @@ tail -n 100 ~/.tmux-ui/tmux-ui.err.log
 
 ## 网络绑定
 
-默认绑定到第一张 Tailscale IPv4 地址，也就是 `100.*`。如果要手动指定监听地址或端口：
+默认绑定到 `127.0.0.1`。如果要手动指定监听地址或端口，请使用明确的内网 IP；`HOST=0.0.0.0` 会被拒绝：
 
 ```bash
-HOST=0.0.0.0 PORT=3000 ./release/release.run start
+HOST=100.x.y.z PORT=3000 ./release/release.run start
 ```
 
 ## 发布到服务器

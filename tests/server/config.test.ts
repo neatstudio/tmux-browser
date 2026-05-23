@@ -11,12 +11,12 @@ describe("getServerConfig", () => {
     process.env.PORT = originalPort;
   });
 
-  it("listens on all interfaces by default for LAN and Tailscale access", () => {
+  it("listens on localhost by default", () => {
     delete process.env.HOST;
     delete process.env.PORT;
 
     expect(getServerConfig()).toEqual({
-      host: "0.0.0.0",
+      host: "127.0.0.1",
       port: 3000
     });
   });
@@ -29,5 +29,12 @@ describe("getServerConfig", () => {
       host: "127.0.0.1",
       port: 3100
     });
+  });
+
+  it("rejects wildcard host binding", () => {
+    process.env.HOST = "0.0.0.0";
+    delete process.env.PORT;
+
+    expect(() => getServerConfig()).toThrow("HOST=0.0.0.0 is not allowed");
   });
 });

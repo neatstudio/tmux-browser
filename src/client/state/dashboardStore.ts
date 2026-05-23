@@ -35,8 +35,10 @@ type DashboardStoreDeps = {
   pruneTabs?: (validSessionNames: string[]) => void;
   shouldIncludePreview?: () => boolean;
   shouldIncludePanes?: () => boolean;
+  getDashboardPollOptions?: () => RefreshOptions | null;
   getActiveSessionName?: () => string | null;
   isActiveSessionBusy?: () => boolean;
+  preferActiveSessionStatus?: boolean;
 };
 
 type RefreshOptions = {
@@ -147,9 +149,13 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
 
   async function refresh(options: RefreshOptions = {}) {
     try {
+      const shouldPreferActiveSessionStatus =
+        deps.preferActiveSessionStatus ?? true;
       const activeSessionName =
-        (options.includePreview === false && options.includePanes) ||
-        (options.includePreview === undefined && options.includePanes === undefined)
+        shouldPreferActiveSessionStatus &&
+        ((options.includePreview === false && options.includePanes) ||
+          (options.includePreview === undefined &&
+            options.includePanes === undefined))
           ? deps.getActiveSessionName?.() ?? null
           : null;
 
@@ -241,6 +247,13 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
       }, deps.pollMs);
 
       dashboardTimer = globalThis.setInterval(() => {
+        const dashboardPollOptions = deps.getDashboardPollOptions?.();
+
+        if (dashboardPollOptions) {
+          void refresh(dashboardPollOptions);
+          return;
+        }
+
         if (!deps.shouldIncludePreview?.()) {
           return;
         }

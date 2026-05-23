@@ -38,9 +38,10 @@ npm run build
 npm run start
 ```
 
-This serves the built dashboard on all interfaces at `http://0.0.0.0:3000`,
-so it can be reached through LAN or Tailscale using the machine's reachable IP
-or MagicDNS name. To bind to localhost only, run `HOST=127.0.0.1 npm run start`.
+This serves the built dashboard on `http://127.0.0.1:3000` by default. To make it
+reachable from another device, bind to a specific private interface IP, for
+example `HOST=100.x.y.z npm run start`. `HOST=0.0.0.0` is rejected because it is
+too easy to expose terminal control beyond the intended internal network.
 
 For split development:
 
@@ -198,11 +199,11 @@ tail -n 100 ~/.tmux-ui/tmux-ui.log
 tail -n 100 ~/.tmux-ui/tmux-ui.err.log
 ```
 
-The default bind host is the first Tailscale IPv4 address matching `100.*`.
-Set `HOST` or `PORT` explicitly to override:
+The default bind host defaults to `127.0.0.1`. Set `HOST` or `PORT` explicitly to
+override, but use a specific private IP. `HOST=0.0.0.0` is rejected:
 
 ```bash
-HOST=0.0.0.0 PORT=3000 ./release/release.run start
+HOST=100.x.y.z PORT=3000 ./release/release.run start
 ```
 
 Publish an existing run file to one or more servers:
