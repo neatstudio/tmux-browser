@@ -151,13 +151,28 @@ describe("client layout styles", () => {
       /\.session-sidebar-group\.is-pinned\s+\.session-sidebar-group-title\s*\{[^}]*color:\s*#ffd37a;/s
     );
     expect(styles).toMatch(
+      /\.session-sidebar-item\.is-muted\s*\{[^}]*border-color:\s*rgba\(143,\s*217,\s*255,\s*0\.38\);[^}]*box-shadow:\s*inset\s+3px\s+0\s+0\s+#8fd9ff;[^}]*opacity:\s*0\.9;/s
+    );
+    expect(styles).toMatch(
+      /\.session-sidebar-group\.is-muted\s+\.session-sidebar-group-title\s*\{[^}]*color:\s*rgba\(217,\s*226,\s*234,\s*0\.5\);/s
+    );
+    expect(styles).toMatch(
       /\.session-sidebar-pin\[aria-pressed="true"\]\s*\{[^}]*color:\s*#ffd37a;/s
+    );
+    expect(styles).toMatch(
+      /\.session-sidebar-mute\[aria-pressed="true"\]\s*\{[^}]*background:\s*rgba\(143,\s*217,\s*255,\s*0\.14\);[^}]*color:\s*#8fd9ff;/s
+    );
+    expect(styles).toMatch(
+      /\.session-sidebar-badge\.is-muted\s*\{[^}]*color:\s*#8fd9ff;/s
     );
     expect(styles).toMatch(
       /\.session-sidebar-tool-button\[data-action="refresh-sidebar"\]\s*\{[^}]*font-size:\s*1\.05rem;/s
     );
     expect(styles).toMatch(
-      /\.session-sidebar\s*\{[^}]*grid-template-rows:\s*auto\s+auto\s+minmax\(0,\s*1fr\)\s+auto;/s
+      /\.session-sidebar\s*\{[^}]*grid-template-rows:\s*auto\s+auto\s+minmax\(0,\s*1fr\)\s+auto\s+auto;/s
+    );
+    expect(styles).toMatch(
+      /\.session-sidebar-timeline\s*\{[^}]*border-top:\s*1px\s+solid\s+rgba\(217,\s*226,\s*234,\s*0\.1\);/s
     );
     expect(styles).toMatch(
       /\.session-sidebar-toolbar\s*\{[^}]*margin-top:\s*0\.45rem;[^}]*border-top:\s*1px\s+solid\s+rgba\(217,\s*226,\s*234,\s*0\.1\);/s

@@ -72,6 +72,43 @@ describe("createApp", () => {
     expect(response.body.toString("utf8")).toContain("<path");
   });
 
+  it("serves recent timeline events recorded from session operations", async () => {
+    const app = createApp({
+      tmuxService: {
+        listSessions: vi.fn(),
+        getSessionStatus: vi.fn(),
+        createSession: vi.fn().mockResolvedValue(undefined),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn().mockResolvedValue(undefined),
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    await request(app).post("/api/sessions").send({ name: "build" });
+    await request(app)
+      .post("/api/sessions/build/send")
+      .send({ command: "npm test" });
+
+    const response = await request(app).get("/api/timeline").query({ limit: 5 });
+
+    expect(response.status).toBe(200);
+    expect(response.body.events).toMatchObject([
+      {
+        type: "command-sent",
+        sessionName: "build",
+        message: "sent command: npm test"
+      },
+      {
+        type: "session-created",
+        sessionName: "build",
+        message: "created session build"
+      }
+    ]);
+  });
+
   it("serves local image previews from absolute paths", async () => {
     const dir = mkdtempSync(join(tmpdir(), "tmux-ui-image-"));
     const imagePath = join(dir, "preview.png");
@@ -553,7 +590,41 @@ describe("createApp", () => {
     expect(listSessions).toHaveBeenCalledWith({
       includePreview: false,
       includePanes: true,
-      includeInputPrompt: true
+      includeInputPrompt: false
+    });
+  });
+
+  it("passes muted session names to pane-aware and dashboard endpoints", async () => {
+    const listSessions = vi.fn().mockResolvedValue([]);
+    const app = createApp({
+      tmuxService: {
+        listSessions,
+        createSession: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    await request(app)
+      .get("/api/sessions-panes")
+      .query({ muted: "tmux-ui,logs,tmux-ui" });
+    await request(app).get("/api/sessions-all").query({ only: "tmux-ui,logs" });
+
+    expect(listSessions).toHaveBeenNthCalledWith(1, {
+      includePreview: false,
+      includePanes: true,
+      includeInputPrompt: false,
+      mutedSessionNames: ["tmux-ui", "logs"]
+    });
+    expect(listSessions).toHaveBeenNthCalledWith(2, {
+      includePreview: true,
+      includePanes: true,
+      includeInputPrompt: true,
+      onlySessionNames: ["tmux-ui", "logs"]
     });
   });
 });

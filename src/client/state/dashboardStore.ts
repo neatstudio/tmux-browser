@@ -4,11 +4,13 @@ import type {
   SessionSummary,
   SplitPaneDirection
 } from "../api/sessionApi";
+import type { TimelineEvent } from "../../shared/timeline";
 import type { BrowserTab } from "./tabState";
 
 export type DashboardState = {
   sessions: SessionSummary[];
   serverStatus: ServerStatus | null;
+  timelineEvents?: TimelineEvent[];
   loading: boolean;
   error: string | null;
 };
@@ -28,7 +30,8 @@ type DashboardStoreDeps = {
     | "splitPane"
     | "selectPane"
     | "killPane"
-  >;
+  > &
+    Partial<Pick<SessionApi, "listTimelineEvents">>;
   pollMs: number;
   dashboardPollMs?: number;
   serverStatusPollMs?: number;
@@ -37,6 +40,7 @@ type DashboardStoreDeps = {
   shouldIncludePanes?: () => boolean;
   getDashboardPollOptions?: () => RefreshOptions | null;
   getActiveSessionName?: () => string | null;
+  getMutedSessionNames?: () => string[];
   isActiveSessionBusy?: () => boolean;
   preferActiveSessionStatus?: boolean;
 };
@@ -51,6 +55,7 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
   let state: DashboardState = {
     sessions: [],
     serverStatus: null,
+    timelineEvents: [],
     loading: false,
     error: null
   };
@@ -96,6 +101,8 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
       state.error !== nextState.error ||
       JSON.stringify(state.serverStatus) !==
         JSON.stringify(nextState.serverStatus) ||
+      JSON.stringify(state.timelineEvents ?? []) !==
+        JSON.stringify(nextState.timelineEvents ?? []) ||
       !sessionsEqual(state.sessions, nextState.sessions);
 
     state = nextState;
@@ -124,6 +131,29 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
         ...state,
         loading: false,
         error: error instanceof Error ? error.message : "Failed to refresh server status"
+      });
+    }
+  }
+
+  async function refreshTimeline() {
+    if (!deps.api.listTimelineEvents) {
+      return;
+    }
+
+    try {
+      const timelineEvents = await deps.api.listTimelineEvents(8);
+
+      commit({
+        ...state,
+        timelineEvents,
+        loading: false,
+        error: null
+      });
+    } catch (error) {
+      commit({
+        ...state,
+        loading: false,
+        error: error instanceof Error ? error.message : "Failed to refresh timeline"
       });
     }
   }
@@ -167,7 +197,9 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
       const loadSessions =
         options.includePreview === false
           ? options.includePanes
-            ? deps.api.listPaneSessions()
+            ? deps.getMutedSessionNames
+              ? deps.api.listPaneSessions(deps.getMutedSessionNames())
+              : deps.api.listPaneSessions()
             : deps.api.listSessions()
           : deps.api.listDashboardSessions();
       const [sessions, serverStatus] = await Promise.all([
@@ -181,6 +213,7 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
       commit({
         sessions,
         serverStatus,
+        timelineEvents: state.timelineEvents,
         loading: false,
         error: null
       });
@@ -197,35 +230,77 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
     getState() {
       return state;
     },
+    async refreshMuted(sessionNames: string[]) {
+      if (sessionNames.length === 0) {
+        return;
+      }
+
+      try {
+        const sessions = await deps.api.listDashboardSessions(sessionNames);
+        const refreshedByName = new Map(
+          sessions.map((session) => [session.name, session])
+        );
+        const nextSessions = state.sessions.map(
+          (session) => refreshedByName.get(session.name) ?? session
+        );
+        const missingSessions = sessions.filter(
+          (session) =>
+            !state.sessions.some(
+              (existingSession) => existingSession.name === session.name
+            )
+        );
+
+        commit({
+          ...state,
+          sessions: [...nextSessions, ...missingSessions],
+          loading: false,
+          error: null
+        });
+      } catch (error) {
+        commit({
+          ...state,
+          loading: false,
+          error: error instanceof Error ? error.message : "Failed to refresh muted sessions"
+        });
+      }
+    },
     subscribe(listener: (state: DashboardState) => void) {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
     refresh,
+    refreshTimeline,
     async createSession(name: string) {
       await deps.api.createSession(name);
+      await refreshTimeline();
       await refresh();
     },
     async renameSession(fromName: string, toName: string) {
       await deps.api.renameSession(fromName, toName);
+      await refreshTimeline();
       await refresh();
     },
     async killSession(name: string) {
       await deps.api.killSession(name);
+      await refreshTimeline();
       await refresh();
     },
     async sendCommand(name: string, command: string) {
       await deps.api.sendCommand(name, command);
+      await refreshTimeline();
     },
     async splitPane(name: string, direction: SplitPaneDirection) {
       await deps.api.splitPane(name, direction);
+      await refreshTimeline();
       await refresh();
     },
     async selectPane(name: string, paneId: string) {
       await deps.api.selectPane(name, paneId);
+      await refreshTimeline();
     },
     async killPane(name: string, paneId: string) {
       await deps.api.killPane(name, paneId);
+      await refreshTimeline();
       await refresh({ includePanes: true });
     },
     startPolling() {

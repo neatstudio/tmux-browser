@@ -143,6 +143,98 @@ describe("createTmuxService", () => {
     expect(run.mock.calls.filter(([command]) => command === "capture-pane")).toHaveLength(1);
   });
 
+  it("reuses one pane capture for preview and input prompt detection", async () => {
+    const run = vi
+      .fn()
+      .mockResolvedValueOnce({
+        stdout: "build\t1\t0\t1714200000",
+        stderr: ""
+      })
+      .mockResolvedValueOnce({
+        stdout: "build\t%1\t0\tzsh\t1\t0\t1\tcodex\t/home/app\t0\t\t100",
+        stderr: ""
+      })
+      .mockResolvedValueOnce({
+        stdout:
+          "1. Yes, proceed (y)\n2. Yes, and don't ask again for these files (a)\n3. No, and tell Codex what to do differently (esc)\n",
+        stderr: ""
+      });
+    const service = createTmuxService({
+      run,
+      getGitSummary: vi.fn().mockResolvedValue(null)
+    });
+
+    await expect(
+      service.listSessions({ includePreview: true, includeInputPrompt: true })
+    ).resolves.toMatchObject([
+      {
+        name: "build",
+        preview:
+          "1. Yes, proceed (y)\n2. Yes, and don't ask again for these files (a)\n3. No, and tell Codex what to do differently (esc)",
+        inputPrompt: {
+          actions: [
+            { label: "y", input: "y\r" },
+            { label: "a", input: "a\r" },
+            { label: "esc", input: "\u001b" }
+          ]
+        }
+      }
+    ]);
+    expect(run.mock.calls.filter(([command]) => command === "capture-pane")).toHaveLength(1);
+  });
+
+  it("caches input prompt captures for one minute", async () => {
+    let nowMs = 1000;
+    const run = vi
+      .fn()
+      .mockResolvedValueOnce({
+        stdout: "build\t1\t0\t1714200000",
+        stderr: ""
+      })
+      .mockResolvedValueOnce({
+        stdout: "build\t%1\t0\tzsh\t1\t0\t1\tcodex\t/home/app\t0\t\t100",
+        stderr: ""
+      })
+      .mockResolvedValueOnce({
+        stdout: "1. Yes, proceed (y)\n",
+        stderr: ""
+      })
+      .mockResolvedValueOnce({
+        stdout: "build\t1\t0\t1714200001",
+        stderr: ""
+      })
+      .mockResolvedValueOnce({
+        stdout: "build\t%1\t0\tzsh\t1\t0\t1\tcodex\t/home/app\t0\t\t100",
+        stderr: ""
+      })
+      .mockResolvedValueOnce({
+        stdout: "build\t1\t0\t1714200065",
+        stderr: ""
+      })
+      .mockResolvedValueOnce({
+        stdout: "build\t%1\t0\tzsh\t1\t0\t1\tcodex\t/home/app\t0\t\t100",
+        stderr: ""
+      })
+      .mockResolvedValueOnce({
+        stdout: "2. Yes, and don't ask again for these files (a)\n",
+        stderr: ""
+      });
+    const service = createTmuxService({
+      run,
+      getGitSummary: vi.fn().mockResolvedValue(null),
+      now: () => nowMs,
+      inputPromptTtlMs: 60_000
+    });
+
+    await service.listSessions({ includeInputPrompt: true });
+    nowMs = 2000;
+    await service.listSessions({ includeInputPrompt: true });
+    nowMs = 62_000;
+    await service.listSessions({ includeInputPrompt: true });
+
+    expect(run.mock.calls.filter(([command]) => command === "capture-pane")).toHaveLength(2);
+  });
+
   it("creates a detached session under the user home with color-capable terminal environment", async () => {
     const run = vi.fn().mockResolvedValue({ stdout: "", stderr: "" });
     const service = createTmuxService({ run, homeDirectory: "/home/app" });
@@ -455,6 +547,92 @@ describe("createTmuxService", () => {
       "-t",
       "build",
       "build-test"
+    ]);
+  });
+
+  it("skips capture and git work for muted sessions", async () => {
+    const run = vi
+      .fn()
+      .mockResolvedValueOnce({
+        stdout: "build\t1\t0\t1714200000\ntmux-ui\t1\t0\t1714200001",
+        stderr: ""
+      })
+      .mockResolvedValueOnce({
+        stdout:
+          "build\t%1\t0\tzsh\t1\t0\t1\tzsh\t/home/app\t0\t\t100\ntmux-ui\t%2\t0\tzsh\t1\t0\t1\tnode\t/home/app/tmux-ui\t0\t\t101",
+        stderr: ""
+      })
+      .mockResolvedValueOnce({
+        stdout: "build preview\n",
+        stderr: ""
+      });
+    const getGitSummary = vi
+      .fn()
+      .mockResolvedValueOnce({ branch: "main", dirty: false });
+    const service = createTmuxService({ run, getGitSummary });
+
+    await expect(
+      service.listSessions({
+        includePreview: true,
+        includeInputPrompt: true,
+        mutedSessionNames: ["tmux-ui"]
+      })
+    ).resolves.toMatchObject([
+      {
+        name: "build",
+        gitBranch: "main",
+        preview: "build preview"
+      },
+      {
+        name: "tmux-ui",
+        gitBranch: null,
+        gitDirty: null,
+        preview: null,
+        inputPrompt: null
+      }
+    ]);
+    expect(run.mock.calls.filter(([command]) => command === "capture-pane")).toEqual([
+      [
+        "capture-pane",
+        ["-p", "-t", "build", "-S", "-20"]
+      ]
+    ]);
+    expect(getGitSummary).toHaveBeenCalledOnce();
+    expect(getGitSummary).toHaveBeenCalledWith("/home/app");
+  });
+
+  it("can return only the requested sessions for manual muted refresh", async () => {
+    const run = vi
+      .fn()
+      .mockResolvedValueOnce({
+        stdout: "build\t1\t0\t1714200000\ntmux-ui\t1\t0\t1714200001",
+        stderr: ""
+      })
+      .mockResolvedValueOnce({
+        stdout:
+          "build\t%1\t0\tzsh\t1\t0\t1\tzsh\t/home/app\t0\t\t100\ntmux-ui\t%2\t0\tzsh\t1\t0\t1\tnode\t/home/app/tmux-ui\t0\t\t101",
+        stderr: ""
+      })
+      .mockResolvedValueOnce({
+        stdout: "service output\n",
+        stderr: ""
+      });
+    const service = createTmuxService({
+      run,
+      getGitSummary: vi.fn().mockResolvedValue(null)
+    });
+
+    await expect(
+      service.listSessions({
+        includePreview: true,
+        includeInputPrompt: true,
+        onlySessionNames: ["tmux-ui"]
+      })
+    ).resolves.toMatchObject([
+      {
+        name: "tmux-ui",
+        preview: "service output"
+      }
     ]);
   });
 });

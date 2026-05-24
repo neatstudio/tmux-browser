@@ -216,7 +216,7 @@ select {
 
 .session-sidebar {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
   height: 100%;
   min-width: 0;
   overflow: hidden;
@@ -369,6 +369,15 @@ select {
   box-shadow: inset 3px 0 0 #ffd37a;
 }
 
+.session-sidebar-item.is-muted {
+  border-color: rgba(143, 217, 255, 0.38);
+  background:
+    linear-gradient(90deg, rgba(143, 217, 255, 0.16), transparent 50%),
+    rgba(91, 192, 255, 0.035);
+  box-shadow: inset 3px 0 0 #8fd9ff;
+  opacity: 0.9;
+}
+
 .session-sidebar-list {
   display: grid;
   align-content: start;
@@ -401,6 +410,10 @@ select {
 
 .session-sidebar-group.is-pinned .session-sidebar-group-title {
   color: #ffd37a;
+}
+
+.session-sidebar-group.is-muted .session-sidebar-group-title {
+  color: rgba(217, 226, 234, 0.5);
 }
 
 .session-sidebar-item {
@@ -460,7 +473,8 @@ select {
   gap: 0.18rem;
 }
 
-.session-sidebar-pin {
+.session-sidebar-pin,
+.session-sidebar-mute {
   flex: 0 0 auto;
   width: 1.2rem;
   height: 1.2rem;
@@ -478,19 +492,45 @@ select {
   color: #ffd37a;
 }
 
+.session-sidebar-mute[aria-pressed="true"] {
+  background: rgba(143, 217, 255, 0.14);
+  color: #8fd9ff;
+}
+
 .session-sidebar-pin:hover,
 .session-sidebar-pin:focus-visible {
   background: rgba(255, 211, 122, 0.1);
   color: #ffd37a;
 }
 
-.session-sidebar.is-collapsed .session-sidebar-pin {
+.session-sidebar-mute:hover,
+.session-sidebar-mute:focus-visible {
+  background: rgba(217, 226, 234, 0.1);
+  color: rgba(239, 246, 252, 0.9);
+}
+
+.session-sidebar.is-collapsed .session-sidebar-pin,
+.session-sidebar.is-collapsed .session-sidebar-mute {
   position: absolute;
   right: 0.2rem;
   top: 0.16rem;
   width: 0.9rem;
   height: 0.9rem;
   font-size: 0.68rem;
+}
+
+.session-sidebar.is-collapsed .session-sidebar-mute {
+  top: 1.05rem;
+}
+
+.session-sidebar-muted-refresh {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.8rem;
+  line-height: 1;
+  padding: 0;
 }
 
 .session-sidebar-badge {
@@ -511,6 +551,11 @@ select {
 }
 
 .session-sidebar-badge.is-browser {
+  color: #8fd9ff;
+  background: rgba(91, 192, 255, 0.1);
+}
+
+.session-sidebar-badge.is-muted {
   color: #8fd9ff;
   background: rgba(91, 192, 255, 0.1);
 }
@@ -558,6 +603,46 @@ select {
 .session-sidebar-note.is-error {
   border-color: rgba(255, 174, 152, 0.24);
   color: var(--error-fg);
+}
+
+.session-sidebar-timeline {
+  display: grid;
+  gap: 0.22rem;
+  min-width: 0;
+  margin-top: 0.45rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid rgba(217, 226, 234, 0.1);
+}
+
+.session-sidebar-timeline-title {
+  color: rgba(217, 226, 234, 0.46);
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.session-sidebar-timeline-item {
+  display: grid;
+  grid-template-columns: 4.1rem minmax(0, 1fr);
+  gap: 0.35rem;
+  min-width: 0;
+  color: rgba(217, 226, 234, 0.66);
+  font-size: 0.64rem;
+  line-height: 1.25;
+}
+
+.session-sidebar-timeline-time,
+.session-sidebar-timeline-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-sidebar-timeline-time {
+  color: rgba(217, 226, 234, 0.38);
 }
 
 .dashboard-root {

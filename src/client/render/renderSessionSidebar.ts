@@ -1,4 +1,5 @@
 import type { SessionSummary } from "../api/sessionApi";
+import type { TimelineEvent } from "../../shared/timeline";
 import type { DashboardState } from "../state/dashboardStore";
 import {
   formatDashboardSessionActivity,
@@ -12,6 +13,10 @@ type BrowserSessionTabState = {
 
 function isPinnedSession(sessionName: string, pinnedSessionNames?: Set<string>) {
   return pinnedSessionNames?.has(sessionName) ?? false;
+}
+
+function isMutedSession(sessionName: string, mutedSessionNames?: Set<string>) {
+  return mutedSessionNames?.has(sessionName) ?? false;
 }
 
 function appendSidebarMeta(parent: HTMLElement, text: string | null | undefined) {
@@ -46,14 +51,17 @@ function renderSessionButton(
     activeSessionName: string | null;
     browserTabs?: BrowserSessionTabState[];
     pinnedSessionNames?: Set<string>;
+    mutedSessionNames?: Set<string>;
     onOpenSession: (name: string) => void;
     onTogglePinned: (name: string) => void;
+    onToggleMuted?: (name: string) => void;
   }
 ) {
   const button = document.createElement("button");
   const browserStatus = getBrowserStatus(session.name, actions.browserTabs);
   const isActive = actions.activeSessionName === session.name;
   const isPinned = isPinnedSession(session.name, actions.pinnedSessionNames);
+  const isMuted = isMutedSession(session.name, actions.mutedSessionNames);
   const path = formatDisplayPath(
     session.currentPath,
     state.serverStatus?.homeDirectory
@@ -63,7 +71,7 @@ function renderSessionButton(
   button.type = "button";
   button.className = `session-sidebar-item${isActive ? " is-active" : ""}${
     isPinned ? " is-pinned" : ""
-  }`;
+  }${isMuted ? " is-muted" : ""}`;
   button.dataset.sessionName = session.name;
   button.title = [session.name, path, session.currentCommand]
     .filter(Boolean)
@@ -97,6 +105,20 @@ function renderSessionButton(
     actions.onTogglePinned(session.name);
   });
 
+  const muteButton = document.createElement("button");
+  muteButton.type = "button";
+  muteButton.className = "session-sidebar-mute";
+  muteButton.dataset.action = "toggle-sidebar-muted";
+  muteButton.setAttribute("aria-label", `${isMuted ? "Unmute" : "Mute"} ${session.name}`);
+  muteButton.setAttribute("aria-pressed", isMuted ? "true" : "false");
+  muteButton.title = isMuted ? "Unmute session refresh" : "Mute heavy refresh";
+  muteButton.textContent = "M";
+  muteButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    actions.onToggleMuted?.(session.name);
+  });
+
   const badges = document.createElement("span");
   badges.className = "session-sidebar-badges session-sidebar-text";
 
@@ -112,6 +134,13 @@ function renderSessionButton(
     badges.append(browserBadge);
   }
 
+  if (isMuted) {
+    const mutedBadge = document.createElement("span");
+    mutedBadge.className = "session-sidebar-badge is-muted";
+    mutedBadge.textContent = "MUTE";
+    badges.append(mutedBadge);
+  }
+
   if (session.inputPrompt) {
     const promptBadge = document.createElement("span");
     promptBadge.className = "session-sidebar-badge is-waiting";
@@ -119,7 +148,7 @@ function renderSessionButton(
     badges.append(promptBadge);
   }
 
-  header.append(pinButton, badges);
+  header.append(pinButton, muteButton, badges);
 
   const meta = document.createElement("span");
   meta.className = "session-sidebar-meta";
@@ -145,18 +174,36 @@ function renderSessionGroup(
     activeSessionName: string | null;
     browserTabs?: BrowserSessionTabState[];
     pinnedSessionNames?: Set<string>;
+    mutedSessionNames?: Set<string>;
     onOpenSession: (name: string) => void;
     onTogglePinned: (name: string) => void;
+    onToggleMuted?: (name: string) => void;
+    onRefreshMuted?: () => void;
   },
-  pinned: boolean
+  groupType: "pinned" | "sessions" | "muted"
 ) {
   const group = document.createElement("section");
-  group.className = `session-sidebar-group${pinned ? " is-pinned" : ""}`;
-  group.dataset.group = pinned ? "pinned" : "sessions";
+  group.className = `session-sidebar-group is-${groupType}`;
+  group.dataset.group = groupType;
 
   const title = document.createElement("div");
   title.className = "session-sidebar-group-title session-sidebar-text";
-  title.textContent = label;
+  const titleText = document.createElement("span");
+  titleText.textContent = label;
+  title.append(titleText);
+
+  if (groupType === "muted" && actions.onRefreshMuted) {
+    const refreshButton = document.createElement("button");
+    refreshButton.type = "button";
+    refreshButton.className = "session-sidebar-muted-refresh";
+    refreshButton.dataset.action = "refresh-muted-sessions";
+    refreshButton.title = "Refresh muted sessions";
+    refreshButton.setAttribute("aria-label", "Refresh muted sessions");
+    refreshButton.textContent = "↻";
+    refreshButton.addEventListener("click", actions.onRefreshMuted);
+    title.append(refreshButton);
+  }
+
   group.append(title);
 
   sessions.forEach((session) => {
@@ -164,6 +211,49 @@ function renderSessionGroup(
   });
 
   return group;
+}
+
+function formatTimelineTime(createdAt: string) {
+  const date = new Date(createdAt);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return `${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate()
+  ).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(
+    date.getMinutes()
+  ).padStart(2, "0")}`;
+}
+
+function renderTimeline(events: TimelineEvent[]) {
+  const timeline = document.createElement("section");
+  timeline.className = "session-sidebar-timeline session-sidebar-text";
+
+  const title = document.createElement("div");
+  title.className = "session-sidebar-timeline-title";
+  title.textContent = "Timeline";
+  timeline.append(title);
+
+  events.slice(0, 5).forEach((event) => {
+    const item = document.createElement("div");
+    item.className = "session-sidebar-timeline-item";
+    item.title = `${event.sessionName ?? "system"} · ${event.message}`;
+
+    const time = document.createElement("span");
+    time.className = "session-sidebar-timeline-time";
+    time.textContent = formatTimelineTime(event.createdAt);
+
+    const text = document.createElement("span");
+    text.className = "session-sidebar-timeline-text";
+    text.textContent = `${event.sessionName ?? "system"} · ${event.message}`;
+
+    item.append(time, text);
+    timeline.append(item);
+  });
+
+  return timeline;
 }
 
 export function renderSessionSidebar(
@@ -175,12 +265,16 @@ export function renderSessionSidebar(
     draftSessionName: string;
     browserTabs?: BrowserSessionTabState[];
     pinnedSessionNames?: Set<string>;
+    mutedSessionNames?: Set<string>;
+    timelineEvents?: TimelineEvent[];
     onCreateSession: (name: string) => void;
     onDraftChange: (value: string) => void;
     onOpenDashboard: () => void;
     onOpenSession: (name: string) => void;
     onTogglePinned: (name: string) => void;
+    onToggleMuted?: (name: string) => void;
     onRefresh: () => void;
+    onRefreshMuted?: () => void;
     onToggleCollapsed?: () => void;
   }
 ) {
@@ -287,12 +381,19 @@ export function renderSessionSidebar(
   const pinnedSessions = state.sessions.filter((session) =>
     isPinnedSession(session.name, actions.pinnedSessionNames)
   );
+  const mutedSessions = state.sessions.filter(
+    (session) =>
+      !isPinnedSession(session.name, actions.pinnedSessionNames) &&
+      isMutedSession(session.name, actions.mutedSessionNames)
+  );
   const regularSessions = state.sessions.filter(
-    (session) => !isPinnedSession(session.name, actions.pinnedSessionNames)
+    (session) =>
+      !isPinnedSession(session.name, actions.pinnedSessionNames) &&
+      !isMutedSession(session.name, actions.mutedSessionNames)
   );
 
   if (pinnedSessions.length > 0) {
-    list.append(renderSessionGroup("Pinned", pinnedSessions, state, actions, true));
+    list.append(renderSessionGroup("Pinned", pinnedSessions, state, actions, "pinned"));
   }
 
   if (regularSessions.length > 0) {
@@ -302,9 +403,13 @@ export function renderSessionSidebar(
         regularSessions,
         state,
         actions,
-        false
+        "sessions"
       )
     );
+  }
+
+  if (mutedSessions.length > 0) {
+    list.append(renderSessionGroup("Mute", mutedSessions, state, actions, "muted"));
   }
 
   if (state.loading) {
@@ -321,6 +426,12 @@ export function renderSessionSidebar(
     list.append(error);
   }
 
-  sidebar.append(header, dashboardButton, list, toolbar);
+  sidebar.append(header, dashboardButton, list);
+
+  if (!actions.collapsed && actions.timelineEvents?.length) {
+    sidebar.append(renderTimeline(actions.timelineEvents));
+  }
+
+  sidebar.append(toolbar);
   root.append(sidebar);
 }

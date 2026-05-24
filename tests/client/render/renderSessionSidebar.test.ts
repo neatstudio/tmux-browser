@@ -204,6 +204,78 @@ describe("renderSessionSidebar", () => {
     ).toBe("true");
   });
 
+  it("moves muted sessions to a bottom group with a group refresh action", () => {
+    const root = document.createElement("div");
+    const onRefreshMuted = vi.fn();
+    const onToggleMuted = vi.fn();
+
+    renderSessionSidebar(
+      root,
+      {
+        sessions: [
+          { ...BASE_SESSION, name: "build" },
+          { ...BASE_SESSION, name: "tmux-ui" }
+        ],
+        serverStatus: null,
+        loading: false,
+        error: null
+      },
+      {
+        activeSessionName: null,
+        collapsed: false,
+        draftSessionName: "",
+        browserTabs: [],
+        pinnedSessionNames: new Set(["build"]),
+        mutedSessionNames: new Set(["tmux-ui"]),
+        onCreateSession: vi.fn(),
+        onDraftChange: vi.fn(),
+        onOpenDashboard: vi.fn(),
+        onOpenSession: vi.fn(),
+        onTogglePinned: vi.fn(),
+        onToggleMuted,
+        onRefresh: vi.fn(),
+        onRefreshMuted,
+        onToggleCollapsed: vi.fn()
+      }
+    );
+
+    const groups = [
+      ...root.querySelectorAll<HTMLElement>(".session-sidebar-group")
+    ];
+    const items = [...root.querySelectorAll<HTMLButtonElement>(".session-sidebar-item")];
+
+    expect(groups.map((group) => group.dataset.group)).toEqual([
+      "pinned",
+      "muted"
+    ]);
+    expect(items.map((item) => item.dataset.sessionName)).toEqual([
+      "build",
+      "tmux-ui"
+    ]);
+    expect(items[1]?.classList.contains("is-muted")).toBe(true);
+    expect(items[1]?.textContent).toContain("MUTE");
+    expect(
+      items[1]
+        ?.querySelector<HTMLButtonElement>("[data-action='toggle-sidebar-muted']")
+        ?.getAttribute("aria-pressed")
+    ).toBe("true");
+    expect(
+      groups[1]
+        ?.querySelector<HTMLButtonElement>("[data-action='refresh-muted-sessions']")
+        ?.textContent
+    ).toBe("↻");
+
+    groups[1]
+      ?.querySelector<HTMLButtonElement>("[data-action='refresh-muted-sessions']")
+      ?.click();
+    items[1]
+      ?.querySelector<HTMLButtonElement>("[data-action='toggle-sidebar-muted']")
+      ?.click();
+
+    expect(onRefreshMuted).toHaveBeenCalledOnce();
+    expect(onToggleMuted).toHaveBeenCalledWith("tmux-ui");
+  });
+
   it("can collapse to compact icon-style session entries", () => {
     const root = document.createElement("div");
     const onToggleCollapsed = vi.fn();
@@ -271,6 +343,7 @@ describe("renderSessionSidebar", () => {
         onOpenDashboard: vi.fn(),
         onOpenSession: vi.fn(),
         onTogglePinned: vi.fn(),
+        onToggleMuted: vi.fn(),
         onRefresh,
         onToggleCollapsed
       }
@@ -322,5 +395,50 @@ describe("renderSessionSidebar", () => {
       "session-sidebar-list",
       "session-sidebar-toolbar"
     ]);
+  });
+
+  it("shows recent timeline events without terminal preview output", () => {
+    const root = document.createElement("div");
+
+    renderSessionSidebar(
+      root,
+      {
+        sessions: [BASE_SESSION],
+        serverStatus: null,
+        loading: false,
+        error: null
+      },
+      {
+        activeSessionName: null,
+        collapsed: false,
+        draftSessionName: "",
+        browserTabs: [],
+        pinnedSessionNames: new Set(),
+        timelineEvents: [
+          {
+            id: "evt-1",
+            type: "command-sent",
+            sessionName: "api",
+            message: "sent command: npm test",
+            createdAt: "2026-05-24T03:00:00.000Z"
+          }
+        ],
+        onCreateSession: vi.fn(),
+        onDraftChange: vi.fn(),
+        onOpenDashboard: vi.fn(),
+        onOpenSession: vi.fn(),
+        onTogglePinned: vi.fn(),
+        onRefresh: vi.fn(),
+        onToggleCollapsed: vi.fn()
+      }
+    );
+
+    const timeline = root.querySelector<HTMLElement>(".session-sidebar-timeline");
+
+    expect(timeline).not.toBeNull();
+    expect(timeline?.textContent).toContain("Timeline");
+    expect(timeline?.textContent).toContain("api");
+    expect(timeline?.textContent).toContain("sent command: npm test");
+    expect(timeline?.textContent).not.toContain("heavy preview output");
   });
 });

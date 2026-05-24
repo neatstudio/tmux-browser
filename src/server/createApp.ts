@@ -18,6 +18,10 @@ import {
   ImageUploadError,
   saveUploadedImage
 } from "./services/uploads/imageUploadService.js";
+import {
+  createTimelineStore,
+  type TimelineStore
+} from "./services/timeline/createTimelineStore.js";
 
 const faviconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#15181c"/><path d="M14 14h36v10H37v28H27V24H14z" fill="#b7ffb0"/></svg>`;
 const IMAGE_MIME_TYPES = new Map([
@@ -44,6 +48,20 @@ function stripPreview<T extends { preview?: string | null }>(session: T) {
   const { preview: _preview, ...lightweightSession } = session;
 
   return lightweightSession;
+}
+
+function parseSessionNameList(value: unknown) {
+  if (typeof value !== "string") {
+    return [];
+  }
+
+  return [...new Set(value.split(",").map((name) => name.trim()).filter(Boolean))];
+}
+
+function optionalSessionNameList(value: unknown) {
+  const names = parseSessionNameList(value);
+
+  return names.length > 0 ? names : undefined;
 }
 
 function resolvePreviewImagePath(imagePath: string, basePath: string | undefined) {
@@ -256,10 +274,12 @@ export function createApp(options: {
   uploadDir?: string;
   uploadRetentionMs?: number;
   uploadMaxTotalBytes?: number;
+  timelineStore?: TimelineStore;
 } = {}) {
   const tmuxService = options.tmuxService ?? createTmuxService();
   const readServerStatus = options.getServerStatus ?? getServerStatus;
   const readAppInfo = options.getAppInfo ?? getAppInfo;
+  const timelineStore = options.timelineStore ?? createTimelineStore();
   const imagePreviewRoots = getImagePreviewRoots(options.imagePreviewRoots);
   const uploadOptions = {
     uploadDir: options.uploadDir,
@@ -293,6 +313,13 @@ export function createApp(options: {
 
   app.get("/api/server-status", (_req, res) => {
     res.json(readServerStatus());
+  });
+
+  app.get("/api/timeline", (req, res) => {
+    const limit =
+      typeof req.query.limit === "string" ? Number(req.query.limit) : undefined;
+
+    res.json({ events: timelineStore.listEvents({ limit }) });
   });
 
   app.post(
@@ -387,13 +414,16 @@ export function createApp(options: {
       .send(renderImageViewPage(imagePath, basePath));
   });
 
-  app.get("/api/sessions-all", async (_req, res, next) => {
+  app.get("/api/sessions-all", async (req, res, next) => {
     try {
       res.json(
         await tmuxService.listSessions({
           includePreview: true,
           includePanes: true,
-          includeInputPrompt: true
+          includeInputPrompt: true,
+          ...(optionalSessionNameList(req.query.only)
+            ? { onlySessionNames: optionalSessionNameList(req.query.only) }
+            : {})
         })
       );
     } catch (error) {
@@ -401,14 +431,17 @@ export function createApp(options: {
     }
   });
 
-  app.get("/api/sessions-panes", async (_req, res, next) => {
+  app.get("/api/sessions-panes", async (req, res, next) => {
     try {
       res.json(
         (
           await tmuxService.listSessions({
             includePreview: false,
             includePanes: true,
-            includeInputPrompt: true
+            includeInputPrompt: false,
+            ...(optionalSessionNameList(req.query.muted)
+              ? { mutedSessionNames: optionalSessionNameList(req.query.muted) }
+              : {})
           })
         ).map(stripPreview)
       );
@@ -428,7 +461,8 @@ export function createApp(options: {
       sendCommand: tmuxService.sendCommand,
       splitPane: tmuxService.splitPane,
       selectPane: tmuxService.selectPane,
-      killPane: tmuxService.killPane
+      killPane: tmuxService.killPane,
+      timeline: timelineStore
     })
   );
 

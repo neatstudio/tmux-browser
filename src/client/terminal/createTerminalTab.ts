@@ -1,3 +1,5 @@
+import "@xterm/xterm/css/xterm.css";
+
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
@@ -131,6 +133,9 @@ export function createTerminalTabController(deps: {
     },
     scroll(lines: number) {
       sendOrQueue({ type: "scroll", lines });
+    },
+    clearHistory() {
+      sendOrQueue({ type: "clear-history" });
     },
     destroy() {
       closedByApp = true;
@@ -732,6 +737,7 @@ export function createTerminalTab(deps: {
     },
     clear() {
       terminal.clear();
+      controller?.clearHistory();
     },
     redraw() {
       safeFitAndResize();

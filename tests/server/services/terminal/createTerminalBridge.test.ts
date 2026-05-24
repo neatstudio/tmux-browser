@@ -90,6 +90,7 @@ describe("createTerminalBridge", () => {
     bridge.resize(100, 30);
     bridge.scroll(-8);
     bridge.scroll(3);
+    bridge.clearHistory();
     bridge.kill();
 
     expect(spawnPty).toHaveBeenCalledWith("tmux", ["-u", "attach-session", "-t", "build"], {
@@ -125,6 +126,11 @@ describe("createTerminalBridge", () => {
       "-N",
       "3",
       "scroll-down"
+    ]);
+    expect(runTmuxCommand).toHaveBeenNthCalledWith(3, [
+      "clear-history",
+      "-t",
+      "build"
     ]);
     expect(kill).toHaveBeenCalledTimes(1);
   });

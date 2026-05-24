@@ -34,6 +34,37 @@ describe("createSessionApi", () => {
     expect(fetch).toHaveBeenCalledWith("/api/server-status");
   });
 
+  it("loads recent timeline events", async () => {
+    const fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          events: [
+            {
+              id: "1",
+              type: "session-created",
+              sessionName: "build",
+              message: "created session build",
+              createdAt: "2026-05-24T03:00:00.000Z"
+            }
+          ]
+        })
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(createSessionApi().listTimelineEvents(8)).resolves.toEqual([
+      {
+        id: "1",
+        type: "session-created",
+        sessionName: "build",
+        message: "created session build",
+        createdAt: "2026-05-24T03:00:00.000Z"
+      }
+    ]);
+
+    expect(fetch).toHaveBeenCalledWith("/api/timeline?limit=8");
+  });
+
   it("loads lightweight sessions without previews by default", async () => {
     const fetch = vi.fn().mockResolvedValue({
       ok: true,
@@ -77,6 +108,23 @@ describe("createSessionApi", () => {
     await createSessionApi().listPaneSessions();
 
     expect(fetch).toHaveBeenCalledWith("/api/sessions-panes");
+  });
+
+  it("loads pane-aware sessions with muted session names", async () => {
+    const fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve([
+          { name: "build", windows: 1, status: "attached", panes: [] }
+        ])
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    await createSessionApi().listPaneSessions(["tmux-ui", "background logs"]);
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/sessions-panes?muted=tmux-ui%2Cbackground+logs"
+    );
   });
 
   it("loads one session status without server status polling", async () => {

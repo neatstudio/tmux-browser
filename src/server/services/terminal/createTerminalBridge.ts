@@ -10,6 +10,7 @@ export type TerminalBridge = {
   write: (data: string) => void;
   resize: (cols: number, rows: number) => void;
   scroll: (lines: number) => void;
+  clearHistory: () => void;
   kill: () => void;
 };
 
@@ -217,6 +218,9 @@ export const createTerminalBridge: CreateTerminalBridge = (
             ];
 
       runTmuxCommand(commandArgs);
+    },
+    clearHistory() {
+      runTmuxCommand(["clear-history", "-t", sessionName]);
     },
     kill() {
       pty.kill();

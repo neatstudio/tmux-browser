@@ -674,6 +674,9 @@ describe("createTerminalTab", () => {
     mounted.redraw();
 
     expect(terminalTestState.terminals[0]?.instance.clear).toHaveBeenCalledOnce();
+    expect(socket.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: "clear-history" })
+    );
     expect(terminalTestState.fitAddons[0]?.fit).toHaveBeenCalledOnce();
     expect(terminalTestState.terminals[0]?.instance.clearTextureAtlas).toHaveBeenCalled();
     expect(terminalTestState.terminals[0]?.instance.refresh).toHaveBeenCalledWith(

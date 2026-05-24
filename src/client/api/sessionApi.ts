@@ -1,4 +1,5 @@
 import type { TerminalInputPrompt } from "../../shared/inputPromptDetector";
+import type { TimelineEvent } from "../../shared/timeline";
 
 export type SessionSummary = {
   name: string;
@@ -49,8 +50,9 @@ export type ServerStatus = {
 
 export type SessionApi = {
   listSessions: () => Promise<SessionSummary[]>;
-  listPaneSessions: () => Promise<SessionSummary[]>;
-  listDashboardSessions: () => Promise<SessionSummary[]>;
+  listPaneSessions: (mutedSessionNames?: string[]) => Promise<SessionSummary[]>;
+  listDashboardSessions: (onlySessionNames?: string[]) => Promise<SessionSummary[]>;
+  listTimelineEvents: (limit?: number) => Promise<TimelineEvent[]>;
   getSessionStatus: (name: string) => Promise<SessionSummary>;
   getServerStatus: () => Promise<ServerStatus>;
   createSession: (name: string) => Promise<void>;
@@ -73,8 +75,17 @@ export function createSessionApi(baseUrl = ""): SessionApi {
 
       return (await response.json()) as SessionSummary[];
     },
-    async listDashboardSessions() {
-      const response = await fetch(`${baseUrl}/api/sessions-all`);
+    async listDashboardSessions(onlySessionNames = []) {
+      const params = new URLSearchParams();
+
+      if (onlySessionNames.length > 0) {
+        params.set("only", onlySessionNames.join(","));
+      }
+
+      const query = params.toString();
+      const response = await fetch(
+        `${baseUrl}/api/sessions-all${query ? `?${query}` : ""}`
+      );
 
       if (!response.ok) {
         throw new Error("Failed to load dashboard tmux sessions");
@@ -82,14 +93,35 @@ export function createSessionApi(baseUrl = ""): SessionApi {
 
       return (await response.json()) as SessionSummary[];
     },
-    async listPaneSessions() {
-      const response = await fetch(`${baseUrl}/api/sessions-panes`);
+    async listPaneSessions(mutedSessionNames = []) {
+      const params = new URLSearchParams();
+
+      if (mutedSessionNames.length > 0) {
+        params.set("muted", mutedSessionNames.join(","));
+      }
+
+      const query = params.toString();
+      const response = await fetch(
+        `${baseUrl}/api/sessions-panes${query ? `?${query}` : ""}`
+      );
 
       if (!response.ok) {
         throw new Error("Failed to load tmux panes");
       }
 
       return (await response.json()) as SessionSummary[];
+    },
+    async listTimelineEvents(limit = 20) {
+      const params = new URLSearchParams({ limit: String(limit) });
+      const response = await fetch(`${baseUrl}/api/timeline?${params.toString()}`);
+
+      if (!response.ok) {
+        throw new Error("Failed to load timeline events");
+      }
+
+      const payload = (await response.json()) as { events: TimelineEvent[] };
+
+      return payload.events;
     },
     async getSessionStatus(name: string) {
       const response = await fetch(

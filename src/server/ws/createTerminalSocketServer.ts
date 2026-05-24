@@ -251,6 +251,11 @@ export function createTerminalSocketServer(deps: {
           return;
         }
 
+        if (message.type === "clear-history") {
+          connection.bridge.clearHistory();
+          return;
+        }
+
         connection.bridge.resize(message.cols, message.rows);
       } catch (error) {
         socket.send(

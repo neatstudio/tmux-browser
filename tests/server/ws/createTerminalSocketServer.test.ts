@@ -16,6 +16,7 @@ describe("createTerminalSocketServer", () => {
       write: vi.fn(),
       resize: vi.fn(),
       scroll: vi.fn(),
+      clearHistory: vi.fn(),
       kill: () => {
         killCount += 1;
       }
@@ -43,13 +44,14 @@ describe("createTerminalSocketServer", () => {
     expect(killCount).toBe(1);
   });
 
-  it("forwards scroll requests to the terminal bridge", () => {
+  it("forwards scroll and clear-history requests to the terminal bridge", () => {
     const bridge = {
       onData: vi.fn(),
       onExit: vi.fn(),
       write: vi.fn(),
       resize: vi.fn(),
       scroll: vi.fn(),
+      clearHistory: vi.fn(),
       kill: vi.fn()
     };
     const server = createTerminalSocketServer({
@@ -66,8 +68,10 @@ describe("createTerminalSocketServer", () => {
     });
 
     socket.receive({ type: "scroll", lines: -12 });
+    socket.receive({ type: "clear-history" });
 
     expect(bridge.scroll).toHaveBeenCalledWith(-12);
+    expect(bridge.clearHistory).toHaveBeenCalledOnce();
   });
 
   it("batches bridge output before sending it over the socket", () => {
@@ -81,6 +85,7 @@ describe("createTerminalSocketServer", () => {
       write: vi.fn(),
       resize: vi.fn(),
       scroll: vi.fn(),
+      clearHistory: vi.fn(),
       kill: vi.fn()
     };
     const server = createTerminalSocketServer({
@@ -122,6 +127,7 @@ describe("createTerminalSocketServer", () => {
       write: vi.fn(),
       resize: vi.fn(),
       scroll: vi.fn(),
+      clearHistory: vi.fn(),
       kill: vi.fn()
     };
     const server = createTerminalSocketServer({

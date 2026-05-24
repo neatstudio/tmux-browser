@@ -1,5 +1,3 @@
-import "@xterm/xterm/css/xterm.css";
-
 import { createSessionApi } from "./api/sessionApi";
 import { renderInputPromptToast } from "./render/inputPromptToast";
 import { renderDashboard } from "./render/renderDashboard";
@@ -10,9 +8,9 @@ import { renderSessionStatusBar } from "./render/sessionStatusBar";
 import { renderTabs, updateActiveTabItem } from "./render/renderTabs";
 import { createDashboardStore } from "./state/dashboardStore";
 import { createInputPromptRegistry } from "./state/inputPromptRegistry";
+import { createMutedSessionsStore } from "./state/mutedSessions";
 import { createSessionSettingsStore } from "./state/sessionSettings";
 import { createTabState, type BrowserTab } from "./state/tabState";
-import { createTerminalTab } from "./terminal/createTerminalTab";
 import { createInactiveTerminalPruner } from "./terminal/inactiveTerminalPruner";
 import {
   detectTerminalInputPrompt,
@@ -51,6 +49,8 @@ type MountedTerminal = {
   panel: HTMLElement;
   statusBar: HTMLElement;
 };
+
+type MountedTerminalCore = Omit<MountedTerminal, "panel" | "statusBar">;
 
 const app = document.querySelector<HTMLElement>("#app");
 
@@ -92,6 +92,7 @@ let draftSendCommand = "";
 const tabState = createTabState();
 const inputPrompts = createInputPromptRegistry();
 const sessionSettings = createSessionSettingsStore();
+const mutedSessions = createMutedSessionsStore();
 const store = createDashboardStore({
   api: createSessionApi(),
   pollMs: 10_000,
@@ -119,9 +120,11 @@ const store = createDashboardStore({
     return (
       tabState.getTabs().find((tab) => tab.id === activeTabId)?.sessionName ?? null
     );
-  }
+  },
+  getMutedSessionNames: () => mutedSessions.getMutedSessionNames()
 });
 const mountedTerminals = new Map<string, MountedTerminal>();
+const pendingTerminalMounts = new Set<string>();
 const inactiveTerminalPruner = createInactiveTerminalPruner({
   delayMs: 5000
 });
@@ -205,6 +208,17 @@ function togglePinnedSession(sessionName: string) {
   scheduleRender();
 }
 
+function toggleMutedSession(sessionName: string) {
+  mutedSessions.toggleMuted(sessionName);
+  void store
+    .refresh({
+      includePreview: false,
+      includePanes: true,
+      includeServerStatus: false
+    })
+    .then(() => scheduleRender());
+}
+
 function closeTab(tabId: string, options: { force?: boolean } = {}) {
   clearInputPromptForTab(tabId);
   inactiveTerminalPruner.cancel(tabId);
@@ -231,6 +245,7 @@ function detachTerminal(tabId: string) {
   }
 
   busyTerminalTabIds.delete(tabId);
+  pendingTerminalMounts.delete(tabId);
 
   if (!mounted) {
     return;
@@ -344,10 +359,11 @@ function handleTerminalOutput(tabId: string, _data: string, visibleText: string)
 }
 
 function ensureTerminal(tab: BrowserTab) {
-  if (mountedTerminals.has(tab.id)) {
+  if (mountedTerminals.has(tab.id) || pendingTerminalMounts.has(tab.id)) {
     return;
   }
 
+  pendingTerminalMounts.add(tab.id);
   const panel = document.createElement("div");
   panel.className = "terminal-panel";
   const frame = document.createElement("div");
@@ -355,53 +371,83 @@ function ensureTerminal(tab: BrowserTab) {
   panel.append(frame);
   panelsRoot.append(panel);
 
-  const mounted = createTerminalTab({
-    container: frame,
-    rendererStatusElement: panel,
-    tabId: tab.id,
-    sessionName: tab.sessionName,
-    fontSize: sessionSettings.get(tab.sessionName).fontSize,
-    fontFamily: sessionSettings.get(tab.sessionName).fontFamily,
-    lineHeight: sessionSettings.get(tab.sessionName).lineHeight,
-    terminalTheme: getTheme(sessionSettings.get(tab.sessionName).themeId).terminalTheme,
-    onOutput: (data, visibleText) => handleTerminalOutput(tab.id, data, visibleText),
-    onClosed: () => {
-      closeTab(tab.id, { force: true });
-      const isDashboardActive = tabState.getActiveTabId() === null;
-
-      void store.refresh({
-        includePreview: isDashboardActive,
-        includePanes: !isDashboardActive
-      });
-    }
-  });
-
-  const mountedTerminal: MountedTerminal = {
-    destroy: mounted.destroy,
-    sendInput: mounted.sendInput,
-    getVisibleText: mounted.getVisibleText,
-    clear: mounted.clear,
-    redraw: mounted.redraw,
-    reconnect: mounted.reconnect,
-    scrollPage: mounted.scrollPage,
-    toggleBrowserScroll: mounted.toggleBrowserScroll,
-    isBrowserScrollEnabled: mounted.isBrowserScrollEnabled,
-    setTheme: mounted.setTheme,
-    setFontSize: mounted.setFontSize,
-    setFontFamily: mounted.setFontFamily,
-    setLineHeight: mounted.setLineHeight,
+  const loadingTerminal: MountedTerminal = {
+    destroy: () => {
+      pendingTerminalMounts.delete(tab.id);
+    },
+    sendInput: () => {},
+    getVisibleText: () => "",
+    clear: () => {},
+    redraw: () => {},
+    reconnect: () => {},
+    scrollPage: () => {},
+    toggleBrowserScroll: () => false,
+    isBrowserScrollEnabled: () => false,
+    setTheme: () => {},
+    setFontSize: () => {},
+    setFontFamily: () => {},
+    setLineHeight: () => {},
     panel,
     statusBar: panel
   };
-  mountedTerminals.set(tab.id, mountedTerminal);
+  mountedTerminals.set(tab.id, loadingTerminal);
   renderSessionStatusBar(
     panel,
     store.getState().sessions.find((session) => session.name === tab.sessionName),
-    createSessionStatusActions(tab, mountedTerminal)
+    createSessionStatusActions(tab, loadingTerminal)
   );
   panel.style.background = getTheme(
     sessionSettings.get(tab.sessionName).themeId
   ).terminalTheme.background;
+
+  void import("./terminal/createTerminalTab").then(({ createTerminalTab }) => {
+    if (!pendingTerminalMounts.has(tab.id)) {
+      return;
+    }
+
+    const settings = sessionSettings.get(tab.sessionName);
+    const mounted = createTerminalTab({
+      container: frame,
+      rendererStatusElement: panel,
+      tabId: tab.id,
+      sessionName: tab.sessionName,
+      fontSize: settings.fontSize,
+      fontFamily: settings.fontFamily,
+      lineHeight: settings.lineHeight,
+      terminalTheme: getTheme(settings.themeId).terminalTheme,
+      onOutput: (data, visibleText) => handleTerminalOutput(tab.id, data, visibleText),
+      onClosed: () => {
+        closeTab(tab.id, { force: true });
+        const isDashboardActive = tabState.getActiveTabId() === null;
+
+        void store.refresh({
+          includePreview: isDashboardActive,
+          includePanes: !isDashboardActive
+        });
+      }
+    });
+    const mountedTerminal: MountedTerminal = {
+      ...(mounted satisfies MountedTerminalCore),
+      panel,
+      statusBar: panel
+    };
+
+    pendingTerminalMounts.delete(tab.id);
+    mountedTerminals.set(tab.id, mountedTerminal);
+
+    if (tabState.getActiveTabId() === tab.id) {
+      panel.classList.add("is-active");
+      mountedTerminal.redraw();
+    }
+
+    renderSessionStatusBar(
+      panel,
+      store
+        .getState()
+        .sessions.find((session) => session.name === tab.sessionName),
+      createSessionStatusActions(tab, mountedTerminal)
+    );
+  });
 }
 
 function syncTerminalStatusBars() {
@@ -525,6 +571,7 @@ function setSessionTheme(sessionName: string, themeId: string) {
 async function renameSession(fromName: string, toName: string) {
   tabState.renameSession(fromName, toName);
   sessionSettings.renameSession(fromName, toName);
+  mutedSessions.renameSession(fromName, toName);
 
   if (activeConfigSessionName === fromName) {
     activeConfigSessionName = toName;
@@ -1282,6 +1329,8 @@ function render() {
         active: tab.id === activeTabId
       })),
       pinnedSessionNames: getPinnedSessionNames(),
+      mutedSessionNames: new Set(mutedSessions.getMutedSessionNames()),
+      timelineEvents: store.getState().timelineEvents ?? [],
       onCreateSession: (name) => {
         void store.createSession(name).then(() => {
           draftSessionName = "";
@@ -1301,6 +1350,7 @@ function render() {
         scheduleRender();
       },
       onTogglePinned: togglePinnedSession,
+      onToggleMuted: toggleMutedSession,
       onRefresh: () =>
         void store
           .refresh({
@@ -1308,6 +1358,10 @@ function render() {
             includePanes: true,
             includeServerStatus: true
           })
+          .then(() => scheduleRender()),
+      onRefreshMuted: () =>
+        void store
+          .refreshMuted(mutedSessions.getMutedSessionNames())
           .then(() => scheduleRender()),
       onToggleCollapsed: () => setSidebarCollapsed(!isSidebarCollapsed)
     });
@@ -1359,11 +1413,13 @@ store.subscribe(() => {
 {
   const isDashboardActive = tabState.getActiveTabId() === null;
 
-  void store
-    .refresh({
+  void Promise.all([
+    store.refresh({
       includePreview: isSidebarLayout ? false : isDashboardActive,
       includePanes: isSidebarLayout ? true : !isDashboardActive
-    })
+    }),
+    store.refreshTimeline()
+  ])
     .then(() => {
       scheduleRender();
       store.startPolling();

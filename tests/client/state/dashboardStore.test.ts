@@ -75,6 +75,26 @@ describe("createDashboardStore", () => {
     expect(api.listDashboardSessions).not.toHaveBeenCalled();
   });
 
+  it("passes muted sessions into pane-aware refreshes", async () => {
+    const api = {
+      getServerStatus: vi.fn().mockResolvedValue(SERVER_STATUS),
+      listSessions: vi.fn(),
+      listPaneSessions: vi.fn().mockResolvedValue([
+        { name: "build", windows: 2, status: "detached", panes: [] }
+      ]),
+      listDashboardSessions: vi.fn()
+    };
+    const store = createDashboardStore({
+      api,
+      pollMs: 3000,
+      getMutedSessionNames: () => ["tmux-ui", "logs"]
+    });
+
+    await store.refresh({ includePreview: false, includePanes: true });
+
+    expect(api.listPaneSessions).toHaveBeenCalledWith(["tmux-ui", "logs"]);
+  });
+
   it("can force full pane-aware session lists even when an active session exists", async () => {
     const api = {
       getServerStatus: vi.fn().mockResolvedValue(SERVER_STATUS),
@@ -175,6 +195,15 @@ describe("createDashboardStore", () => {
       listDashboardSessions: vi.fn().mockResolvedValue([
         { name: "build", windows: 1, status: "attached" }
       ]),
+      listTimelineEvents: vi.fn().mockResolvedValue([
+        {
+          id: "evt-1",
+          type: "command-sent",
+          sessionName: "build",
+          message: "sent command: npm test",
+          createdAt: "2026-05-24T03:00:00.000Z"
+        }
+      ]),
       sendCommand: vi.fn().mockResolvedValue(undefined)
     };
     const store = createDashboardStore({ api, pollMs: 3000 });
@@ -184,6 +213,16 @@ describe("createDashboardStore", () => {
 
     expect(api.sendCommand).toHaveBeenCalledWith("build", "npm test");
     expect(api.listDashboardSessions).toHaveBeenCalledTimes(1);
+    expect(api.listTimelineEvents).toHaveBeenCalledWith(8);
+    expect(store.getState().timelineEvents).toEqual([
+      {
+        id: "evt-1",
+        type: "command-sent",
+        sessionName: "build",
+        message: "sent command: npm test",
+        createdAt: "2026-05-24T03:00:00.000Z"
+      }
+    ]);
   });
 
   it("splits a pane through the api and refreshes session state", async () => {
@@ -454,6 +493,26 @@ describe("createDashboardStore", () => {
         status: "attached",
         panes: [{ paneId: "%1" }]
       }
+    ]);
+  });
+
+  it("manually refreshes only muted session heavy fields", async () => {
+    const api = {
+      getServerStatus: vi.fn().mockResolvedValue(SERVER_STATUS),
+      listSessions: vi.fn(),
+      listPaneSessions: vi.fn(),
+      listDashboardSessions: vi.fn().mockResolvedValue([
+        { name: "tmux-ui", preview: "service log", inputPrompt: null }
+      ])
+    };
+    const store = createDashboardStore({ api, pollMs: 3000 });
+
+    await store.refreshMuted(["tmux-ui"]);
+
+    expect(api.listDashboardSessions).toHaveBeenCalledWith(["tmux-ui"]);
+    expect(api.listPaneSessions).not.toHaveBeenCalled();
+    expect(store.getState().sessions).toEqual([
+      { name: "tmux-ui", preview: "service log", inputPrompt: null }
     ]);
   });
 });

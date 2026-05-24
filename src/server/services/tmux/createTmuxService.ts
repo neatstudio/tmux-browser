@@ -25,6 +25,8 @@ export type ListSessionsOptions = {
   includePreview?: boolean;
   includePanes?: boolean;
   includeInputPrompt?: boolean;
+  mutedSessionNames?: string[];
+  onlySessionNames?: string[];
 };
 
 export type TmuxService = {
@@ -88,6 +90,7 @@ export function createTmuxService(deps: {
   getGitSummary?: (cwd: string | null | undefined) => Promise<GitSummary | null>;
   homeDirectory?: string;
   previewTtlMs?: number;
+  inputPromptTtlMs?: number;
   gitSummaryTtlMs?: number;
   now?: () => number;
 } = {}): TmuxService {
@@ -95,6 +98,7 @@ export function createTmuxService(deps: {
   const getSessionGitSummary = deps.getGitSummary ?? getGitSummary;
   const homeDirectory = deps.homeDirectory ?? homedir();
   const previewTtlMs = deps.previewTtlMs ?? 60_000;
+  const inputPromptTtlMs = deps.inputPromptTtlMs ?? 60_000;
   const gitSummaryTtlMs = deps.gitSummaryTtlMs ?? 60_000;
   const now = deps.now ?? Date.now;
   const previewCache = new Map<
@@ -105,8 +109,67 @@ export function createTmuxService(deps: {
     string,
     { expiresAt: number; summary: GitSummary | null }
   >();
+  const paneCaptureCache = new Map<
+    string,
+    { expiresAt: number; output: string | null }
+  >();
+  const paneCaptureInflight = new Map<string, Promise<string | null>>();
+  const inputPromptCache = new Map<
+    string,
+    {
+      expiresAt: number;
+      prompt: ReturnType<typeof detectTerminalInputPrompt> | null;
+    }
+  >();
   const paneFormat =
     "#{session_name}\t#{pane_id}\t#{window_index}\t#{window_name}\t#{window_active}\t#{pane_index}\t#{pane_active}\t#{pane_current_command}\t#{pane_current_path}\t#{pane_dead}\t#{pane_dead_status}\t#{pane_pid}";
+
+  async function getPaneCapture(sessionName: string, ttlMs: number) {
+    const cached = paneCaptureCache.get(sessionName);
+    const nowMs = now();
+
+    if (cached && cached.expiresAt > nowMs) {
+      return cached.output;
+    }
+
+    const inflight = paneCaptureInflight.get(sessionName);
+
+    if (inflight) {
+      return inflight;
+    }
+
+    const capture = (async () => {
+      try {
+        const result = await run("capture-pane", [
+          "-p",
+          "-t",
+          sessionName,
+          "-S",
+          `-${PREVIEW_LINE_LIMIT}`
+        ]);
+
+        paneCaptureCache.set(sessionName, {
+          expiresAt: nowMs + ttlMs,
+          output: result.stdout
+        });
+
+        return result.stdout;
+      } catch {
+        paneCaptureCache.set(sessionName, {
+          expiresAt: nowMs + ttlMs,
+          output: null
+        });
+
+        return null;
+      } finally {
+        paneCaptureInflight.delete(sessionName);
+      }
+    })();
+
+    paneCaptureInflight.set(sessionName, capture);
+
+    return capture;
+  }
 
   async function getSessionPreview(sessionName: string) {
     const cached = previewCache.get(sessionName);
@@ -116,46 +179,34 @@ export function createTmuxService(deps: {
       return cached.preview;
     }
 
-    try {
-      const result = await run("capture-pane", [
-        "-p",
-        "-t",
-        sessionName,
-        "-S",
-        `-${PREVIEW_LINE_LIMIT}`
-      ]);
-      const preview = trimPreview(result.stdout);
+    const output = await getPaneCapture(sessionName, previewTtlMs);
+    const preview = output === null ? null : trimPreview(output);
 
-      previewCache.set(sessionName, {
-        expiresAt: nowMs + previewTtlMs,
-        preview
-      });
+    previewCache.set(sessionName, {
+      expiresAt: nowMs + previewTtlMs,
+      preview
+    });
 
-      return preview;
-    } catch {
-      previewCache.set(sessionName, {
-        expiresAt: nowMs + previewTtlMs,
-        preview: null
-      });
-
-      return null;
-    }
+    return preview;
   }
 
   async function getSessionInputPrompt(sessionName: string) {
-    try {
-      const result = await run("capture-pane", [
-        "-p",
-        "-t",
-        sessionName,
-        "-S",
-        `-${PREVIEW_LINE_LIMIT}`
-      ]);
+    const cached = inputPromptCache.get(sessionName);
+    const nowMs = now();
 
-      return detectTerminalInputPrompt(result.stdout);
-    } catch {
-      return null;
+    if (cached && cached.expiresAt > nowMs) {
+      return cached.prompt;
     }
+
+    const output = await getPaneCapture(sessionName, inputPromptTtlMs);
+    const prompt = output === null ? null : detectTerminalInputPrompt(output);
+
+    inputPromptCache.set(sessionName, {
+      expiresAt: nowMs + inputPromptTtlMs,
+      prompt
+    });
+
+    return prompt;
   }
 
   async function getCachedGitSummary(cwd: string | null | undefined) {
@@ -181,6 +232,9 @@ export function createTmuxService(deps: {
 
   function invalidateSessionCaches(name: string) {
     previewCache.delete(name);
+    paneCaptureCache.delete(name);
+    paneCaptureInflight.delete(name);
+    inputPromptCache.delete(name);
     gitSummaryCache.clear();
   }
 
@@ -197,14 +251,29 @@ export function createTmuxService(deps: {
           paneFormat
         ]);
 
+        const onlySessionNames = new Set(options.onlySessionNames ?? []);
+        const mutedSessionNames = new Set(options.mutedSessionNames ?? []);
         const sessions = mergeTmuxPaneSummaries(
           parseTmuxListOutput(sessionResult.stdout),
           parseTmuxPaneOutput(paneResult.stdout),
           { includePanes: options.includePanes }
+        ).filter(
+          (session) =>
+            onlySessionNames.size === 0 || onlySessionNames.has(session.name)
         );
 
         return Promise.all(
           sessions.map(async (session) => {
+            if (mutedSessionNames.has(session.name)) {
+              return {
+                ...session,
+                gitBranch: null,
+                gitDirty: null,
+                preview: null,
+                inputPrompt: null
+              };
+            }
+
             const [gitSummary, preview, inputPrompt] = await Promise.all([
               getCachedGitSummary(session.currentPath),
               options.includePreview ? getSessionPreview(session.name) : null,

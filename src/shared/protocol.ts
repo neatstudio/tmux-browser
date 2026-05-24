@@ -22,11 +22,16 @@ export type ScrollMessage = {
   lines: number;
 };
 
+export type ClearHistoryMessage = {
+  type: "clear-history";
+};
+
 export type ClientMessage =
   | AttachMessage
   | InputMessage
   | ResizeMessage
-  | ScrollMessage;
+  | ScrollMessage
+  | ClearHistoryMessage;
 
 export type OutputMessage = {
   type: "output";
