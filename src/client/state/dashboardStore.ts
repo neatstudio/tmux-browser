@@ -317,7 +317,8 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
 
         void refresh({
           includePreview: false,
-          includePanes: true
+          includePanes: true,
+          includeServerStatus: false
         });
       }, deps.pollMs);
 

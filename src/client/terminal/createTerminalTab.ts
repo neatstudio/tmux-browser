@@ -10,6 +10,11 @@ import type {
   AttachMessage,
   ServerMessage
 } from "../../shared/protocol";
+import {
+  getImageFileFromFiles,
+  getImageFileFromItems,
+  uploadImageForSession
+} from "../imageUpload";
 
 const TERMINAL_SCROLLBACK = 5000;
 const PIXELS_PER_SCROLL_LINE = 40;
@@ -26,13 +31,6 @@ type Disposable = {
 };
 
 type RenderedOutputListener = (rawData: string, visibleText: string) => void;
-
-type ImageUploadResponse = {
-  ok: true;
-  absolutePath: string;
-  contentType: string;
-  size: number;
-};
 
 type BrowserSocket = {
   send: (payload: string) => void;
@@ -332,34 +330,6 @@ function getRenderedTerminalText(terminal: Terminal) {
   return lines.join("\n").trim();
 }
 
-function getImageFileFromItems(items: DataTransferItemList | undefined) {
-  if (!items) {
-    return null;
-  }
-
-  for (const item of Array.from(items)) {
-    if (item.kind !== "file" || !item.type.startsWith("image/")) {
-      continue;
-    }
-
-    const file = item.getAsFile();
-
-    if (file) {
-      return file;
-    }
-  }
-
-  return null;
-}
-
-function getImageFileFromFiles(files: FileList | undefined) {
-  if (!files) {
-    return null;
-  }
-
-  return Array.from(files).find((file) => file.type.startsWith("image/")) ?? null;
-}
-
 export function createTerminalTab(deps: {
   container: HTMLElement;
   rendererStatusElement?: HTMLElement;
@@ -449,20 +419,7 @@ export function createTerminalTab(deps: {
     outputBuffer.write("\r\n[uploading image]\r\n");
 
     try {
-      const response = await fetch("/api/uploads/image", {
-        method: "POST",
-        headers: {
-          "Content-Type": file.type || "application/octet-stream",
-          "X-Tmux-Session": deps.sessionName
-        },
-        body: file
-      });
-
-      if (!response.ok) {
-        throw new Error(`Upload failed with ${response.status}`);
-      }
-
-      const upload = (await response.json()) as ImageUploadResponse;
+      const upload = await uploadImageForSession(deps.sessionName, file);
       controller?.sendInput(upload.absolutePath);
       outputBuffer.write(`\r\n[image path inserted] ${upload.absolutePath}\r\n`);
     } catch (error) {

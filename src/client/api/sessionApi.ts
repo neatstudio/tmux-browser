@@ -36,6 +36,10 @@ export type PaneSummary = {
 
 export type SplitPaneDirection = "horizontal" | "vertical";
 
+export type Preferences = {
+  pinnedSessionNames: string[];
+};
+
 export type ServerStatus = {
   platform: string;
   cpuCount: number;
@@ -53,6 +57,8 @@ export type SessionApi = {
   listPaneSessions: (mutedSessionNames?: string[]) => Promise<SessionSummary[]>;
   listDashboardSessions: (onlySessionNames?: string[]) => Promise<SessionSummary[]>;
   listTimelineEvents: (limit?: number) => Promise<TimelineEvent[]>;
+  getPreferences: () => Promise<Preferences>;
+  setPinnedSession: (name: string, pinned: boolean) => Promise<void>;
   getSessionStatus: (name: string) => Promise<SessionSummary>;
   getServerStatus: () => Promise<ServerStatus>;
   createSession: (name: string) => Promise<void>;
@@ -122,6 +128,31 @@ export function createSessionApi(baseUrl = ""): SessionApi {
       const payload = (await response.json()) as { events: TimelineEvent[] };
 
       return payload.events;
+    },
+    async getPreferences() {
+      const response = await fetch(`${baseUrl}/api/preferences`);
+
+      if (!response.ok) {
+        throw new Error("Failed to load preferences");
+      }
+
+      return (await response.json()) as Preferences;
+    },
+    async setPinnedSession(name: string, pinned: boolean) {
+      const response = await fetch(
+        `${baseUrl}/api/preferences/pinned-sessions/${encodeURIComponent(name)}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ pinned })
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to update favorite session");
+      }
     },
     async getSessionStatus(name: string) {
       const response = await fetch(

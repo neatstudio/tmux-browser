@@ -151,6 +151,128 @@ describe("renderSessionSidebar", () => {
     ).toBe("↻");
   });
 
+  it("shows pending actions as a compact header badge", () => {
+    const root = document.createElement("div");
+    const onToggleActionCenter = vi.fn();
+
+    renderSessionSidebar(
+      root,
+      {
+        sessions: [BASE_SESSION],
+        serverStatus: null,
+        loading: false,
+        error: null
+      },
+      {
+        activeSessionName: null,
+        collapsed: false,
+        draftSessionName: "",
+        browserTabs: [],
+        pinnedSessionNames: new Set(),
+        actionCount: 2,
+        actionCenterOpen: false,
+        onToggleActionCenter,
+        onCreateSession: vi.fn(),
+        onDraftChange: vi.fn(),
+        onOpenDashboard: vi.fn(),
+        onOpenSession: vi.fn(),
+        onTogglePinned: vi.fn(),
+        onRefresh: vi.fn(),
+        onToggleCollapsed: vi.fn()
+      }
+    );
+
+    const actionButton = root.querySelector<HTMLButtonElement>(
+      "[data-action='toggle-action-center']"
+    );
+
+    expect(actionButton).not.toBeNull();
+    expect(actionButton?.textContent).toBe("!2");
+    expect(actionButton?.getAttribute("aria-pressed")).toBe("false");
+    expect(
+      root
+        .querySelector(".session-sidebar-header")
+        ?.contains(actionButton as HTMLButtonElement)
+    ).toBe(true);
+
+    actionButton?.click();
+
+    expect(onToggleActionCenter).toHaveBeenCalledOnce();
+  });
+
+  it("hides the action center entry when there are no pending actions", () => {
+    const root = document.createElement("div");
+
+    renderSessionSidebar(
+      root,
+      {
+        sessions: [BASE_SESSION],
+        serverStatus: null,
+        loading: false,
+        error: null
+      },
+      {
+        activeSessionName: null,
+        collapsed: false,
+        draftSessionName: "",
+        browserTabs: [],
+        pinnedSessionNames: new Set(),
+        actionCount: 0,
+        actionCenterOpen: false,
+        onToggleActionCenter: vi.fn(),
+        onCreateSession: vi.fn(),
+        onDraftChange: vi.fn(),
+        onOpenDashboard: vi.fn(),
+        onOpenSession: vi.fn(),
+        onTogglePinned: vi.fn(),
+        onRefresh: vi.fn(),
+        onToggleCollapsed: vi.fn()
+      }
+    );
+
+    expect(
+      root.querySelector<HTMLButtonElement>("[data-action='toggle-action-center']")
+    ).toBeNull();
+  });
+
+  it("keeps the pending action badge visible while collapsed", () => {
+    const root = document.createElement("div");
+
+    renderSessionSidebar(
+      root,
+      {
+        sessions: [BASE_SESSION],
+        serverStatus: null,
+        loading: false,
+        error: null
+      },
+      {
+        activeSessionName: null,
+        collapsed: true,
+        draftSessionName: "",
+        browserTabs: [],
+        pinnedSessionNames: new Set(),
+        actionCount: 3,
+        actionCenterOpen: true,
+        onToggleActionCenter: vi.fn(),
+        onCreateSession: vi.fn(),
+        onDraftChange: vi.fn(),
+        onOpenDashboard: vi.fn(),
+        onOpenSession: vi.fn(),
+        onTogglePinned: vi.fn(),
+        onRefresh: vi.fn(),
+        onToggleCollapsed: vi.fn()
+      }
+    );
+
+    const actionButton = root.querySelector<HTMLButtonElement>(
+      "[data-action='toggle-action-center']"
+    );
+
+    expect(actionButton?.textContent).toBe("!3");
+    expect(actionButton?.getAttribute("aria-pressed")).toBe("true");
+  });
+
   it("separates pinned sessions from regular sessions and marks them", () => {
     const root = document.createElement("div");
 
@@ -353,6 +475,44 @@ describe("renderSessionSidebar", () => {
     root.querySelector<HTMLButtonElement>("[data-action='new-sidebar-session']")?.click();
 
     expect(onRefresh).toHaveBeenCalledOnce();
+    expect(onToggleCollapsed).toHaveBeenCalledOnce();
+  });
+
+  it("renders a mobile launcher with logo and session count", () => {
+    const root = document.createElement("div");
+    const onToggleCollapsed = vi.fn();
+
+    renderSessionSidebar(
+      root,
+      {
+        sessions: [BASE_SESSION, { ...BASE_SESSION, name: "worker" }],
+        serverStatus: null,
+        loading: false,
+        error: null
+      },
+      {
+        activeSessionName: null,
+        draftSessionName: "",
+        onCreateSession: vi.fn(),
+        onDraftChange: vi.fn(),
+        onOpenDashboard: vi.fn(),
+        onOpenSession: vi.fn(),
+        onTogglePinned: vi.fn(),
+        onRefresh: vi.fn(),
+        onToggleCollapsed
+      }
+    );
+
+    const launcher = root.querySelector<HTMLButtonElement>(
+      "[data-action='open-mobile-sidebar']"
+    )!;
+
+    expect(launcher).not.toBeNull();
+    expect(root.querySelector(".mobile-sidebar-logo")?.textContent).toBe("T");
+    expect(root.querySelector(".mobile-sidebar-count")?.textContent).toBe("2");
+
+    launcher.click();
+
     expect(onToggleCollapsed).toHaveBeenCalledOnce();
   });
 

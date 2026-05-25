@@ -1,6 +1,6 @@
 import type { Server as HttpServer } from "node:http";
 
-import { WebSocketServer, type RawData, type WebSocket } from "ws";
+import type { RawData, WebSocket } from "ws";
 
 import type {
   AttachMessage,
@@ -13,6 +13,7 @@ import {
   type TerminalBridge
 } from "../services/terminal/createTerminalBridge.js";
 import { createBridgeRegistry } from "../services/terminal/bridgeRegistry.js";
+import { registerWebSocketRoute } from "./webSocketRouter.js";
 
 type Registry = ReturnType<typeof createBridgeRegistry>;
 
@@ -278,11 +279,9 @@ export function createTerminalSocketServer(deps: {
   return {
     registry,
     attachToServer(server: HttpServer) {
-      const wss = new WebSocketServer({ server, path: "/ws/terminal" });
-      wss.on("connection", (socket: WebSocket) => {
+      return registerWebSocketRoute(server, "/ws/terminal", (socket: WebSocket) => {
         bindSocket(adaptWebSocket(socket));
       });
-      return wss;
     },
     notifySessionExit(sessionName: string) {
       registry.getSocketsForSession(sessionName).forEach((socket) => {

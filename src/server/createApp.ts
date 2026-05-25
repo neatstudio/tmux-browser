@@ -22,6 +22,11 @@ import {
   createTimelineStore,
   type TimelineStore
 } from "./services/timeline/createTimelineStore.js";
+import type { AppEventHub } from "./services/events/createAppEventHub.js";
+import {
+  createPreferenceStore,
+  type PreferenceStore
+} from "./services/preferences/createPreferenceStore.js";
 
 const faviconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#15181c"/><path d="M14 14h36v10H37v28H27V24H14z" fill="#b7ffb0"/></svg>`;
 const IMAGE_MIME_TYPES = new Map([
@@ -275,11 +280,14 @@ export function createApp(options: {
   uploadRetentionMs?: number;
   uploadMaxTotalBytes?: number;
   timelineStore?: TimelineStore;
+  eventHub?: AppEventHub;
+  preferences?: PreferenceStore;
 } = {}) {
   const tmuxService = options.tmuxService ?? createTmuxService();
   const readServerStatus = options.getServerStatus ?? getServerStatus;
   const readAppInfo = options.getAppInfo ?? getAppInfo;
   const timelineStore = options.timelineStore ?? createTimelineStore();
+  const preferences = options.preferences ?? createPreferenceStore();
   const imagePreviewRoots = getImagePreviewRoots(options.imagePreviewRoots);
   const uploadOptions = {
     uploadDir: options.uploadDir,
@@ -320,6 +328,22 @@ export function createApp(options: {
       typeof req.query.limit === "string" ? Number(req.query.limit) : undefined;
 
     res.json({ events: timelineStore.listEvents({ limit }) });
+  });
+
+  app.get("/api/preferences", (_req, res) => {
+    res.json(preferences.getPreferences());
+  });
+
+  app.patch("/api/preferences/pinned-sessions/:name", async (req, res, next) => {
+    try {
+      await preferences.setPinnedSession(
+        req.params.name,
+        req.body.pinned === true
+      );
+      res.json({ ok: true });
+    } catch (error) {
+      next(error);
+    }
   });
 
   app.post(
@@ -462,7 +486,9 @@ export function createApp(options: {
       splitPane: tmuxService.splitPane,
       selectPane: tmuxService.selectPane,
       killPane: tmuxService.killPane,
-      timeline: timelineStore
+      timeline: timelineStore,
+      eventHub: options.eventHub,
+      preferences
     })
   );
 

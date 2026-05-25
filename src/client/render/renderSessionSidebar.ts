@@ -267,18 +267,38 @@ export function renderSessionSidebar(
     pinnedSessionNames?: Set<string>;
     mutedSessionNames?: Set<string>;
     timelineEvents?: TimelineEvent[];
+    actionCount?: number;
+    actionCenterOpen?: boolean;
     onCreateSession: (name: string) => void;
     onDraftChange: (value: string) => void;
     onOpenDashboard: () => void;
     onOpenSession: (name: string) => void;
     onTogglePinned: (name: string) => void;
     onToggleMuted?: (name: string) => void;
+    onToggleActionCenter?: () => void;
     onRefresh: () => void;
     onRefreshMuted?: () => void;
     onToggleCollapsed?: () => void;
   }
 ) {
   root.innerHTML = "";
+
+  const mobileLauncher = document.createElement("button");
+  mobileLauncher.type = "button";
+  mobileLauncher.className = "mobile-sidebar-launcher";
+  mobileLauncher.dataset.action = "open-mobile-sidebar";
+  mobileLauncher.setAttribute("aria-label", "Open sessions");
+  mobileLauncher.addEventListener("click", () => actions.onToggleCollapsed?.());
+
+  const launcherLogo = document.createElement("span");
+  launcherLogo.className = "mobile-sidebar-logo";
+  launcherLogo.textContent = "T";
+
+  const launcherCount = document.createElement("span");
+  launcherCount.className = "mobile-sidebar-count";
+  launcherCount.textContent = String(state.sessions.length);
+
+  mobileLauncher.append(launcherLogo, launcherCount);
 
   const sidebar = document.createElement("aside");
   sidebar.className = `session-sidebar${actions.collapsed ? " is-collapsed" : ""}`;
@@ -303,7 +323,30 @@ export function renderSessionSidebar(
   toggleButton.textContent = actions.collapsed ? ">" : "<";
   toggleButton.addEventListener("click", () => actions.onToggleCollapsed?.());
 
-  header.append(title, count, toggleButton);
+  const headerActions = document.createElement("span");
+  headerActions.className = "session-sidebar-header-actions";
+
+  if ((actions.actionCount ?? 0) > 0 || actions.actionCenterOpen) {
+    const actionCenterButton = document.createElement("button");
+    actionCenterButton.type = "button";
+    actionCenterButton.className = `session-sidebar-action-center${
+      actions.actionCenterOpen ? " is-active" : ""
+    }`;
+    actionCenterButton.dataset.action = "toggle-action-center";
+    actionCenterButton.setAttribute("aria-label", "Open action center");
+    actionCenterButton.setAttribute(
+      "aria-pressed",
+      actions.actionCenterOpen ? "true" : "false"
+    );
+    actionCenterButton.textContent = `!${actions.actionCount ?? 0}`;
+    actionCenterButton.addEventListener("click", () => {
+      actions.onToggleActionCenter?.();
+    });
+    headerActions.append(actionCenterButton);
+  }
+
+  headerActions.append(toggleButton);
+  header.append(title, count, headerActions);
 
   const toolbar = document.createElement("div");
   toolbar.className = "session-sidebar-toolbar";
@@ -433,5 +476,5 @@ export function renderSessionSidebar(
   }
 
   sidebar.append(toolbar);
-  root.append(sidebar);
+  root.append(mobileLauncher, sidebar);
 }

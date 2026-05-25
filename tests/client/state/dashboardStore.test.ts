@@ -431,6 +431,29 @@ describe("createDashboardStore", () => {
     expect(api.getServerStatus).not.toHaveBeenCalled();
   });
 
+  it("does not request server status during sidebar active-session polling", async () => {
+    vi.useFakeTimers();
+    const api = {
+      getServerStatus: vi.fn().mockResolvedValue(SERVER_STATUS),
+      getSessionStatus: vi.fn(),
+      listSessions: vi.fn(),
+      listPaneSessions: vi.fn().mockResolvedValue([{ name: "build", panes: [] }]),
+      listDashboardSessions: vi.fn()
+    };
+    const store = createDashboardStore({
+      api,
+      pollMs: 3000,
+      getActiveSessionName: () => "build",
+      preferActiveSessionStatus: false
+    });
+
+    store.startPolling();
+    await vi.advanceTimersByTimeAsync(3000);
+
+    expect(api.listPaneSessions).toHaveBeenCalledOnce();
+    expect(api.getServerStatus).not.toHaveBeenCalled();
+  });
+
   it("uses slower default dashboard and server status polling intervals", async () => {
     vi.useFakeTimers();
     const api = {

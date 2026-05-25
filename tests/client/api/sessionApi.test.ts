@@ -65,6 +65,36 @@ describe("createSessionApi", () => {
     expect(fetch).toHaveBeenCalledWith("/api/timeline?limit=8");
   });
 
+  it("loads and updates server-backed preferences", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ pinnedSessionNames: ["build"] })
+      })
+      .mockResolvedValueOnce({ ok: true });
+    vi.stubGlobal("fetch", fetch);
+    const api = createSessionApi();
+
+    await expect(api.getPreferences()).resolves.toEqual({
+      pinnedSessionNames: ["build"]
+    });
+    await api.setPinnedSession("build", false);
+
+    expect(fetch).toHaveBeenNthCalledWith(1, "/api/preferences");
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      "/api/preferences/pinned-sessions/build",
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ pinned: false })
+      }
+    );
+  });
+
   it("loads lightweight sessions without previews by default", async () => {
     const fetch = vi.fn().mockResolvedValue({
       ok: true,

@@ -627,4 +627,36 @@ describe("createApp", () => {
       onlySessionNames: ["tmux-ui", "logs"]
     });
   });
+
+  it("serves server-backed preferences for sidebar favorites", async () => {
+    const preferences = {
+      getPreferences: vi.fn(() => ({ pinnedSessionNames: ["build"] })),
+      setPinnedSession: vi.fn().mockResolvedValue(undefined),
+      renameSession: vi.fn().mockResolvedValue(undefined)
+    };
+    const app = createApp({
+      preferences,
+      tmuxService: {
+        listSessions: vi.fn(),
+        createSession: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    const getResponse = await request(app).get("/api/preferences");
+    const patchResponse = await request(app)
+      .patch("/api/preferences/pinned-sessions/build")
+      .send({ pinned: false });
+
+    expect(getResponse.status).toBe(200);
+    expect(getResponse.body).toEqual({ pinnedSessionNames: ["build"] });
+    expect(patchResponse.status).toBe(200);
+    expect(patchResponse.body).toEqual({ ok: true });
+    expect(preferences.setPinnedSession).toHaveBeenCalledWith("build", false);
+  });
 });

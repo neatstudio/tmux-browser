@@ -819,8 +819,7 @@ describe("createTerminalTab", () => {
     });
 
     container.dispatchEvent(event);
-    await Promise.resolve();
-    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(event.defaultPrevented).toBe(true);
     expect(fetch).toHaveBeenCalledWith("/api/uploads/image", {

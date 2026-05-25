@@ -1,4 +1,6 @@
 import { createSessionApi } from "./api/sessionApi";
+import { deriveActionCenterItems } from "./actionCenter";
+import { renderActionCenterPanel } from "./render/actionCenter";
 import { renderInputPromptToast } from "./render/inputPromptToast";
 import { renderDashboard } from "./render/renderDashboard";
 import { createAnimationFrameScheduler } from "./render/renderScheduler";
@@ -9,6 +11,7 @@ import { renderTabs, updateActiveTabItem } from "./render/renderTabs";
 import { createDashboardStore } from "./state/dashboardStore";
 import { createInputPromptRegistry } from "./state/inputPromptRegistry";
 import { createMutedSessionsStore } from "./state/mutedSessions";
+import { createSidebarFavoritesStore } from "./state/sidebarFavorites";
 import { createSessionSettingsStore } from "./state/sessionSettings";
 import { createTabState, type BrowserTab } from "./state/tabState";
 import { createInactiveTerminalPruner } from "./terminal/inactiveTerminalPruner";
@@ -19,6 +22,9 @@ import {
 import { syncTerminalPanelVisibility } from "./terminal/panelVisibility";
 import { getVisibleImagePaths } from "./imagePreviewPaths";
 import { getCompactPageTitle } from "./pageTitle";
+import { createAppEventRefreshScheduler } from "./events/appEventRefreshScheduler";
+import { createAppEventSocket } from "./events/appEventSocket";
+import { createPageActivityController } from "./events/pageActivityController";
 import {
   applyTheme,
   getTheme,
@@ -27,7 +33,12 @@ import {
   THEMES,
   type AppTheme
 } from "./theme/themeState";
+import {
+  getImageFileFromFiles,
+  uploadImageForSession
+} from "./imageUpload";
 import { getLayoutMode } from "./layoutMode";
+import { isPageVisible } from "./pageVisibility";
 import "./styles.css";
 
 declare const __TMUX_UI_CLIENT_VERSION__: string;
@@ -90,11 +101,13 @@ let activeSwitchSessionName: string | null = null;
 let draftSendTargetName = "";
 let draftSendCommand = "";
 const tabState = createTabState();
+const api = createSessionApi();
 const inputPrompts = createInputPromptRegistry();
 const sessionSettings = createSessionSettingsStore();
 const mutedSessions = createMutedSessionsStore();
+const sidebarFavorites = createSidebarFavoritesStore(api);
 const store = createDashboardStore({
-  api: createSessionApi(),
+  api,
   pollMs: 10_000,
   pruneTabs: (validSessionNames) => tabState.pruneTabs(validSessionNames),
   shouldIncludePreview: () =>
@@ -131,8 +144,48 @@ const inactiveTerminalPruner = createInactiveTerminalPruner({
 const activeOutputTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const busyTerminalTabIds = new Set<string>();
 const terminalPromptSignatures = new Map<string, string>();
+const appEventRefreshScheduler = createAppEventRefreshScheduler(() => {
+  void store
+    .refresh({
+      includePreview: false,
+      includePanes: true,
+      includeServerStatus: false
+    })
+    .then(() => store.refreshTimeline())
+    .then(() => scheduleRender());
+});
+const appEventSocket = createAppEventSocket({
+  onEvent: (event) => {
+    if (event.type === "sessions-invalidated") {
+      appEventRefreshScheduler.schedule();
+    }
+  }
+});
+const pageActivityController = createPageActivityController({
+  document,
+  polling: {
+    start: () => store.startPolling(),
+    stop: () => store.stopPolling()
+  },
+  events: {
+    connect: () => appEventSocket.connect(),
+    close: () => appEventSocket.close()
+  },
+  refresh: () => {
+    void store
+      .refresh({
+        includePreview: false,
+        includePanes: true,
+        includeServerStatus: false
+      })
+      .then(() => store.refreshTimeline())
+      .then(() => scheduleRender());
+  }
+});
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "browser-tmux-dashboard.sidebar-collapsed";
 let activeImageSessionName: string | null = null;
+let isActionCenterOpen = false;
+let isMobileSidebarOpen = false;
 let imagePreviewScanToken = 0;
 let lastRenderedTabListSignature = "";
 let lastRenderedActiveTabId: string | null | undefined;
@@ -173,6 +226,36 @@ function setSidebarCollapsed(collapsed: boolean) {
   scheduleRender();
 }
 
+function isMobileViewport() {
+  return window.matchMedia("(max-width: 720px)").matches;
+}
+
+function setMobileSidebarOpen(open: boolean) {
+  isMobileSidebarOpen = open;
+  app
+    .querySelector(".app-shell")
+    ?.classList.toggle("is-mobile-sidebar-open", open);
+  scheduleRender();
+}
+
+function toggleResponsiveSidebar() {
+  if (isMobileViewport()) {
+    setMobileSidebarOpen(!isMobileSidebarOpen);
+    return;
+  }
+
+  setSidebarCollapsed(!isSidebarCollapsed);
+}
+
+function setActionCenterOpen(open: boolean) {
+  isActionCenterOpen = open;
+  scheduleRender();
+}
+
+function toggleActionCenter() {
+  setActionCenterOpen(!isActionCenterOpen);
+}
+
 function getOrOpenTab(sessionName: string) {
   const existing = tabState
     .getTabs()
@@ -194,17 +277,11 @@ function getTabForSession(sessionName: string) {
 }
 
 function getPinnedSessionNames() {
-  return new Set(
-    tabState
-      .getTabs()
-      .filter((tab) => tab.pinned)
-      .map((tab) => tab.sessionName)
-  );
+  return new Set(sidebarFavorites.getPinnedSessionNames());
 }
 
 function togglePinnedSession(sessionName: string) {
-  const tab = getOrOpenTab(sessionName);
-  tabState.togglePinned(tab.id);
+  void sidebarFavorites.togglePinned(sessionName).then(() => scheduleRender());
   scheduleRender();
 }
 
@@ -332,6 +409,10 @@ function rememberSessionInputPrompts() {
 }
 
 function handleTerminalOutput(tabId: string, _data: string, visibleText: string) {
+  if (!isPageVisible()) {
+    return;
+  }
+
   rememberTerminalOutput(tabId, visibleText);
   busyTerminalTabIds.add(tabId);
   const existingTimer = activeOutputTimers.get(tabId);
@@ -346,13 +427,14 @@ function handleTerminalOutput(tabId: string, _data: string, visibleText: string)
       activeOutputTimers.delete(tabId);
       busyTerminalTabIds.delete(tabId);
 
-      if (tabState.getActiveTabId() !== tabId) {
+      if (!isPageVisible() || tabState.getActiveTabId() !== tabId) {
         return;
       }
 
       void store.refresh({
         includePreview: false,
-        includePanes: true
+        includePanes: true,
+        includeServerStatus: false
       });
     }, 1500)
   );
@@ -820,6 +902,25 @@ function renderImagePreviewPanel() {
 
   form.append(input, viewButton);
 
+  const uploadRoot = document.createElement("div");
+  uploadRoot.className = "image-preview-upload";
+
+  const uploadLabel = document.createElement("label");
+  uploadLabel.className = "image-preview-upload-button";
+  uploadLabel.textContent = "Upload image";
+
+  const fileInput = document.createElement("input");
+  fileInput.className = "image-preview-file-input";
+  fileInput.type = "file";
+  fileInput.accept = "image/*";
+  fileInput.setAttribute("aria-label", "Upload image from this device");
+  uploadLabel.append(fileInput);
+
+  const uploadStatus = document.createElement("span");
+  uploadStatus.className = "image-preview-upload-status";
+  uploadStatus.textContent = "Paste, drag, or choose an image";
+  uploadRoot.append(uploadLabel, uploadStatus);
+
   const actions = document.createElement("div");
   actions.className = "image-preview-actions";
   actions.append(closeButton);
@@ -915,8 +1016,40 @@ function renderImagePreviewPanel() {
     }
   });
 
+  fileInput.addEventListener("change", () => {
+    const file = getImageFileFromFiles(fileInput.files ?? undefined);
+
+    if (!file) {
+      uploadStatus.textContent = "No image selected";
+      return;
+    }
+
+    uploadStatus.textContent = "Uploading image";
+    void uploadImageForSession(tab.sessionName, file)
+      .then((upload) => {
+        input.value = upload.absolutePath;
+        uploadStatus.textContent = `Inserted ${formatImageSize(upload.size)}`;
+        void loadPreviewImage(
+          panel,
+          image,
+          error,
+          manualStatus,
+          input,
+          tab.sessionName,
+          upload.absolutePath
+        );
+      })
+      .catch((reason) => {
+        uploadStatus.textContent =
+          reason instanceof Error ? reason.message : "Upload failed";
+      })
+      .finally(() => {
+        fileInput.value = "";
+      });
+  });
+
   body.append(image, error);
-  panel.append(header, candidateList, body);
+  panel.append(header, uploadRoot, candidateList, body);
   backdrop.append(panel);
   mounted.panel.append(backdrop);
 
@@ -1139,6 +1272,11 @@ function openInputPromptTab(key: string) {
   scheduleRender();
 }
 
+function openActionCenterSession(sessionName: string) {
+  getOrOpenTab(sessionName);
+  setActionCenterOpen(false);
+}
+
 function splitPane(sessionName: string, direction: "horizontal" | "vertical") {
   void store.splitPane(sessionName, direction).then(() => {
     scheduleRender();
@@ -1234,6 +1372,10 @@ function render() {
   const tabs = tabState.getTabs();
   const activeTabId = tabState.getActiveTabId();
   const isDashboardActive = activeTabId === null;
+  const actionCenterItems = deriveActionCenterItems({
+    prompts: inputPrompts.getPrompts(),
+    sessions: store.getState().sessions
+  });
   const tabListSignature = tabs
     .map((tab) => `${tab.id}:${tab.title}:${tab.pinned ? "pinned" : "free"}`)
     .join("|");
@@ -1317,6 +1459,9 @@ function render() {
     app
       .querySelector(".app-shell")
       ?.classList.toggle("is-sidebar-collapsed", isSidebarCollapsed);
+    app
+      .querySelector(".app-shell")
+      ?.classList.toggle("is-mobile-sidebar-open", isMobileSidebarOpen);
     const activeSessionName =
       tabs.find((tab) => tab.id === activeTabId)?.sessionName ?? null;
 
@@ -1331,6 +1476,8 @@ function render() {
       pinnedSessionNames: getPinnedSessionNames(),
       mutedSessionNames: new Set(mutedSessions.getMutedSessionNames()),
       timelineEvents: store.getState().timelineEvents ?? [],
+      actionCount: actionCenterItems.length,
+      actionCenterOpen: isActionCenterOpen,
       onCreateSession: (name) => {
         void store.createSession(name).then(() => {
           draftSessionName = "";
@@ -1343,14 +1490,17 @@ function render() {
       },
       onOpenDashboard: () => {
         tabState.setActiveTab(null);
+        setMobileSidebarOpen(false);
         scheduleRender();
       },
       onOpenSession: (name) => {
         getOrOpenTab(name);
+        setMobileSidebarOpen(false);
         scheduleRender();
       },
       onTogglePinned: togglePinnedSession,
       onToggleMuted: toggleMutedSession,
+      onToggleActionCenter: toggleActionCenter,
       onRefresh: () =>
         void store
           .refresh({
@@ -1363,7 +1513,7 @@ function render() {
         void store
           .refreshMuted(mutedSessions.getMutedSessionNames())
           .then(() => scheduleRender()),
-      onToggleCollapsed: () => setSidebarCollapsed(!isSidebarCollapsed)
+      onToggleCollapsed: toggleResponsiveSidebar
     });
   } else {
     sessionSidebarRoot.innerHTML = "";
@@ -1376,6 +1526,14 @@ function render() {
   renderImagePreviewPanel();
   renderSendCommandPanel();
   renderSwitchSessionPanel();
+  renderActionCenterPanel(app, {
+    open: isActionCenterOpen,
+    items: actionCenterItems,
+    onClose: () => setActionCenterOpen(false),
+    onOpenSession: openActionCenterSession,
+    onDismissPrompt: closeInputPrompt,
+    onSendPrompt: sendInputPromptAction
+  });
   renderInputPromptToast(app, inputPrompts.getPrompts(), {
     onDismiss: closeInputPrompt,
     onOpen: openInputPromptTab,
@@ -1414,14 +1572,16 @@ store.subscribe(() => {
   const isDashboardActive = tabState.getActiveTabId() === null;
 
   void Promise.all([
+    sidebarFavorites.load(),
     store.refresh({
       includePreview: isSidebarLayout ? false : isDashboardActive,
-      includePanes: isSidebarLayout ? true : !isDashboardActive
+      includePanes: isSidebarLayout ? true : !isDashboardActive,
+      includeServerStatus: isSidebarLayout ? false : undefined
     }),
     store.refreshTimeline()
   ])
     .then(() => {
       scheduleRender();
-      store.startPolling();
+      pageActivityController.start();
     });
 }

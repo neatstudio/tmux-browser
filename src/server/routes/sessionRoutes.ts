@@ -5,6 +5,8 @@ import type {
   TmuxService
 } from "../services/tmux/createTmuxService.js";
 import type { TimelineStore } from "../services/timeline/createTimelineStore.js";
+import type { AppEventHub } from "../services/events/createAppEventHub.js";
+import type { PreferenceStore } from "../services/preferences/createPreferenceStore.js";
 
 type SessionRoutesDeps = Pick<
   TmuxService,
@@ -44,7 +46,11 @@ function stripPreviewOnly<T extends { preview?: string | null }>(session: T) {
 }
 
 export function createSessionRoutes(
-  deps: SessionRoutesDeps & { timeline?: TimelineStore }
+  deps: SessionRoutesDeps & {
+    timeline?: TimelineStore;
+    eventHub?: AppEventHub;
+    preferences?: PreferenceStore;
+  }
 ): Router {
   const router = Router();
 
@@ -65,6 +71,11 @@ export function createSessionRoutes(
         sessionName: req.body.name,
         message: `created session ${req.body.name}`
       });
+      deps.eventHub?.publish({
+        type: "sessions-invalidated",
+        reason: "session-created",
+        sessionName: req.body.name
+      });
       res.status(201).json({ ok: true });
     } catch (error) {
       next(error);
@@ -82,6 +93,7 @@ export function createSessionRoutes(
   router.patch("/:name", async (req, res, next) => {
     try {
       await deps.renameSession(req.params.name, req.body.name);
+      await deps.preferences?.renameSession(req.params.name, req.body.name);
       deps.timeline?.addEvent({
         type: "session-renamed",
         sessionName: req.body.name,
@@ -90,6 +102,11 @@ export function createSessionRoutes(
           fromName: req.params.name,
           toName: req.body.name
         }
+      });
+      deps.eventHub?.publish({
+        type: "sessions-invalidated",
+        reason: "session-renamed",
+        sessionName: req.body.name
       });
       res.json({ ok: true });
     } catch (error) {
@@ -107,6 +124,11 @@ export function createSessionRoutes(
         metadata: {
           command: req.body.command
         }
+      });
+      deps.eventHub?.publish({
+        type: "sessions-invalidated",
+        reason: "command-sent",
+        sessionName: req.params.name
       });
       res.json({ ok: true });
     } catch (error) {
@@ -128,6 +150,11 @@ export function createSessionRoutes(
           direction: req.body.direction
         }
       });
+      deps.eventHub?.publish({
+        type: "sessions-invalidated",
+        reason: "pane-split",
+        sessionName: req.params.name
+      });
       res.json({ ok: true });
     } catch (error) {
       next(error);
@@ -144,6 +171,11 @@ export function createSessionRoutes(
         metadata: {
           paneId: req.body.paneId
         }
+      });
+      deps.eventHub?.publish({
+        type: "sessions-invalidated",
+        reason: "pane-selected",
+        sessionName: req.params.name
       });
       res.json({ ok: true });
     } catch (error) {
@@ -162,6 +194,11 @@ export function createSessionRoutes(
           paneId: req.params.paneId
         }
       });
+      deps.eventHub?.publish({
+        type: "sessions-invalidated",
+        reason: "pane-killed",
+        sessionName: req.params.name
+      });
       res.status(204).send();
     } catch (error) {
       next(error);
@@ -175,6 +212,11 @@ export function createSessionRoutes(
         type: "session-killed",
         sessionName: req.params.name,
         message: `killed session ${req.params.name}`
+      });
+      deps.eventHub?.publish({
+        type: "sessions-invalidated",
+        reason: "session-killed",
+        sessionName: req.params.name
       });
       res.status(204).send();
     } catch (error) {

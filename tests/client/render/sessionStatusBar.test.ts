@@ -216,6 +216,53 @@ describe("sessionStatusBar", () => {
     expect(onSwitchSession).toHaveBeenCalledOnce();
   });
 
+  it("marks switch as the primary mobile navigation action", () => {
+    const root = document.createElement("div");
+
+    renderSessionStatusBar(root, SESSION, {
+      onSwitchSession: vi.fn()
+    });
+
+    const switchButton = root.querySelector<HTMLButtonElement>(
+      "[data-action='switch-session']"
+    )!;
+
+    expect(switchButton.classList.contains("is-mobile-primary")).toBe(true);
+  });
+
+  it("toggles a compact mobile action sheet from the status bar", () => {
+    const root = document.createElement("div");
+    const onClear = vi.fn();
+
+    renderSessionStatusBar(root, SESSION, {
+      onClear
+    });
+
+    const toggle = root.querySelector<HTMLButtonElement>(
+      "[data-action='toggle-mobile-status-actions']"
+    )!;
+
+    expect(toggle).not.toBeNull();
+    expect(toggle.textContent).toBe("Actions");
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(root.querySelector(".terminal-status-mobile-sheet")).toBeNull();
+
+    toggle.click();
+
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(root.querySelector(".terminal-status-mobile-sheet")).not.toBeNull();
+
+    root
+      .querySelector<HTMLButtonElement>(
+        ".terminal-status-mobile-sheet [data-action='clear']"
+      )
+      ?.click();
+
+    expect(onClear).toHaveBeenCalledOnce();
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(root.querySelector(".terminal-status-mobile-sheet")).toBeNull();
+  });
+
   it("uses readable compact labels for status bar actions", () => {
     const root = document.createElement("div");
 
@@ -248,6 +295,7 @@ describe("sessionStatusBar", () => {
       "Cfg",
       "Ren",
       "Img",
+      "Actions",
       "Page",
       "Live",
       "Hist",
@@ -351,6 +399,7 @@ describe("sessionStatusBar", () => {
       "panes",
       "tools",
       "terminal-status-main",
+      "terminal-status-mobile-toggle terminal-status-action",
       "view",
       "routing",
       "recovery"

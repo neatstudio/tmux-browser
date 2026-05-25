@@ -177,6 +177,78 @@ describe("client layout styles", () => {
     expect(styles).toMatch(
       /\.session-sidebar-toolbar\s*\{[^}]*margin-top:\s*0\.45rem;[^}]*border-top:\s*1px\s+solid\s+rgba\(217,\s*226,\s*234,\s*0\.1\);/s
     );
+    expect(styles).toMatch(
+      /\.session-sidebar-header-actions\s*\{[^}]*display:\s*inline-flex;[^}]*gap:\s*0\.25rem;/s
+    );
+    expect(styles).toMatch(
+      /\.session-sidebar-action-center\s*\{[^}]*min-width:\s*1\.75rem;[^}]*min-height:\s*1\.4rem;/s
+    );
+    expect(styles).toMatch(
+      /\.session-sidebar-action-center\.is-active\s*\{[^}]*border-color:\s*rgba\(255,\s*211,\s*122,\s*0\.66\);/s
+    );
+  });
+
+  it("styles the action center as a compact overlay", () => {
+    expect(styles).toMatch(
+      /\.action-center-backdrop\s*\{[^}]*position:\s*fixed;[^}]*inset:\s*0;[^}]*z-index:\s*80;/s
+    );
+    expect(styles).toMatch(
+      /\.action-center-panel\s*\{[^}]*width:\s*min\(28rem,\s*calc\(100vw\s*-\s*1\.5rem\)\);[^}]*max-height:\s*min\(78dvh,\s*44rem\);/s
+    );
+    expect(styles).toMatch(
+      /\.action-center-list\s*\{[^}]*overflow:\s*auto;/s
+    );
+  });
+
+  it("turns sidebar mode into a mobile drawer instead of squeezing the terminal", () => {
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.app-shell--sidebar\s+\.content-root,\s*\.app-shell--sidebar\.is-sidebar-collapsed\s+\.content-root\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.app-shell--sidebar\s+\.session-sidebar-root\s*\{[^}]*position:\s*fixed;[^}]*inset:\s*0;[^}]*pointer-events:\s*none;/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.app-shell--sidebar\s+\.session-sidebar\s*\{[^}]*width:\s*min\(86vw,\s*20rem\);[^}]*background:\s*linear-gradient\(180deg,\s*rgba\(28,\s*36,\s*45,\s*0\.98\),\s*rgba\(8,\s*12,\s*16,\s*0\.98\)\);[^}]*transform:\s*translateX\(0\);/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.app-shell--sidebar:not\(\.is-mobile-sidebar-open\)\s+\.session-sidebar\s*\{[^}]*transform:\s*translateX\(-100%\);/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.app-shell--sidebar\s+\.panels-root\s*\{[^}]*grid-column:\s*1;/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.mobile-sidebar-launcher\s*\{[^}]*display:\s*grid;[^}]*pointer-events:\s*auto;/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.session-sidebar-list\s*\{[^}]*overflow:\s*auto;/s
+    );
+  });
+
+  it("turns the mobile terminal status controls into an expandable sheet", () => {
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.terminal-status-bar\s*\{[^}]*align-items:\s*center;[^}]*overflow:\s*visible;/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.terminal-status-mobile-toggle\s*\{[^}]*display:\s*inline-flex;/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.terminal-status-action-group\s*\{[^}]*display:\s*none;/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.terminal-status-mobile-sheet\s*\{[^}]*position:\s*fixed;[^}]*bottom:\s*calc\(42px\s*\+\s*env\(safe-area-inset-bottom\)\);/s
+    );
+  });
+
+  it("styles mobile image upload controls inside the image preview panel", () => {
+    expect(styles).toMatch(
+      /\.image-preview-upload\s*\{[^}]*display:\s*grid;[^}]*gap:\s*0\.35rem;/s
+    );
+    expect(styles).toMatch(
+      /\.image-preview-file-input\s*\{[^}]*position:\s*absolute;[^}]*opacity:\s*0;/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.image-preview-panel\s*\{[^}]*width:\s*calc\(100vw\s*-\s*1rem\);/s
+    );
   });
 
   it("stacks multiple input prompts without letting the toast exceed the viewport", () => {
