@@ -118,10 +118,11 @@ const store = createDashboardStore({
       ? {
           includePreview: false,
           includePanes: true,
-          includeServerStatus: false
+          includeServerStatus: false,
+          preferActiveSessionStatus: false
         }
       : null,
-  preferActiveSessionStatus: !isSidebarLayout,
+  preferActiveSessionStatus: true,
   isActiveSessionBusy: () => {
     const activeTabId = tabState.getActiveTabId();
 
@@ -149,7 +150,8 @@ const appEventRefreshScheduler = createAppEventRefreshScheduler(() => {
     .refresh({
       includePreview: false,
       includePanes: true,
-      includeServerStatus: false
+      includeServerStatus: false,
+      preferActiveSessionStatus: false
     })
     .then(() => store.refreshTimeline())
     .then(() => scheduleRender());
@@ -176,7 +178,8 @@ const pageActivityController = createPageActivityController({
       .refresh({
         includePreview: false,
         includePanes: true,
-        includeServerStatus: false
+        includeServerStatus: false,
+        preferActiveSessionStatus: false
       })
       .then(() => store.refreshTimeline())
       .then(() => scheduleRender());
@@ -291,7 +294,8 @@ function toggleMutedSession(sessionName: string) {
     .refresh({
       includePreview: false,
       includePanes: true,
-      includeServerStatus: false
+      includeServerStatus: false,
+      preferActiveSessionStatus: false
     })
     .then(() => scheduleRender());
 }
@@ -504,7 +508,8 @@ function ensureTerminal(tab: BrowserTab) {
 
         void store.refresh({
           includePreview: isDashboardActive,
-          includePanes: !isDashboardActive
+          includePanes: !isDashboardActive,
+          preferActiveSessionStatus: false
         });
       }
     });
@@ -1304,7 +1309,10 @@ function openSessionPane(sessionName: string, paneId: string) {
 
 function selectPane(sessionName: string, paneId: string) {
   void store.selectPane(sessionName, paneId).then(() => {
-    void store.refresh({ includePreview: false, includePanes: true });
+    void store.refresh({
+      includePreview: false,
+      includePanes: true
+    });
     scheduleRender();
   });
 }
@@ -1521,7 +1529,8 @@ function render() {
           .refresh({
             includePreview: false,
             includePanes: true,
-            includeServerStatus: true
+            includeServerStatus: true,
+            preferActiveSessionStatus: false
           })
           .then(() => scheduleRender()),
       onRefreshMuted: () =>
@@ -1591,7 +1600,8 @@ store.subscribe(() => {
     store.refresh({
       includePreview: isSidebarLayout ? false : isDashboardActive,
       includePanes: isSidebarLayout ? true : !isDashboardActive,
-      includeServerStatus: isSidebarLayout ? false : undefined
+      includeServerStatus: isSidebarLayout ? false : undefined,
+      preferActiveSessionStatus: isSidebarLayout ? false : undefined
     }),
     store.refreshTimeline()
   ])

@@ -123,6 +123,38 @@ describe("createDashboardStore", () => {
     ]);
   });
 
+  it("can force a full pane-aware refresh for one call while active-session polling is enabled", async () => {
+    const api = {
+      getServerStatus: vi.fn().mockResolvedValue(SERVER_STATUS),
+      getSessionStatus: vi.fn().mockResolvedValue({ name: "build" }),
+      listSessions: vi.fn(),
+      listPaneSessions: vi.fn().mockResolvedValue([
+        { name: "build", windows: 1, status: "attached", panes: [] },
+        { name: "logs", windows: 1, status: "detached", panes: [] }
+      ]),
+      listDashboardSessions: vi.fn()
+    };
+    const store = createDashboardStore({
+      api,
+      pollMs: 3000,
+      getActiveSessionName: () => "build",
+      preferActiveSessionStatus: true
+    });
+
+    await store.refresh({
+      includePreview: false,
+      includePanes: true,
+      preferActiveSessionStatus: false
+    });
+
+    expect(api.getSessionStatus).not.toHaveBeenCalled();
+    expect(api.listPaneSessions).toHaveBeenCalledOnce();
+    expect(store.getState().sessions.map((session) => session.name)).toEqual([
+      "build",
+      "logs"
+    ]);
+  });
+
   it("does not notify subscribers when a refresh returns unchanged sessions", async () => {
     const api = {
       getServerStatus: vi.fn().mockResolvedValue(SERVER_STATUS),
@@ -428,6 +460,51 @@ describe("createDashboardStore", () => {
 
     expect(api.listPaneSessions).toHaveBeenCalledOnce();
     expect(api.listDashboardSessions).not.toHaveBeenCalled();
+    expect(api.getServerStatus).not.toHaveBeenCalled();
+  });
+
+  it("uses active-session polling for the fast interval and full sidebar polling for the slower interval", async () => {
+    vi.useFakeTimers();
+    const api = {
+      getServerStatus: vi.fn().mockResolvedValue(SERVER_STATUS),
+      getSessionStatus: vi.fn().mockResolvedValue({
+        name: "build",
+        windows: 1,
+        status: "attached",
+        panes: []
+      }),
+      listSessions: vi.fn(),
+      listPaneSessions: vi.fn().mockResolvedValue([
+        { name: "build", panes: [] },
+        { name: "logs", panes: [] }
+      ]),
+      listDashboardSessions: vi.fn()
+    };
+    const store = createDashboardStore({
+      api,
+      pollMs: 3000,
+      dashboardPollMs: 30000,
+      shouldIncludePreview: () => false,
+      getActiveSessionName: () => "build",
+      preferActiveSessionStatus: true,
+      getDashboardPollOptions: () => ({
+        includePreview: false,
+        includePanes: true,
+        includeServerStatus: false,
+        preferActiveSessionStatus: false
+      })
+    });
+
+    store.startPolling();
+    await vi.advanceTimersByTimeAsync(3000);
+
+    expect(api.getSessionStatus).toHaveBeenCalledOnce();
+    expect(api.listPaneSessions).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(27000);
+
+    expect(api.getSessionStatus).toHaveBeenCalledTimes(10);
+    expect(api.listPaneSessions).toHaveBeenCalledOnce();
     expect(api.getServerStatus).not.toHaveBeenCalled();
   });
 

@@ -49,6 +49,7 @@ type RefreshOptions = {
   includePreview?: boolean;
   includePanes?: boolean;
   includeServerStatus?: boolean;
+  preferActiveSessionStatus?: boolean;
 };
 
 export function createDashboardStore(deps: DashboardStoreDeps) {
@@ -180,7 +181,7 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
   async function refresh(options: RefreshOptions = {}) {
     try {
       const shouldPreferActiveSessionStatus =
-        deps.preferActiveSessionStatus ?? true;
+        options.preferActiveSessionStatus ?? deps.preferActiveSessionStatus ?? true;
       const activeSessionName =
         shouldPreferActiveSessionStatus &&
         ((options.includePreview === false && options.includePanes) ||
