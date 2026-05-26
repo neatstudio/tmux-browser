@@ -13,6 +13,7 @@ import type {
 import {
   getImageFileFromFiles,
   getImageFileFromItems,
+  hasImageFileCandidate,
   uploadImageForSession
 } from "../imageUpload";
 
@@ -455,11 +456,12 @@ export function createTerminalTab(deps: {
   };
 
   const handleDragOver = (event: DragEvent) => {
-    const file =
-      getImageFileFromItems(event.dataTransfer?.items) ??
-      getImageFileFromFiles(event.dataTransfer?.files);
-
-    if (!file) {
+    if (
+      !hasImageFileCandidate({
+        items: event.dataTransfer?.items,
+        files: event.dataTransfer?.files
+      })
+    ) {
       return;
     }
 
@@ -524,9 +526,10 @@ export function createTerminalTab(deps: {
     capture: true,
     passive: false
   });
-  deps.container.addEventListener("paste", handlePaste, true);
-  deps.container.addEventListener("drop", handleDrop, true);
-  deps.container.addEventListener("dragover", handleDragOver, true);
+  const imageDropTarget = deps.rendererStatusElement ?? deps.container;
+  imageDropTarget.addEventListener("paste", handlePaste, true);
+  imageDropTarget.addEventListener("drop", handleDrop, true);
+  imageDropTarget.addEventListener("dragover", handleDragOver, true);
 
   const handleTouchStart = (event: TouchEvent) => {
     if (browserScrollEnabled || event.touches.length !== 1) {
@@ -738,9 +741,9 @@ export function createTerminalTab(deps: {
 
       resizeObserver?.disconnect();
       deps.container.removeEventListener("wheel", handleWheel, true);
-      deps.container.removeEventListener("paste", handlePaste, true);
-      deps.container.removeEventListener("drop", handleDrop, true);
-      deps.container.removeEventListener("dragover", handleDragOver, true);
+      imageDropTarget.removeEventListener("paste", handlePaste, true);
+      imageDropTarget.removeEventListener("drop", handleDrop, true);
+      imageDropTarget.removeEventListener("dragover", handleDragOver, true);
       deps.container.removeEventListener("touchstart", handleTouchStart, true);
       deps.container.removeEventListener("touchmove", handleTouchMove, true);
       deps.container.removeEventListener("touchend", handleTouchEnd, true);

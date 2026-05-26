@@ -840,6 +840,211 @@ describe("createTerminalTab", () => {
     mounted.destroy();
   });
 
+  it("uploads dropped image files even when the browser omits the MIME type", async () => {
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    };
+    const fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          ok: true,
+          absolutePath: "/Users/gouki/.tmux-ui/uploads/build/drop.png"
+        })
+    });
+    vi.stubGlobal("fetch", fetch);
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        constructor() {
+          return socket;
+        }
+      }
+    );
+
+    const container = document.createElement("div");
+    const mounted = createTerminalTab({
+      container,
+      tabId: "tab-1",
+      sessionName: "build",
+      onClosed: vi.fn()
+    });
+    socket.send.mockClear();
+
+    const file = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "drop.png", {
+      type: ""
+    });
+    const dragOverEvent = new Event("dragover", {
+      bubbles: true,
+      cancelable: true
+    });
+    Object.defineProperty(dragOverEvent, "dataTransfer", {
+      value: {
+        dropEffect: "none",
+        items: [],
+        files: { 0: file, length: 1, item: () => file }
+      },
+      configurable: true
+    });
+
+    container.dispatchEvent(dragOverEvent);
+
+    const dropEvent = new Event("drop", {
+      bubbles: true,
+      cancelable: true
+    });
+    Object.defineProperty(dropEvent, "dataTransfer", {
+      value: {
+        items: [],
+        files: { 0: file, length: 1, item: () => file }
+      },
+      configurable: true
+    });
+
+    container.dispatchEvent(dropEvent);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(dragOverEvent.defaultPrevented).toBe(true);
+    expect(dropEvent.defaultPrevented).toBe(true);
+    expect(fetch).toHaveBeenCalledWith("/api/uploads/image", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "X-Tmux-Session": "build"
+      },
+      body: file
+    });
+    expect(socket.send).toHaveBeenCalledWith(
+      JSON.stringify({
+        type: "input",
+        data: "/Users/gouki/.tmux-ui/uploads/build/drop.png"
+      })
+    );
+
+    mounted.destroy();
+  });
+
+  it("allows dragover when the browser hides file details until drop", () => {
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    };
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        constructor() {
+          return socket;
+        }
+      }
+    );
+
+    const container = document.createElement("div");
+    const mounted = createTerminalTab({
+      container,
+      tabId: "tab-1",
+      sessionName: "build",
+      onClosed: vi.fn()
+    });
+
+    const dragOverEvent = new Event("dragover", {
+      bubbles: true,
+      cancelable: true
+    });
+    Object.defineProperty(dragOverEvent, "dataTransfer", {
+      value: {
+        dropEffect: "none",
+        items: [{ kind: "file", type: "", getAsFile: () => null }],
+        files: { length: 0, item: () => null }
+      },
+      configurable: true
+    });
+
+    container.dispatchEvent(dragOverEvent);
+
+    expect(dragOverEvent.defaultPrevented).toBe(true);
+    expect((dragOverEvent as DragEvent).dataTransfer?.dropEffect).toBe("copy");
+
+    mounted.destroy();
+  });
+
+  it("accepts image drops on the whole terminal panel, including status controls", async () => {
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    };
+    const fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          ok: true,
+          absolutePath: "/Users/gouki/.tmux-ui/uploads/build/panel-drop.png"
+        })
+    });
+    vi.stubGlobal("fetch", fetch);
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        constructor() {
+          return socket;
+        }
+      }
+    );
+
+    const container = document.createElement("div");
+    const panel = document.createElement("div");
+    const mounted = createTerminalTab({
+      container,
+      rendererStatusElement: panel,
+      tabId: "tab-1",
+      sessionName: "build",
+      onClosed: vi.fn()
+    });
+    socket.send.mockClear();
+
+    const file = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "panel-drop.png", {
+      type: ""
+    });
+    const dropEvent = new Event("drop", {
+      bubbles: true,
+      cancelable: true
+    });
+    Object.defineProperty(dropEvent, "dataTransfer", {
+      value: {
+        items: [],
+        files: { 0: file, length: 1, item: () => file }
+      },
+      configurable: true
+    });
+
+    panel.dispatchEvent(dropEvent);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(dropEvent.defaultPrevented).toBe(true);
+    expect(fetch).toHaveBeenCalledWith("/api/uploads/image", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "X-Tmux-Session": "build"
+      },
+      body: file
+    });
+    expect(socket.send).toHaveBeenCalledWith(
+      JSON.stringify({
+        type: "input",
+        data: "/Users/gouki/.tmux-ui/uploads/build/panel-drop.png"
+      })
+    );
+
+    mounted.destroy();
+  });
+
   it("keeps redraw from throwing when the terminal renderer is no longer usable", () => {
     const socket = {
       send: vi.fn(),

@@ -5,19 +5,32 @@ export type ImageUploadResponse = {
   size: number;
 };
 
+const IMAGE_FILE_EXTENSION_PATTERN =
+  /\.(?:apng|avif|gif|jpe?g|png|svg|webp)$/i;
+
+function isImageFileLike(file: File) {
+  return (
+    file.type.startsWith("image/") ||
+    (file.type === "" && IMAGE_FILE_EXTENSION_PATTERN.test(file.name))
+  );
+}
+
 export function getImageFileFromItems(items: DataTransferItemList | undefined) {
   if (!items) {
     return null;
   }
 
   for (const item of Array.from(items)) {
-    if (item.kind !== "file" || !item.type.startsWith("image/")) {
+    if (
+      item.kind !== "file" ||
+      (item.type !== "" && !item.type.startsWith("image/"))
+    ) {
       continue;
     }
 
     const file = item.getAsFile();
 
-    if (file) {
+    if (file && isImageFileLike(file)) {
       return file;
     }
   }
@@ -30,7 +43,22 @@ export function getImageFileFromFiles(files: FileList | undefined) {
     return null;
   }
 
-  return Array.from(files).find((file) => file.type.startsWith("image/")) ?? null;
+  return Array.from(files).find(isImageFileLike) ?? null;
+}
+
+export function hasImageFileCandidate(input: {
+  items?: DataTransferItemList;
+  files?: FileList;
+}) {
+  if (getImageFileFromItems(input.items) || getImageFileFromFiles(input.files)) {
+    return true;
+  }
+
+  return Array.from(input.items ?? []).some(
+    (item) =>
+      item.kind === "file" &&
+      (item.type === "" || item.type.startsWith("image/"))
+  );
 }
 
 export async function uploadImageForSession(sessionName: string, file: File) {
