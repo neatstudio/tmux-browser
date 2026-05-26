@@ -288,6 +288,11 @@ describe("sessionStatusBar", () => {
       "Ctrl-C",
       "Ctrl-D",
       "Ctrl-L",
+      "Ctrl-R",
+      "Ctrl-A",
+      "Ctrl-E",
+      "Alt-B",
+      "Alt-F",
       "↑",
       "↓",
       "←",
@@ -303,6 +308,28 @@ describe("sessionStatusBar", () => {
     expect(onSendSoftKey).toHaveBeenNthCalledWith(1, "\x1b");
     expect(onSendSoftKey).toHaveBeenNthCalledWith(2, "\t");
     expect(onSendSoftKey).toHaveBeenNthCalledWith(3, "\x03");
+  });
+
+  it("keeps the mobile action sheet open after soft key taps", () => {
+    const root = document.createElement("div");
+
+    renderSessionStatusBar(root, SESSION, {
+      onSendSoftKey: vi.fn()
+    });
+
+    const toggle = root.querySelector<HTMLButtonElement>(
+      "[data-action='toggle-mobile-status-actions']"
+    )!;
+
+    toggle.click();
+    root
+      .querySelector<HTMLButtonElement>(
+        ".terminal-status-mobile-sheet [data-action='soft-key-up']"
+      )
+      ?.click();
+
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(root.querySelector(".terminal-status-mobile-sheet")).not.toBeNull();
   });
 
   it("uses readable compact labels for status bar actions", () => {

@@ -252,8 +252,7 @@ function renderRightStatusActions(
 }
 
 function renderSoftKeyActions(
-  actions: SessionStatusBarActions,
-  afterClick?: () => void
+  actions: SessionStatusBarActions
 ) {
   return createActionGroup(
     "soft-keys",
@@ -263,8 +262,7 @@ function renderSoftKeyActions(
         key.label,
         () => actions.onSendSoftKey?.(key.sequence),
         !actions.onSendSoftKey,
-        key.title,
-        afterClick
+        key.title
       );
 
       button.classList.add("terminal-status-soft-key");
