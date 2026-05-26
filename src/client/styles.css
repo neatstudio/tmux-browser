@@ -1638,6 +1638,10 @@ select {
   padding-left: 0;
 }
 
+.terminal-status-action-group[data-group="soft-keys"] {
+  display: none;
+}
+
 .terminal-status-action {
   border: 1px solid rgba(217, 226, 234, 0.24);
   border-radius: 3px;
@@ -2450,6 +2454,22 @@ select {
 
   .terminal-status-mobile-sheet .terminal-status-action {
     min-height: 34px;
+  }
+
+  .terminal-status-mobile-sheet
+    .terminal-status-action-group[data-group="soft-keys"] {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .terminal-status-mobile-sheet .terminal-status-soft-key {
+    justify-content: center;
+    min-height: 38px;
+    border-color: rgba(255, 211, 122, 0.28);
+    background:
+      linear-gradient(180deg, rgba(255, 211, 122, 0.13), rgba(255, 255, 255, 0.055));
+    color: #ffe2a7;
+    font-weight: 760;
   }
 
   .terminal-status-mobile-sheet .terminal-status-panes {

@@ -237,6 +237,15 @@ describe("client layout styles", () => {
     expect(styles).toMatch(
       /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.terminal-status-mobile-sheet\s*\{[^}]*position:\s*fixed;[^}]*bottom:\s*calc\(42px\s*\+\s*env\(safe-area-inset-bottom\)\);/s
     );
+    expect(styles).toMatch(
+      /\.terminal-status-action-group\[data-group="soft-keys"\]\s*\{[^}]*display:\s*none;/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.terminal-status-mobile-sheet\s+\.terminal-status-action-group\[data-group="soft-keys"\]\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\);/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.terminal-status-mobile-sheet\s+\.terminal-status-soft-key\s*\{[^}]*min-height:\s*38px;/s
+    );
   });
 
   it("styles mobile image upload controls inside the image preview panel", () => {

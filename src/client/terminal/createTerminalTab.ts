@@ -11,10 +11,13 @@ import type {
   ServerMessage
 } from "../../shared/protocol";
 import {
+  getImageUrlFromDataTransfer,
   getImageFileFromFiles,
   getImageFileFromItems,
   hasImageFileCandidate,
-  uploadImageForSession
+  hasImageUrlCandidate,
+  uploadImageForSession,
+  uploadImageUrlForSession
 } from "../imageUpload";
 
 const TERMINAL_SCROLLBACK = 5000;
@@ -429,6 +432,19 @@ export function createTerminalTab(deps: {
     }
   }
 
+  async function uploadAndInsertImageUrl(url: string) {
+    outputBuffer.write("\r\n[uploading image url]\r\n");
+
+    try {
+      const upload = await uploadImageUrlForSession(deps.sessionName, url);
+      controller?.sendInput(upload.absolutePath);
+      outputBuffer.write(`\r\n[image path inserted] ${upload.absolutePath}\r\n`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Upload failed";
+      outputBuffer.write(`\r\n[image upload failed] ${message}\r\n`);
+    }
+  }
+
   const handlePaste = (event: ClipboardEvent) => {
     const file = getImageFileFromItems(event.clipboardData?.items);
 
@@ -446,13 +462,24 @@ export function createTerminalTab(deps: {
       getImageFileFromItems(event.dataTransfer?.items) ??
       getImageFileFromFiles(event.dataTransfer?.files);
 
-    if (!file) {
+    if (file) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      void uploadAndInsertImage(file);
+      return;
+    }
+
+    if (!hasImageUrlCandidate(event.dataTransfer ?? undefined)) {
       return;
     }
 
     event.preventDefault();
     event.stopImmediatePropagation();
-    void uploadAndInsertImage(file);
+    void getImageUrlFromDataTransfer(event.dataTransfer ?? undefined).then((url) => {
+      if (url) {
+        void uploadAndInsertImageUrl(url);
+      }
+    });
   };
 
   const handleDragOver = (event: DragEvent) => {
@@ -460,7 +487,8 @@ export function createTerminalTab(deps: {
       !hasImageFileCandidate({
         items: event.dataTransfer?.items,
         files: event.dataTransfer?.files
-      })
+      }) &&
+      !hasImageUrlCandidate(event.dataTransfer ?? undefined)
     ) {
       return;
     }

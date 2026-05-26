@@ -1346,6 +1346,9 @@ function createSessionStatusActions(tab: BrowserTab, mounted: MountedTerminal) {
     onScrollHistoryForward: () => {
       mounted.scrollPage("forward");
     },
+    onSendSoftKey: (sequence: string) => {
+      mounted.sendInput(sequence);
+    },
     onToggleBrowserScroll: () => {
       mounted.toggleBrowserScroll();
       syncTerminalStatusBars();

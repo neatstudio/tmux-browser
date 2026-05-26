@@ -690,6 +690,44 @@ describe("createTerminalTab", () => {
     mounted.destroy();
   });
 
+  it("sends raw terminal control sequences through the mounted terminal API", () => {
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    };
+
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        constructor() {
+          return socket;
+        }
+      }
+    );
+
+    const mounted = createTerminalTab({
+      container: document.createElement("div"),
+      tabId: "tab-1",
+      sessionName: "build",
+      onClosed: vi.fn()
+    });
+    socket.send.mockClear();
+
+    mounted.sendInput("\x03");
+    mounted.sendInput("\t");
+
+    expect(socket.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: "input", data: "\x03" })
+    );
+    expect(socket.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: "input", data: "\t" })
+    );
+
+    mounted.destroy();
+  });
+
   it("refits when the terminal frame size changes after layout updates", () => {
     let scheduledCallback: FrameRequestCallback | null = null;
     let resizeCallback: ResizeObserverCallback | null = null;
@@ -921,6 +959,99 @@ describe("createTerminalTab", () => {
       JSON.stringify({
         type: "input",
         data: "/Users/gouki/.tmux-ui/uploads/build/drop.png"
+      })
+    );
+
+    mounted.destroy();
+  });
+
+  it("uploads dropped web image urls and prevents browser navigation", async () => {
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    };
+    const fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          ok: true,
+          absolutePath: "/Users/gouki/.tmux-ui/uploads/build/web-drop.png"
+        })
+    });
+    vi.stubGlobal("fetch", fetch);
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        constructor() {
+          return socket;
+        }
+      }
+    );
+
+    const container = document.createElement("div");
+    const mounted = createTerminalTab({
+      container,
+      tabId: "tab-1",
+      sessionName: "build",
+      onClosed: vi.fn()
+    });
+    socket.send.mockClear();
+
+    const dataTransfer = {
+      dropEffect: "none",
+      items: [
+        {
+          kind: "string",
+          type: "text/uri-list",
+          getAsString: (callback: (value: string) => void) =>
+            callback("https://img.example.test/web-drop.png")
+        }
+      ],
+      files: { length: 0, item: () => null },
+      types: ["text/uri-list"]
+    };
+    const dragOverEvent = new Event("dragover", {
+      bubbles: true,
+      cancelable: true
+    });
+    Object.defineProperty(dragOverEvent, "dataTransfer", {
+      value: dataTransfer,
+      configurable: true
+    });
+
+    container.dispatchEvent(dragOverEvent);
+
+    const dropEvent = new Event("drop", {
+      bubbles: true,
+      cancelable: true
+    });
+    Object.defineProperty(dropEvent, "dataTransfer", {
+      value: dataTransfer,
+      configurable: true
+    });
+
+    container.dispatchEvent(dropEvent);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(dragOverEvent.defaultPrevented).toBe(true);
+    expect((dragOverEvent as DragEvent).dataTransfer?.dropEffect).toBe("copy");
+    expect(dropEvent.defaultPrevented).toBe(true);
+    expect(fetch).toHaveBeenCalledWith("/api/uploads/image-url", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Tmux-Session": "build"
+      },
+      body: JSON.stringify({
+        url: "https://img.example.test/web-drop.png"
+      })
+    });
+    expect(socket.send).toHaveBeenCalledWith(
+      JSON.stringify({
+        type: "input",
+        data: "/Users/gouki/.tmux-ui/uploads/build/web-drop.png"
       })
     );
 

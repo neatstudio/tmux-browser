@@ -1,4 +1,5 @@
 import type { PaneSummary, SessionSummary } from "../api/sessionApi";
+import { MOBILE_SOFT_KEYS } from "../terminal/softKeys";
 
 export type SessionStatusBarActions = {
   onClear?: () => void;
@@ -16,6 +17,7 @@ export type SessionStatusBarActions = {
   browserScrollEnabled?: boolean;
   onScrollHistoryBack?: () => void;
   onScrollHistoryForward?: () => void;
+  onSendSoftKey?: (sequence: string) => void;
   onSelectPane?: (sessionName: string, paneId: string) => void;
   onKillPane?: (sessionName: string, paneId: string) => void;
   onKill?: () => void;
@@ -249,6 +251,29 @@ function renderRightStatusActions(
   ];
 }
 
+function renderSoftKeyActions(
+  actions: SessionStatusBarActions,
+  afterClick?: () => void
+) {
+  return createActionGroup(
+    "soft-keys",
+    MOBILE_SOFT_KEYS.map((key) => {
+      const button = createActionButton(
+        `soft-key-${key.id}`,
+        key.label,
+        () => actions.onSendSoftKey?.(key.sequence),
+        !actions.onSendSoftKey,
+        key.title,
+        afterClick
+      );
+
+      button.classList.add("terminal-status-soft-key");
+
+      return button;
+    })
+  );
+}
+
 function isMobileSheetOpen(statusBar: HTMLElement) {
   return statusBar.dataset.mobileActionsOpen === "true";
 }
@@ -275,6 +300,7 @@ function appendMobileActionSheet(
 
   sheet.append(
     ...renderLeftStatusActions(session, actions, closeSheet),
+    renderSoftKeyActions(actions, closeSheet),
     ...renderRightStatusActions(statusBar, session, actions, closeSheet)
   );
   statusBar.append(sheet);

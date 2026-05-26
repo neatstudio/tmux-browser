@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { createApp } from "../../src/server/createApp";
+import { fetchRemoteImage } from "../../src/server/services/uploads/remoteImageUploadService";
 
 describe("createApp", () => {
   it("serves health with version and build metadata", async () => {
@@ -219,6 +220,96 @@ describe("createApp", () => {
     } finally {
       rmSync(uploadDir, { recursive: true, force: true });
     }
+  });
+
+  it("uploads a remote image url into a fixed upload directory", async () => {
+    const uploadDir = mkdtempSync(join(tmpdir(), "tmux-ui-upload-"));
+    const app = createApp({
+      uploadDir,
+      fetchRemoteImage: vi.fn().mockResolvedValue(
+        Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lx0H+QAAAABJRU5ErkJggg==",
+          "base64"
+        )
+      ),
+      tmuxService: {
+        listSessions: vi.fn(),
+        createSession: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    try {
+      const response = await request(app)
+        .post("/api/uploads/image-url")
+        .set("X-Tmux-Session", "local/dev")
+        .send({ url: "https://img.example.test/shot.png" });
+
+      expect(response.status).toBe(201);
+      expect(response.body).toMatchObject({
+        ok: true,
+        contentType: "image/png"
+      });
+      expect(response.body.absolutePath).toContain(uploadDir);
+      expect(response.body.absolutePath).toContain("local-dev");
+      expect(existsSync(response.body.absolutePath)).toBe(true);
+    } finally {
+      rmSync(uploadDir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects remote image urls that resolve to private addresses", async () => {
+    await expect(
+      fetchRemoteImage("http://127.0.0.1/shot.png", {
+        lookup: vi.fn().mockResolvedValue([{ address: "127.0.0.1" }]),
+        fetch: vi.fn()
+      })
+    ).rejects.toMatchObject({
+      message: "Remote image host is not allowed",
+      statusCode: 403
+    });
+  });
+
+  it("rejects remote image urls that resolve to IPv4-mapped private IPv6 addresses", async () => {
+    await expect(
+      fetchRemoteImage("http://internal.example.test/shot.png", {
+        lookup: vi.fn().mockResolvedValue([{ address: "::ffff:127.0.0.1" }]),
+        fetch: vi.fn()
+      })
+    ).rejects.toMatchObject({
+      message: "Remote image host is not allowed",
+      statusCode: 403
+    });
+  });
+
+  it("stops reading remote images once they exceed the upload limit", async () => {
+    const chunk = new Uint8Array(1024 * 1024);
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(chunk);
+      }
+    });
+
+    await expect(
+      fetchRemoteImage("https://img.example.test/huge.png", {
+        lookup: vi.fn().mockResolvedValue([{ address: "93.184.216.34" }]),
+        fetch: vi.fn().mockResolvedValue({
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          body,
+          arrayBuffer: vi.fn()
+        })
+      })
+    ).rejects.toMatchObject({
+      message: "Remote image is too large",
+      statusCode: 413
+    });
   });
 
   it("cleans old uploaded images before saving new ones", async () => {

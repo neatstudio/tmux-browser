@@ -263,6 +263,48 @@ describe("sessionStatusBar", () => {
     expect(root.querySelector(".terminal-status-mobile-sheet")).toBeNull();
   });
 
+  it("renders mobile soft keys and sends their control sequences", () => {
+    const root = document.createElement("div");
+    const onSendSoftKey = vi.fn();
+
+    renderSessionStatusBar(root, SESSION, {
+      onSendSoftKey
+    });
+
+    const toggle = root.querySelector<HTMLButtonElement>(
+      "[data-action='toggle-mobile-status-actions']"
+    )!;
+
+    toggle.click();
+
+    const sheet = root.querySelector<HTMLElement>(".terminal-status-mobile-sheet")!;
+    const keyButtons = sheet.querySelectorAll<HTMLButtonElement>(
+      ".terminal-status-soft-key"
+    );
+
+    expect([...keyButtons].map((button) => button.textContent)).toEqual([
+      "Esc",
+      "Tab",
+      "Ctrl-C",
+      "Ctrl-D",
+      "Ctrl-L",
+      "↑",
+      "↓",
+      "←",
+      "→",
+      "PgUp",
+      "PgDn"
+    ]);
+
+    sheet.querySelector<HTMLButtonElement>("[data-action='soft-key-esc']")?.click();
+    sheet.querySelector<HTMLButtonElement>("[data-action='soft-key-tab']")?.click();
+    sheet.querySelector<HTMLButtonElement>("[data-action='soft-key-ctrl-c']")?.click();
+
+    expect(onSendSoftKey).toHaveBeenNthCalledWith(1, "\x1b");
+    expect(onSendSoftKey).toHaveBeenNthCalledWith(2, "\t");
+    expect(onSendSoftKey).toHaveBeenNthCalledWith(3, "\x03");
+  });
+
   it("uses readable compact labels for status bar actions", () => {
     const root = document.createElement("div");
 

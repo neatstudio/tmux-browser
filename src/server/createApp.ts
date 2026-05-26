@@ -19,6 +19,9 @@ import {
   saveUploadedImage
 } from "./services/uploads/imageUploadService.js";
 import {
+  fetchRemoteImage,
+} from "./services/uploads/remoteImageUploadService.js";
+import {
   createTimelineStore,
   type TimelineStore
 } from "./services/timeline/createTimelineStore.js";
@@ -279,6 +282,7 @@ export function createApp(options: {
   uploadDir?: string;
   uploadRetentionMs?: number;
   uploadMaxTotalBytes?: number;
+  fetchRemoteImage?: (url: string) => Promise<Buffer>;
   timelineStore?: TimelineStore;
   eventHub?: AppEventHub;
   preferences?: PreferenceStore;
@@ -294,6 +298,7 @@ export function createApp(options: {
     retentionMs: options.uploadRetentionMs,
     maxTotalBytes: options.uploadMaxTotalBytes
   };
+  const fetchRemoteImageBody = options.fetchRemoteImage ?? fetchRemoteImage;
   const app = express();
   const clientDistDir = resolve(process.cwd(), "dist/client");
 
@@ -369,6 +374,31 @@ export function createApp(options: {
       }
     }
   );
+
+  app.post("/api/uploads/image-url", async (req, res, next) => {
+    try {
+      if (!req.is("application/json")) {
+        throw new ImageUploadError("Image url payload must be JSON", 400);
+      }
+
+      const url = typeof req.body?.url === "string" ? req.body.url : "";
+      const body = await fetchRemoteImageBody(url);
+      const upload = await saveUploadedImage(
+        body,
+        req.header("X-Tmux-Session"),
+        uploadOptions
+      );
+
+      res.status(201).json(upload);
+    } catch (error) {
+      if (error instanceof ImageUploadError) {
+        res.status(error.statusCode).json({ error: error.message });
+        return;
+      }
+
+      next(error);
+    }
+  });
 
   app.get("/api/image-preview", async (req, res, next) => {
     try {
