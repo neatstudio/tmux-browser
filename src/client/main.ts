@@ -1231,7 +1231,7 @@ function closeInputPrompt(key: string) {
   scheduleRender();
 }
 
-function sendInputPromptAction(key: string, input: string) {
+async function sendInputPromptAction(key: string, input: string) {
   const prompt = inputPrompts.getPrompt(key);
 
   if (!prompt) {
@@ -1248,9 +1248,21 @@ function sendInputPromptAction(key: string, input: string) {
 
   tabState.setActiveTab(tab.id);
   ensureTerminal(tab);
+  scheduleRender();
 
-  mountedTerminals.get(tab.id)?.sendInput(input);
-  closeInputPrompt(key);
+  try {
+    await api.sendInput(prompt.sessionName, input);
+    closeInputPrompt(key);
+    void store
+      .refresh({
+        includePreview: false,
+        includePanes: true,
+        includeServerStatus: false
+      })
+      .then(() => scheduleRender());
+  } catch (error) {
+    console.warn("Failed to send prompt input", error);
+  }
 }
 
 function openInputPromptTab(key: string) {
@@ -1274,7 +1286,7 @@ function openInputPromptTab(key: string) {
 
 function openActionCenterSession(sessionName: string) {
   getOrOpenTab(sessionName);
-  setActionCenterOpen(false);
+  scheduleRender();
 }
 
 function splitPane(sessionName: string, direction: "horizontal" | "vertical") {

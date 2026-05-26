@@ -16,6 +16,7 @@ type SessionRoutesDeps = Pick<
   | "renameSession"
   | "killSession"
   | "sendCommand"
+  | "sendInput"
   | "splitPane"
   | "selectPane"
   | "killPane"
@@ -124,6 +125,25 @@ export function createSessionRoutes(
         metadata: {
           command: req.body.command
         }
+      });
+      deps.eventHub?.publish({
+        type: "sessions-invalidated",
+        reason: "command-sent",
+        sessionName: req.params.name
+      });
+      res.json({ ok: true });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/:name/input", async (req, res, next) => {
+    try {
+      await deps.sendInput(req.params.name, req.body.input);
+      deps.timeline?.addEvent({
+        type: "command-sent",
+        sessionName: req.params.name,
+        message: "sent prompt input"
       });
       deps.eventHub?.publish({
         type: "sessions-invalidated",

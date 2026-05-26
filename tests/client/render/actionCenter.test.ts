@@ -68,6 +68,64 @@ describe("renderActionCenterPanel", () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
+  it("renders multiple prompt choices with clear action labels", () => {
+    const root = document.createElement("div");
+    const onSendPrompt = vi.fn();
+
+    renderActionCenterPanel(root, {
+      open: true,
+      items: [
+        {
+          type: "input-prompt",
+          id: "prompt:session:codex",
+          sessionName: "codex",
+          promptKey: "session:codex",
+          title: "codex waiting",
+          snippet:
+            "1. Yes, proceed (y)\n2. Yes, and don't ask again for these files (a)\n3. No, and tell Codex what to do differently (esc)",
+          actions: [
+            { key: "y", label: "y", input: "y\r" },
+            { key: "a", label: "a", input: "a\r" },
+            { key: "esc", label: "esc", input: "\u001b" },
+            { key: "p", label: "p", input: "p\r" }
+          ]
+        },
+        {
+          type: "input-prompt",
+          id: "prompt:session:claude",
+          sessionName: "claude",
+          promptKey: "session:claude",
+          title: "claude waiting",
+          snippet: "Continue? [y/n]",
+          actions: [
+            { key: "y", label: "y", input: "y\r" },
+            { key: "n", label: "n", input: "n\r" }
+          ]
+        }
+      ],
+      onClose: vi.fn(),
+      onOpenSession: vi.fn(),
+      onDismissPrompt: vi.fn(),
+      onSendPrompt
+    });
+
+    expect(root.textContent).toContain("2 actions");
+    expect(root.textContent).toContain("codex waiting");
+    expect(root.textContent).toContain("claude waiting");
+    expect(root.textContent).toContain("Yes (y)");
+    expect(root.textContent).toContain("Always (a)");
+    expect(root.textContent).toContain("Esc");
+    expect(root.textContent).toContain("Details (p)");
+    expect(root.textContent).toContain("No (n)");
+
+    root
+      .querySelectorAll<HTMLButtonElement>("[data-action='send-prompt-action']")[1]
+      ?.click();
+
+    expect(onSendPrompt).toHaveBeenCalledWith("session:codex", "a\r");
+    expect(root.querySelector(".action-center-panel")).not.toBeNull();
+  });
+
   it("shows an empty state while open without actions", () => {
     const root = document.createElement("div");
 

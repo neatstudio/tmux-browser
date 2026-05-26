@@ -383,6 +383,38 @@ describe("createTmuxService", () => {
     ]);
   });
 
+  it("sends prompt choices literally and presses enter", async () => {
+    const run = vi.fn().mockResolvedValue({ stdout: "", stderr: "" });
+    const service = createTmuxService({ run });
+
+    await service.sendInput("build", "a\r");
+
+    expect(run).toHaveBeenNthCalledWith(1, "send-keys", [
+      "-t",
+      "build",
+      "-l",
+      "a"
+    ]);
+    expect(run).toHaveBeenNthCalledWith(2, "send-keys", [
+      "-t",
+      "build",
+      "Enter"
+    ]);
+  });
+
+  it("sends escape prompt input as a tmux key", async () => {
+    const run = vi.fn().mockResolvedValue({ stdout: "", stderr: "" });
+    const service = createTmuxService({ run });
+
+    await service.sendInput("build", "\u001b");
+
+    expect(run).toHaveBeenCalledWith("send-keys", [
+      "-t",
+      "build",
+      "Escape"
+    ]);
+  });
+
   it("returns pane summaries only when explicitly requested", async () => {
     const run = vi
       .fn()

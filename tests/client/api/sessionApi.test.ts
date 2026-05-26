@@ -197,6 +197,23 @@ describe("createSessionApi", () => {
     });
   });
 
+  it("sends raw prompt input to a tmux session", async () => {
+    const fetch = vi.fn().mockResolvedValue({
+      ok: true
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    await createSessionApi().sendInput("build", "\u001b");
+
+    expect(fetch).toHaveBeenCalledWith("/api/sessions/build/input", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ input: "\u001b" })
+    });
+  });
+
   it("splits a tmux session pane", async () => {
     const fetch = vi.fn().mockResolvedValue({
       ok: true

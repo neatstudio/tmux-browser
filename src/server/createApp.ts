@@ -492,7 +492,7 @@ export function createApp(options: {
           await tmuxService.listSessions({
             includePreview: false,
             includePanes: true,
-            includeInputPrompt: false,
+            includeInputPrompt: true,
             ...(optionalSessionNameList(req.query.muted)
               ? { mutedSessionNames: optionalSessionNameList(req.query.muted) }
               : {})
@@ -513,6 +513,7 @@ export function createApp(options: {
       renameSession: tmuxService.renameSession,
       killSession: options.killSession ?? tmuxService.killSession,
       sendCommand: tmuxService.sendCommand,
+      sendInput: tmuxService.sendInput,
       splitPane: tmuxService.splitPane,
       selectPane: tmuxService.selectPane,
       killPane: tmuxService.killPane,

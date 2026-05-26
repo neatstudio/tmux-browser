@@ -36,6 +36,7 @@ export type TmuxService = {
   renameSession: (fromName: string, toName: string) => Promise<void>;
   killSession: (name: string) => Promise<void>;
   sendCommand: (name: string, command: string) => Promise<void>;
+  sendInput: (name: string, input: string) => Promise<void>;
   splitPane: (name: string, direction: SplitPaneDirection) => Promise<void>;
   selectPane: (name: string, paneId: string) => Promise<void>;
   killPane: (name: string, paneId: string) => Promise<void>;
@@ -57,6 +58,14 @@ function validateCommand(command: string): string {
   return normalizedCommand;
 }
 
+function validateInput(input: unknown): string {
+  if (typeof input !== "string" || input.length === 0 || input.length > 256) {
+    throw new Error("Invalid tmux input");
+  }
+
+  return input;
+}
+
 function validatePaneId(paneId: string): void {
   if (!PANE_ID_PATTERN.test(paneId)) {
     throw new Error("Invalid tmux pane id");
@@ -73,6 +82,30 @@ function getSplitPaneFlag(direction: SplitPaneDirection) {
   }
 
   throw new Error("Invalid split pane direction");
+}
+
+function getTmuxKey(input: string) {
+  if (input === "\u001b") {
+    return "Escape";
+  }
+
+  if (input === "\t") {
+    return "Tab";
+  }
+
+  if (input === "\u0003") {
+    return "C-c";
+  }
+
+  if (input === "\u0004") {
+    return "C-d";
+  }
+
+  if (input === "\u000c") {
+    return "C-l";
+  }
+
+  return null;
 }
 
 function trimPreview(output: string) {
@@ -364,6 +397,32 @@ export function createTmuxService(deps: {
       const normalizedCommand = validateCommand(command);
       await run("send-keys", ["-t", name, "-l", normalizedCommand]);
       await run("send-keys", ["-t", name, "Enter"]);
+      invalidateSessionCaches(name);
+    },
+    async sendInput(name: string, input: string) {
+      validateSessionName(name);
+      const normalizedInput = validateInput(input);
+      const key = getTmuxKey(normalizedInput);
+
+      if (key) {
+        await run("send-keys", ["-t", name, key]);
+        invalidateSessionCaches(name);
+        return;
+      }
+
+      if (normalizedInput.endsWith("\r")) {
+        const literalInput = normalizedInput.slice(0, -1);
+
+        if (literalInput) {
+          await run("send-keys", ["-t", name, "-l", literalInput]);
+        }
+
+        await run("send-keys", ["-t", name, "Enter"]);
+        invalidateSessionCaches(name);
+        return;
+      }
+
+      await run("send-keys", ["-t", name, "-l", normalizedInput]);
       invalidateSessionCaches(name);
     },
     async splitPane(name: string, direction: SplitPaneDirection) {

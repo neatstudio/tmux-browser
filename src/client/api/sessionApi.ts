@@ -65,6 +65,7 @@ export type SessionApi = {
   renameSession: (fromName: string, toName: string) => Promise<void>;
   killSession: (name: string) => Promise<void>;
   sendCommand: (name: string, command: string) => Promise<void>;
+  sendInput: (name: string, input: string) => Promise<void>;
   splitPane: (name: string, direction: SplitPaneDirection) => Promise<void>;
   selectPane: (name: string, paneId: string) => Promise<void>;
   killPane: (name: string, paneId: string) => Promise<void>;
@@ -226,6 +227,22 @@ export function createSessionApi(baseUrl = ""): SessionApi {
 
       if (!response.ok) {
         throw new Error("Failed to send tmux command");
+      }
+    },
+    async sendInput(name: string, input: string) {
+      const response = await fetch(
+        `${baseUrl}/api/sessions/${encodeURIComponent(name)}/input`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ input })
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to send tmux input");
       }
     },
     async splitPane(name: string, direction: SplitPaneDirection) {

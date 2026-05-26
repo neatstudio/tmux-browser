@@ -13,6 +13,36 @@ function formatActionCount(count: number) {
   return count === 1 ? "1 action" : `${count} actions`;
 }
 
+function formatPromptActionLabel(label: string) {
+  const normalizedLabel = label.trim().toLowerCase();
+
+  if (normalizedLabel === "y" || normalizedLabel === "yes") {
+    return "Yes (y)";
+  }
+
+  if (normalizedLabel === "a" || normalizedLabel === "always") {
+    return "Always (a)";
+  }
+
+  if (normalizedLabel === "n" || normalizedLabel === "no") {
+    return "No (n)";
+  }
+
+  if (normalizedLabel === "p") {
+    return "Details (p)";
+  }
+
+  if (normalizedLabel === "esc" || normalizedLabel === "escape") {
+    return "Esc";
+  }
+
+  if (normalizedLabel === "enter" || normalizedLabel === "return") {
+    return "Enter";
+  }
+
+  return label;
+}
+
 function renderInputPromptItem(
   item: Extract<ActionCenterItem, { type: "input-prompt" }>,
   options: ActionCenterPanelOptions
@@ -43,7 +73,8 @@ function renderInputPromptItem(
     const button = document.createElement("button");
     button.type = "button";
     button.dataset.action = "send-prompt-action";
-    button.textContent = promptAction.label;
+    button.textContent = formatPromptActionLabel(promptAction.label);
+    button.title = promptAction.label;
     button.addEventListener("click", () => {
       options.onSendPrompt(item.promptKey, promptAction.input);
     });

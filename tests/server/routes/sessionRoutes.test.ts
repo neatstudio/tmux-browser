@@ -127,6 +127,35 @@ describe("sessionRoutes", () => {
     expect(sendCommand).toHaveBeenCalledWith("build", "npm test");
   });
 
+  it("sends prompt input to a target session", async () => {
+    const app = express();
+    const sendInput = vi.fn().mockResolvedValue(undefined);
+    app.use(express.json());
+    app.use(
+      "/api/sessions",
+      createSessionRoutes({
+        listSessions: vi.fn(),
+        createSession: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        sendInput,
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn(),
+        getSessionStatus: vi.fn()
+      })
+    );
+
+    const response = await request(app)
+      .post("/api/sessions/build/input")
+      .send({ input: "\u001b" });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ ok: true });
+    expect(sendInput).toHaveBeenCalledWith("build", "\u001b");
+  });
+
   it("splits a target session pane", async () => {
     const app = express();
     const splitPane = vi.fn().mockResolvedValue(undefined);

@@ -681,7 +681,7 @@ describe("createApp", () => {
     expect(listSessions).toHaveBeenCalledWith({
       includePreview: false,
       includePanes: true,
-      includeInputPrompt: false
+      includeInputPrompt: true
     });
   });
 
@@ -708,7 +708,7 @@ describe("createApp", () => {
     expect(listSessions).toHaveBeenNthCalledWith(1, {
       includePreview: false,
       includePanes: true,
-      includeInputPrompt: false,
+      includeInputPrompt: true,
       mutedSessionNames: ["tmux-ui", "logs"]
     });
     expect(listSessions).toHaveBeenNthCalledWith(2, {
