@@ -3,6 +3,10 @@ import { deriveActionCenterItems } from "./actionCenter";
 import { renderActionCenterPanel } from "./render/actionCenter";
 import { renderInputPromptToast } from "./render/inputPromptToast";
 import { renderDashboard } from "./render/renderDashboard";
+import {
+  renderKanban,
+  type KanbanDraft
+} from "./render/renderKanban";
 import { createAnimationFrameScheduler } from "./render/renderScheduler";
 import { renderSessionSidebar } from "./render/renderSessionSidebar";
 import { renderSessionConfigModal } from "./render/sessionConfigModal";
@@ -37,7 +41,7 @@ import {
   getImageFileFromFiles,
   uploadImageForSession
 } from "./imageUpload";
-import { getLayoutMode } from "./layoutMode";
+import { getAppView, getLayoutMode } from "./layoutMode";
 import { isPageVisible } from "./pageVisibility";
 import "./styles.css";
 
@@ -50,6 +54,8 @@ type MountedTerminal = {
   clear: () => void;
   redraw: () => void;
   reconnect: () => void;
+  chooseImage: () => void;
+  captureImage: () => void;
   scrollPage: (direction: "back" | "forward") => void;
   toggleBrowserScroll: () => boolean;
   isBrowserScrollEnabled: () => boolean;
@@ -70,6 +76,7 @@ if (!app) {
 }
 
 const layoutMode = getLayoutMode();
+const appView = getAppView();
 const isSidebarLayout = layoutMode === "sidebar";
 
 app.innerHTML = `
@@ -95,16 +102,24 @@ document.title = getCompactPageTitle(
 
 let activeTheme = getTheme(loadThemeId());
 let draftSessionName = "";
+let kanbanDraft: KanbanDraft = {
+  name: "",
+  path: "",
+  server: "",
+  agentsText: "claude\ncodex\nkiro"
+};
 let activeConfigSessionName: string | null = null;
 let activeSendSessionName: string | null = null;
 let activeSwitchSessionName: string | null = null;
 let draftSendTargetName = "";
 let draftSendCommand = "";
-const tabState = createTabState();
+const tabState = createTabState({
+  initialActiveTabId: appView === "kanban" ? null : undefined
+});
 const api = createSessionApi();
 const inputPrompts = createInputPromptRegistry();
-const sessionSettings = createSessionSettingsStore();
-const mutedSessions = createMutedSessionsStore();
+const sessionSettings = createSessionSettingsStore(window.localStorage, api);
+const mutedSessions = createMutedSessionsStore(window.localStorage, api);
 const sidebarFavorites = createSidebarFavoritesStore(api);
 const store = createDashboardStore({
   api,
@@ -253,6 +268,56 @@ function toggleResponsiveSidebar() {
 function setActionCenterOpen(open: boolean) {
   isActionCenterOpen = open;
   scheduleRender();
+}
+
+function parseKanbanAgents(agentsText: string) {
+  return agentsText
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const separatorIndex = line.indexOf(":");
+      const rawName =
+        separatorIndex === -1 ? line : line.slice(0, separatorIndex);
+      const command =
+        separatorIndex === -1 ? null : line.slice(separatorIndex + 1).trim() || null;
+      const name = rawName.trim();
+
+      return {
+        kind: name,
+        name,
+        command
+      };
+    })
+    .filter((agent) => agent.name);
+}
+
+function createKanbanProject() {
+  const name = kanbanDraft.name.trim();
+  const path = kanbanDraft.path.trim();
+  const agents = parseKanbanAgents(kanbanDraft.agentsText);
+
+  if (!name || !path || agents.length === 0) {
+    return;
+  }
+
+  void store
+    .createKanbanProject({
+      name,
+      path,
+      server: kanbanDraft.server.trim() || null,
+      agents
+    })
+    .then(() => store.refreshKanbanProjects())
+    .then(() => {
+      kanbanDraft = {
+        name: "",
+        path: "",
+        server: "",
+        agentsText: "claude\ncodex\nkiro"
+      };
+      scheduleRender();
+    });
 }
 
 function toggleActionCenter() {
@@ -466,6 +531,8 @@ function ensureTerminal(tab: BrowserTab) {
     clear: () => {},
     redraw: () => {},
     reconnect: () => {},
+    chooseImage: () => {},
+    captureImage: () => {},
     scrollPage: () => {},
     toggleBrowserScroll: () => false,
     isBrowserScrollEnabled: () => false,
@@ -1382,6 +1449,8 @@ function createSessionStatusActions(tab: BrowserTab, mounted: MountedTerminal) {
     onSendCommand: () => openSendCommandPanel(tab.sessionName),
     onSwitchSession: () => openSwitchSessionPanel(tab.sessionName),
     onPreviewImage: () => openImagePreviewPanel(tab.sessionName),
+    onChooseImage: () => mounted.chooseImage(),
+    onCaptureImage: () => mounted.captureImage(),
     onSplitHorizontal: () => splitPane(tab.sessionName, "horizontal"),
     onSplitVertical: () => splitPane(tab.sessionName, "vertical"),
     onSelectPane: selectPane,
@@ -1431,7 +1500,24 @@ function render() {
   }
 
   if (activeTabId === null) {
-    renderDashboard(dashboardRoot, store.getState(), {
+    if (appView === "kanban") {
+      renderKanban(dashboardRoot, {
+        projects: store.getState().kanbanProjects,
+        draft: kanbanDraft,
+        loading: store.getState().loading,
+        error: store.getState().error,
+        onDraftChange: (draft) => {
+          kanbanDraft = draft;
+          scheduleRender();
+        },
+        onCreateProject: createKanbanProject,
+        onOpenSession: (name) => {
+          getOrOpenTab(name);
+          scheduleRender();
+        }
+      });
+    } else {
+      renderDashboard(dashboardRoot, store.getState(), {
       onCreateSession: (name) => {
         void store.createSession(name).then(() => {
           getOrOpenTab(name);
@@ -1475,7 +1561,8 @@ function render() {
         sessionName: tab.sessionName,
         active: tab.id === activeTabId
       }))
-    });
+      });
+    }
   }
 
   if (isSidebarLayout) {
@@ -1597,12 +1684,15 @@ store.subscribe(() => {
 
   void Promise.all([
     sidebarFavorites.load(),
+    mutedSessions.load(),
+    sessionSettings.load(),
     store.refresh({
       includePreview: isSidebarLayout ? false : isDashboardActive,
       includePanes: isSidebarLayout ? true : !isDashboardActive,
       includeServerStatus: isSidebarLayout ? false : undefined,
       preferActiveSessionStatus: isSidebarLayout ? false : undefined
     }),
+    store.refreshKanbanProjects(),
     store.refreshTimeline()
   ])
     .then(() => {

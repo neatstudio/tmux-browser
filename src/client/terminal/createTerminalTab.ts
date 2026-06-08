@@ -445,6 +445,35 @@ export function createTerminalTab(deps: {
     }
   }
 
+  function createImageInput(kind: "library" | "camera") {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.tabIndex = -1;
+    input.hidden = true;
+    input.dataset.terminalImageInput = kind;
+
+    if (kind === "camera") {
+      input.setAttribute("capture", "environment");
+    }
+
+    input.addEventListener("change", () => {
+      const file = getImageFileFromFiles(input.files ?? undefined);
+      input.value = "";
+
+      if (file) {
+        void uploadAndInsertImage(file);
+      }
+    });
+
+    deps.container.append(input);
+
+    return input;
+  }
+
+  const imageLibraryInput = createImageInput("library");
+  const imageCameraInput = createImageInput("camera");
+
   const handlePaste = (event: ClipboardEvent) => {
     const file = getImageFileFromItems(event.clipboardData?.items);
 
@@ -733,6 +762,12 @@ export function createTerminalTab(deps: {
     reconnect() {
       connect({ announce: true });
     },
+    chooseImage() {
+      imageLibraryInput.click();
+    },
+    captureImage() {
+      imageCameraInput.click();
+    },
     scrollPage(direction: "back" | "forward") {
       controller?.scroll(direction === "back" ? -terminal.rows : terminal.rows);
     },
@@ -772,6 +807,8 @@ export function createTerminalTab(deps: {
       imageDropTarget.removeEventListener("paste", handlePaste, true);
       imageDropTarget.removeEventListener("drop", handleDrop, true);
       imageDropTarget.removeEventListener("dragover", handleDragOver, true);
+      imageLibraryInput.remove();
+      imageCameraInput.remove();
       deps.container.removeEventListener("touchstart", handleTouchStart, true);
       deps.container.removeEventListener("touchmove", handleTouchMove, true);
       deps.container.removeEventListener("touchend", handleTouchEnd, true);

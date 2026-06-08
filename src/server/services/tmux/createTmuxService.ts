@@ -28,11 +28,22 @@ export type ListSessionsOptions = {
   mutedSessionNames?: string[];
   onlySessionNames?: string[];
 };
+export type ProjectAgentSession = {
+  name: string;
+  command?: string | null;
+};
+export type CreateProjectSessionsOptions = {
+  projectName: string;
+  projectPath: string;
+  server?: string | null;
+  agents: ProjectAgentSession[];
+};
 
 export type TmuxService = {
   listSessions: (options?: ListSessionsOptions) => Promise<TmuxSessionSummary[]>;
   getSessionStatus: (name: string) => Promise<TmuxSessionSummary>;
   createSession: (name: string) => Promise<void>;
+  createProjectSessions: (options: CreateProjectSessionsOptions) => Promise<string[]>;
   renameSession: (fromName: string, toName: string) => Promise<void>;
   killSession: (name: string) => Promise<void>;
   sendCommand: (name: string, command: string) => Promise<void>;
@@ -41,6 +52,8 @@ export type TmuxService = {
   selectPane: (name: string, paneId: string) => Promise<void>;
   killPane: (name: string, paneId: string) => Promise<void>;
 };
+
+const SERVER_NAME_PATTERN = /^[A-Za-z0-9._-]+$/;
 
 export function validateSessionName(name: string): void {
   if (!SESSION_NAME_PATTERN.test(name)) {
@@ -56,6 +69,52 @@ function validateCommand(command: string): string {
   }
 
   return normalizedCommand;
+}
+
+function normalizeSessionNamePart(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function buildProjectSessionName(projectName: string, agentName: string) {
+  const normalizedProjectName = normalizeSessionNamePart(projectName);
+  const normalizedAgentName = normalizeSessionNamePart(agentName);
+
+  if (!normalizedProjectName || !normalizedAgentName) {
+    throw new Error("Invalid tmux session name");
+  }
+
+  const sessionName = `${normalizedProjectName}-${normalizedAgentName}`;
+  validateSessionName(sessionName);
+
+  return sessionName;
+}
+
+function normalizeProjectPath(projectPath: string, fallbackPath: string) {
+  const normalizedPath = projectPath.trim();
+
+  if (!normalizedPath) {
+    return fallbackPath;
+  }
+
+  return normalizedPath;
+}
+
+function normalizeProjectServer(server: string | null | undefined) {
+  const normalizedServer = server?.trim();
+
+  if (!normalizedServer) {
+    return null;
+  }
+
+  if (!SERVER_NAME_PATTERN.test(normalizedServer)) {
+    throw new Error("Invalid kanban server name");
+  }
+
+  return normalizedServer;
 }
 
 function validateInput(input: unknown): string {
@@ -156,6 +215,46 @@ export function createTmuxService(deps: {
   >();
   const paneFormat =
     "#{session_name}\t#{pane_id}\t#{window_index}\t#{window_name}\t#{window_active}\t#{pane_index}\t#{pane_active}\t#{pane_current_command}\t#{pane_current_path}\t#{pane_dead}\t#{pane_dead_status}\t#{pane_pid}";
+
+  async function sessionExists(sessionName: string) {
+    try {
+      await run("has-session", ["-t", sessionName]);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function shellQuote(value: string) {
+    if (/^[A-Za-z0-9_./:@%+=,-]+$/.test(value)) {
+      return value;
+    }
+
+    return `'${value.replace(/'/g, `'\\''`)}'`;
+  }
+
+  function buildRemoteProjectCommand(
+    server: string,
+    sessionName: string,
+    projectPath: string,
+    command: string | undefined
+  ) {
+    const remoteArgs = [
+      "tmux",
+      "new-session",
+      "-A",
+      "-s",
+      shellQuote(sessionName),
+      "-c",
+      shellQuote(projectPath)
+    ];
+
+    if (command) {
+      remoteArgs.push(shellQuote(command));
+    }
+
+    return `ssh -tt ${shellQuote(server)} ${shellQuote(remoteArgs.join(" "))}`;
+  }
 
   async function getPaneCapture(sessionName: string, ttlMs: number) {
     const cached = paneCaptureCache.get(sessionName);
@@ -382,6 +481,42 @@ export function createTmuxService(deps: {
         "-s",
         name
       ]);
+    },
+    async createProjectSessions(options) {
+      const projectPath = normalizeProjectPath(options.projectPath, homeDirectory);
+      const server = normalizeProjectServer(options.server);
+      const createdSessionNames: string[] = [];
+
+      for (const agent of options.agents) {
+        const sessionName = buildProjectSessionName(
+          options.projectName,
+          agent.name
+        );
+        const command = agent.command?.trim();
+        const args = [
+          "-d",
+          "-c",
+          projectPath,
+          ...COLOR_SESSION_ENV.flatMap((value) => ["-e", value]),
+          "-s",
+          sessionName
+        ];
+
+        if (server) {
+          args.splice(2, 1, homeDirectory);
+          args.push(buildRemoteProjectCommand(server, sessionName, projectPath, command));
+        } else if (command) {
+          args.push(command);
+        }
+
+        if (!(await sessionExists(sessionName))) {
+          await run("new-session", args);
+        }
+        createdSessionNames.push(sessionName);
+        invalidateSessionCaches(sessionName);
+      }
+
+      return createdSessionNames;
     },
     async renameSession(fromName: string, toName: string) {
       validateSessionName(fromName);

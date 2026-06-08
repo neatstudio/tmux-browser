@@ -6,9 +6,10 @@ tmux-ui 是一个轻量的浏览器 tmux 控制台。它可以列出 tmux sessio
 
 ## 环境要求
 
-- Node.js 20+
-- npm 11+
-- 已安装 `tmux`，并且 `tmux` 在 `PATH` 中可用
+- 源码开发需要 Node.js/npm，并且 `tmux` 在 `PATH` 中可用。
+- 使用打包后的 `.run install` 时，如果宿主机没有 Node，会自动安装 nvm
+  并通过 nvm 安装 Node 22；如果没有 `tmux`，会通过 Homebrew、apt、
+  dnf、yum、apk 或 pacman 自动安装。
 
 ## 常用脚本
 
@@ -115,6 +116,7 @@ tmux-ui help
 tmux-ui start
 tmux-ui restart
 tmux-ui stop
+tmux-ui upgrade
 tmux-ui uninstall
 ```
 
@@ -138,6 +140,8 @@ tmux-ui restart
 tmux-ui stop
 tmux-ui uninstall
 ```
+
+使用 `tmux-ui upgrade` 可以下载最新 GitHub Release 的 `release.run` 并原地升级。如果当前是服务模式安装，`upgrade` 会保留服务模式并通过 service install/restart 更新；否则会执行 `install` 和 `restart`。
 
 ## 服务模式
 
@@ -209,7 +213,7 @@ HOST=100.x.y.z PORT=3000 ./release/release.run start
 上传已有 run 文件到一个或多个服务器：
 
 ```bash
-npm run publish -- --target tw0:/root/tmux --install --restart
+npm run publish -- --target server-a:/root/tmux --install --restart
 ```
 
 如果没有传 `--target`，`publish` 会读取 `.tmux-ui.publish.json`。该文件被 Git 忽略，用来保存私有服务器名称。
@@ -226,6 +230,12 @@ ssh server-a
 ```
 
 在 GitHub 上 push 到 `main` 时，如果 `v<package.json version>` tag 不存在，workflow 会创建对应 GitHub Release，上传 `release.run` 和带版本号的 run 文件，并使用自动生成的详细 release notes。
+
+## Kanban 项目
+
+打开 `/?view=kanban` 可以创建基于项目的 agent session。一个项目包含项目名、路径、可选 SSH 服务器，以及 `claude`、`codex`、`kiro` 等 agent。每个 agent 会得到稳定的 tmux session 名：`<project>-<agent>`。
+
+本机项目会直接在项目路径下创建 agent session，并按配置启动命令。远程项目会先在本机创建同名 wrapper session；这个 wrapper session 会 SSH 到远程服务器，并 attach 或创建远程同名 tmux session。这样浏览器仍然能从本机 tmux-ui 打开稳定 session，同时远程 agent 也有固定名称用于 resume。
 
 ## tmux 恢复
 

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createMutedSessionsStore } from "../../../src/client/state/mutedSessions";
 
@@ -59,5 +59,26 @@ describe("createMutedSessionsStore", () => {
       "tmux-ui",
       "worker-v2"
     ]);
+  });
+
+  it("loads and toggles muted sessions through server preferences", async () => {
+    const api = {
+      getPreferences: vi.fn().mockResolvedValue({
+        pinnedSessionNames: [],
+        mutedSessionNames: ["logs"],
+        sessionSettings: {}
+      }),
+      setMutedSession: vi.fn().mockResolvedValue(undefined)
+    };
+    const store = createMutedSessionsStore(createMemoryStorage(), api);
+
+    await store.load();
+
+    expect(store.getMutedSessionNames()).toEqual(["logs"]);
+
+    await store.toggleMuted("worker");
+
+    expect(api.setMutedSession).toHaveBeenCalledWith("worker", true);
+    expect(store.getMutedSessionNames()).toEqual(["logs", "worker"]);
   });
 });

@@ -615,4 +615,53 @@ describe("createDashboardStore", () => {
       { name: "tmux-ui", preview: "service log", inputPrompt: null }
     ]);
   });
+
+  it("loads and creates kanban projects without forcing preview polling", async () => {
+    const api = {
+      getServerStatus: vi.fn().mockResolvedValue(SERVER_STATUS),
+      listKanbanProjects: vi.fn().mockResolvedValueOnce([
+        {
+          name: "xxvisa",
+          path: "/srv/xxvisa",
+          server: "tw1",
+          agents: [{ kind: "claude", name: "claude", command: null }]
+        }
+      ]),
+      createKanbanProject: vi.fn().mockResolvedValue(["stake-codex"]),
+      listPaneSessions: vi.fn().mockResolvedValue([
+        { name: "stake-codex", panes: [] }
+      ]),
+      listDashboardSessions: vi.fn()
+    };
+    const store = createDashboardStore({ api, pollMs: 3000 });
+
+    await store.refreshKanbanProjects();
+    await store.createKanbanProject({
+      name: "stake",
+      path: "/srv/stake",
+      server: null,
+      agents: [{ kind: "codex", name: "codex", command: null }]
+    });
+
+    expect(api.listKanbanProjects).toHaveBeenCalledOnce();
+    expect(api.createKanbanProject).toHaveBeenCalledWith({
+      name: "stake",
+      path: "/srv/stake",
+      server: null,
+      agents: [{ kind: "codex", name: "codex", command: null }]
+    });
+    expect(api.listPaneSessions).toHaveBeenCalledOnce();
+    expect(api.listDashboardSessions).not.toHaveBeenCalled();
+    expect(store.getState().kanbanProjects).toEqual([
+      {
+        name: "xxvisa",
+        path: "/srv/xxvisa",
+        server: "tw1",
+        agents: [{ kind: "claude", name: "claude", command: null }]
+      }
+    ]);
+    expect(store.getState().sessions).toEqual([
+      { name: "stake-codex", panes: [] }
+    ]);
+  });
 });

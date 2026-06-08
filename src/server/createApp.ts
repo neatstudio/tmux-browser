@@ -28,6 +28,7 @@ import {
 import type { AppEventHub } from "./services/events/createAppEventHub.js";
 import {
   createPreferenceStore,
+  type KanbanProject,
   type PreferenceStore
 } from "./services/preferences/createPreferenceStore.js";
 
@@ -70,6 +71,57 @@ function optionalSessionNameList(value: unknown) {
   const names = parseSessionNameList(value);
 
   return names.length > 0 ? names : undefined;
+}
+
+function normalizeKanbanProjectPayload(body: unknown): KanbanProject {
+  const payload =
+    body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+  const name = typeof payload.name === "string" ? payload.name.trim() : "";
+  const path = typeof payload.path === "string" ? payload.path.trim() : "";
+  const server =
+    typeof payload.server === "string" && payload.server.trim()
+      ? payload.server.trim()
+      : null;
+  const agents = Array.isArray(payload.agents)
+    ? payload.agents
+        .map((agent) => {
+          if (!agent || typeof agent !== "object") {
+            return null;
+          }
+
+          const agentRecord = agent as Record<string, unknown>;
+          const kind =
+            typeof agentRecord.kind === "string" ? agentRecord.kind.trim() : "";
+          const agentName =
+            typeof agentRecord.name === "string" ? agentRecord.name.trim() : "";
+          const command =
+            typeof agentRecord.command === "string" && agentRecord.command.trim()
+              ? agentRecord.command.trim()
+              : null;
+
+          if (!kind || !agentName) {
+            return null;
+          }
+
+          return {
+            kind,
+            name: agentName,
+            command
+          };
+        })
+        .filter((agent): agent is KanbanProject["agents"][number] => agent !== null)
+    : [];
+
+  if (!name || !path || agents.length === 0) {
+    throw new HttpError("Kanban project requires name, path, and agents", 400);
+  }
+
+  return {
+    name,
+    path,
+    server,
+    agents
+  };
 }
 
 function resolvePreviewImagePath(imagePath: string, basePath: string | undefined) {
@@ -346,6 +398,66 @@ export function createApp(options: {
         req.body.pinned === true
       );
       res.json({ ok: true });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch("/api/preferences/muted-sessions/:name", async (req, res, next) => {
+    try {
+      await preferences.setMutedSession(req.params.name, req.body.muted === true);
+      res.json({ ok: true });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch("/api/preferences/session-settings/:name", async (req, res, next) => {
+    try {
+      await preferences.setSessionSettings(req.params.name, req.body.settings);
+      res.json({ ok: true });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/kanban/projects", (_req, res) => {
+    res.json({ projects: preferences.getPreferences().kanbanProjects });
+  });
+
+  app.post("/api/kanban/projects", async (req, res, next) => {
+    try {
+      const project = normalizeKanbanProjectPayload(req.body);
+      const createdSessions = await tmuxService.createProjectSessions({
+        projectName: project.name,
+        projectPath: project.path,
+        server: project.server,
+        agents: project.agents.map((agent) => ({
+          name: agent.name,
+          command: agent.command
+        }))
+      });
+      const nextPreferences = await preferences.upsertKanbanProject(project);
+
+      options.eventHub?.publish({
+        type: "sessions-invalidated",
+        reason: "session-created",
+        sessionName: project.name
+      });
+      res.status(201).json({
+        ok: true,
+        sessions: createdSessions,
+        preferences: nextPreferences
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete("/api/kanban/projects/:name", async (req, res, next) => {
+    try {
+      await preferences.deleteKanbanProject(req.params.name);
+      res.status(204).send();
     } catch (error) {
       next(error);
     }

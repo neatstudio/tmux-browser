@@ -398,24 +398,25 @@ describe("renderSessionSidebar", () => {
     expect(onToggleMuted).toHaveBeenCalledWith("tmux-ui");
   });
 
-  it("can collapse to compact icon-style session entries", () => {
+  it("can collapse to clean compact icon-style session entries", () => {
     const root = document.createElement("div");
     const onToggleCollapsed = vi.fn();
 
     renderSessionSidebar(
       root,
       {
-        sessions: [BASE_SESSION],
+        sessions: [{ ...BASE_SESSION, name: "codex-runner" }],
         serverStatus: null,
         loading: false,
         error: null
       },
       {
-        activeSessionName: "api",
+        activeSessionName: "codex-runner",
         collapsed: true,
         draftSessionName: "",
-        browserTabs: [{ sessionName: "api", active: true }],
+        browserTabs: [{ sessionName: "codex-runner", active: true }],
         pinnedSessionNames: new Set(),
+        mutedSessionNames: new Set(["codex-runner"]),
         onCreateSession: vi.fn(),
         onDraftChange: vi.fn(),
         onOpenDashboard: vi.fn(),
@@ -432,9 +433,31 @@ describe("renderSessionSidebar", () => {
         ?.getAttribute("aria-expanded")
     ).toBe("false");
     expect(
-      root.querySelector<HTMLElement>("[data-session-name='api'] .session-sidebar-icon")
+      root.querySelector<HTMLElement>(
+        "[data-session-name='codex-runner'] .session-sidebar-icon"
+      )
         ?.textContent
-    ).toBe("a");
+    ).toBe("co");
+    expect(
+      root.querySelector<HTMLElement>(
+        "[data-session-name='codex-runner'] .session-sidebar-name"
+      )?.textContent
+    ).toBe("codex-runner");
+    expect(
+      root.querySelector<HTMLElement>(
+        "[data-session-name='codex-runner'] .session-sidebar-badges"
+      )?.dataset.collapsedHidden
+    ).toBe("true");
+    expect(
+      root.querySelector<HTMLButtonElement>(
+        "[data-session-name='codex-runner'] [data-action='toggle-sidebar-pin']"
+      )?.dataset.collapsedHidden
+    ).toBe("true");
+    expect(
+      root.querySelector<HTMLButtonElement>(
+        "[data-session-name='codex-runner'] [data-action='toggle-sidebar-muted']"
+      )?.dataset.collapsedHidden
+    ).toBe("true");
 
     root.querySelector<HTMLButtonElement>("[data-action='toggle-sidebar']")?.click();
 
@@ -514,6 +537,46 @@ describe("renderSessionSidebar", () => {
     launcher.click();
 
     expect(onToggleCollapsed).toHaveBeenCalledOnce();
+  });
+
+  it("keeps full session names available when the mobile drawer is rendered collapsed", () => {
+    const root = document.createElement("div");
+
+    renderSessionSidebar(
+      root,
+      {
+        sessions: [{ ...BASE_SESSION, name: "long-mobile-session" }],
+        serverStatus: null,
+        loading: false,
+        error: null
+      },
+      {
+        activeSessionName: null,
+        collapsed: true,
+        draftSessionName: "",
+        browserTabs: [],
+        pinnedSessionNames: new Set(),
+        onCreateSession: vi.fn(),
+        onDraftChange: vi.fn(),
+        onOpenDashboard: vi.fn(),
+        onOpenSession: vi.fn(),
+        onTogglePinned: vi.fn(),
+        onRefresh: vi.fn(),
+        onToggleCollapsed: vi.fn()
+      }
+    );
+
+    const item = root.querySelector<HTMLElement>(
+      "[data-session-name='long-mobile-session']"
+    );
+
+    expect(
+      item?.querySelector<HTMLElement>(".session-sidebar-name")?.textContent
+    ).toBe("long-mobile-session");
+    expect(
+      item?.querySelector<HTMLElement>(".session-sidebar-icon")?.textContent
+    ).toBe("lo");
+    expect(item?.getAttribute("aria-label")).toContain("long-mobile-session");
   });
 
   it("keeps refresh and new-session controls in the bottom toolbar", () => {

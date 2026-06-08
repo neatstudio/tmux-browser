@@ -721,8 +721,17 @@ describe("createApp", () => {
 
   it("serves server-backed preferences for sidebar favorites", async () => {
     const preferences = {
-      getPreferences: vi.fn(() => ({ pinnedSessionNames: ["build"] })),
+      getPreferences: vi.fn(() => ({
+        pinnedSessionNames: ["build"],
+        mutedSessionNames: ["tmux-ui"],
+        sessionSettings: {},
+        kanbanProjects: []
+      })),
       setPinnedSession: vi.fn().mockResolvedValue(undefined),
+      setMutedSession: vi.fn().mockResolvedValue(undefined),
+      setSessionSettings: vi.fn().mockResolvedValue(undefined),
+      upsertKanbanProject: vi.fn().mockResolvedValue(undefined),
+      deleteKanbanProject: vi.fn().mockResolvedValue(undefined),
       renameSession: vi.fn().mockResolvedValue(undefined)
     };
     const app = createApp({
@@ -743,11 +752,157 @@ describe("createApp", () => {
     const patchResponse = await request(app)
       .patch("/api/preferences/pinned-sessions/build")
       .send({ pinned: false });
+    const muteResponse = await request(app)
+      .patch("/api/preferences/muted-sessions/tmux-ui")
+      .send({ muted: false });
+    const settingsResponse = await request(app)
+      .patch("/api/preferences/session-settings/build")
+      .send({
+        settings: {
+          fontSize: 18,
+          fontFamily: "Menlo, monospace",
+          lineHeight: 1.4,
+          themeId: "paper"
+        }
+      });
 
     expect(getResponse.status).toBe(200);
-    expect(getResponse.body).toEqual({ pinnedSessionNames: ["build"] });
+    expect(getResponse.body).toEqual({
+      pinnedSessionNames: ["build"],
+      mutedSessionNames: ["tmux-ui"],
+      sessionSettings: {},
+      kanbanProjects: []
+    });
     expect(patchResponse.status).toBe(200);
     expect(patchResponse.body).toEqual({ ok: true });
+    expect(muteResponse.status).toBe(200);
+    expect(muteResponse.body).toEqual({ ok: true });
+    expect(settingsResponse.status).toBe(200);
+    expect(settingsResponse.body).toEqual({ ok: true });
     expect(preferences.setPinnedSession).toHaveBeenCalledWith("build", false);
+    expect(preferences.setMutedSession).toHaveBeenCalledWith("tmux-ui", false);
+    expect(preferences.setSessionSettings).toHaveBeenCalledWith("build", {
+      fontSize: 18,
+      fontFamily: "Menlo, monospace",
+      lineHeight: 1.4,
+      themeId: "paper"
+    });
+  });
+
+  it("creates kanban projects and starts their agent tmux sessions", async () => {
+    const preferences = {
+      getPreferences: vi.fn(() => ({
+        pinnedSessionNames: [],
+        mutedSessionNames: ["tmux-ui"],
+        sessionSettings: {},
+        kanbanProjects: []
+      })),
+      setPinnedSession: vi.fn(),
+      setMutedSession: vi.fn(),
+      setSessionSettings: vi.fn(),
+      upsertKanbanProject: vi.fn().mockResolvedValue({
+        pinnedSessionNames: [],
+        mutedSessionNames: ["tmux-ui"],
+        sessionSettings: {},
+        kanbanProjects: [
+          {
+            name: "xxvisa",
+            path: "/srv/xxvisa",
+            server: "tw1",
+            agents: [
+              {
+                kind: "claude",
+                name: "claude",
+                command: "claude --resume xxvisa"
+              }
+            ]
+          }
+        ]
+      }),
+      deleteKanbanProject: vi.fn(),
+      renameSession: vi.fn()
+    };
+    const createProjectSessions = vi
+      .fn()
+      .mockResolvedValue(["xxvisa-claude"]);
+    const app = createApp({
+      preferences,
+      tmuxService: {
+        listSessions: vi.fn(),
+        getSessionStatus: vi.fn(),
+        createSession: vi.fn(),
+        createProjectSessions,
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        sendInput: vi.fn(),
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    const response = await request(app)
+      .post("/api/kanban/projects")
+      .send({
+        name: "xxvisa",
+        path: "/srv/xxvisa",
+        server: "tw1",
+        agents: [
+          {
+            kind: "claude",
+            name: "claude",
+            command: "claude --resume xxvisa"
+          }
+        ]
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual({
+      ok: true,
+      sessions: ["xxvisa-claude"],
+      preferences: {
+        pinnedSessionNames: [],
+        mutedSessionNames: ["tmux-ui"],
+        sessionSettings: {},
+        kanbanProjects: [
+          {
+            name: "xxvisa",
+            path: "/srv/xxvisa",
+            server: "tw1",
+            agents: [
+              {
+                kind: "claude",
+                name: "claude",
+                command: "claude --resume xxvisa"
+              }
+            ]
+          }
+        ]
+      }
+    });
+    expect(preferences.upsertKanbanProject).toHaveBeenCalledWith({
+      name: "xxvisa",
+      path: "/srv/xxvisa",
+      server: "tw1",
+      agents: [
+        {
+          kind: "claude",
+          name: "claude",
+          command: "claude --resume xxvisa"
+        }
+      ]
+    });
+    expect(createProjectSessions).toHaveBeenCalledWith({
+      projectName: "xxvisa",
+      projectPath: "/srv/xxvisa",
+      server: "tw1",
+      agents: [
+        {
+          name: "claude",
+          command: "claude --resume xxvisa"
+        }
+      ]
+    });
   });
 });

@@ -103,6 +103,31 @@ describe("createTabState", () => {
     ]);
   });
 
+  it("can start on the dashboard while preserving restored tabs", () => {
+    localStorage.setItem(
+      "browser-tmux-dashboard.tabs",
+      JSON.stringify([{ id: "tab-1", sessionName: "build", title: "build" }])
+    );
+
+    const state = createTabState({ initialActiveTabId: null });
+
+    expect(state.getTabs()).toEqual([
+      { id: "tab-1", sessionName: "build", title: "build" }
+    ]);
+    expect(state.getActiveTabId()).toBeNull();
+  });
+
+  it("can start on a specific restored tab", () => {
+    localStorage.setItem(
+      "browser-tmux-dashboard.tabs",
+      JSON.stringify([{ id: "tab-1", sessionName: "build", title: "build" }])
+    );
+
+    const state = createTabState({ initialActiveTabId: "tab-1" });
+
+    expect(state.getActiveTabId()).toBe("tab-1");
+  });
+
   it("does not prune pinned tabs during a session list refresh", () => {
     const state = createTabState();
     const pinned = state.openTab("build");

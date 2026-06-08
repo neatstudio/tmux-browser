@@ -140,7 +140,7 @@ Local config:
   This file is intentionally git-ignored.
 
 Example .tmux-ui.publish.json:
-  {"targets":["tw0:/root/tmux","tw1:/root/tmux","vn:/root/tmux"]}
+  {"targets":["server-a:/root/tmux","server-b:/root/tmux"]}
 `);
 }
 

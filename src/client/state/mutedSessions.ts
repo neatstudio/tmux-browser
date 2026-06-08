@@ -1,9 +1,13 @@
+import type { SessionApi } from "../api/sessionApi";
+
 const MUTED_SESSIONS_STORAGE_KEY = "browser-tmux-dashboard.muted-sessions";
 const DEFAULT_MUTED_SESSION_NAMES = ["tmux-ui"];
 
 type MutedSessionsPayload = {
   names: string[];
 };
+
+type MutedSessionsApi = Pick<SessionApi, "getPreferences" | "setMutedSession">;
 
 function normalizeSessionNames(names: Iterable<unknown>) {
   return [...new Set([...names].filter((name): name is string => typeof name === "string"))]
@@ -28,7 +32,10 @@ function readMutedSessionNames(storage: Storage) {
   }
 }
 
-export function createMutedSessionsStore(storage: Storage = window.localStorage) {
+export function createMutedSessionsStore(
+  storage: Storage = window.localStorage,
+  api?: MutedSessionsApi
+) {
   let mutedSessionNames = readMutedSessionNames(storage);
 
   function persist() {
@@ -38,7 +45,27 @@ export function createMutedSessionsStore(storage: Storage = window.localStorage)
     );
   }
 
+  function persistRemote(sessionName: string, muted: boolean) {
+    void api?.setMutedSession(sessionName, muted).catch(() => {
+      // Local mute state remains available when the preference API is offline.
+    });
+  }
+
   return {
+    async load() {
+      if (!api) {
+        return;
+      }
+
+      try {
+        mutedSessionNames = normalizeSessionNames(
+          (await api.getPreferences()).mutedSessionNames ?? DEFAULT_MUTED_SESSION_NAMES
+        );
+        persist();
+      } catch {
+        mutedSessionNames = readMutedSessionNames(storage);
+      }
+    },
     getMutedSessionNames() {
       return mutedSessionNames;
     },
@@ -46,10 +73,12 @@ export function createMutedSessionsStore(storage: Storage = window.localStorage)
       return mutedSessionNames.includes(sessionName);
     },
     toggleMuted(sessionName: string) {
-      mutedSessionNames = mutedSessionNames.includes(sessionName)
-        ? mutedSessionNames.filter((name) => name !== sessionName)
-        : normalizeSessionNames([...mutedSessionNames, sessionName]);
+      const muted = !mutedSessionNames.includes(sessionName);
+      mutedSessionNames = muted
+        ? normalizeSessionNames([...mutedSessionNames, sessionName])
+        : mutedSessionNames.filter((name) => name !== sessionName);
       persist();
+      persistRemote(sessionName, muted);
     },
     renameSession(fromName: string, toName: string) {
       if (!mutedSessionNames.includes(fromName)) {

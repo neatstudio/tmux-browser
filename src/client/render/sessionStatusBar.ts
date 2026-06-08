@@ -11,6 +11,8 @@ export type SessionStatusBarActions = {
   onSendCommand?: () => void;
   onSwitchSession?: () => void;
   onPreviewImage?: () => void;
+  onChooseImage?: () => void;
+  onCaptureImage?: () => void;
   onSplitHorizontal?: () => void;
   onSplitVertical?: () => void;
   onToggleBrowserScroll?: () => void;
@@ -214,7 +216,9 @@ function renderLeftStatusActions(
     createActionButton("reconnect", "Recon", () => actions.onReconnect?.(), !actions.onReconnect, "Reconnect terminal websocket", afterClick),
     createActionButton("config", "Cfg", () => actions.onConfig?.(), !actions.onConfig, "Config session", afterClick),
     createActionButton("rename", "Ren", () => actions.onRename?.(), !actions.onRename, "Rename session", afterClick),
-    createActionButton("preview-image", "Img", () => actions.onPreviewImage?.(), !actions.onPreviewImage, "Preview image file", afterClick)
+    createActionButton("preview-image", "Img", () => actions.onPreviewImage?.(), !actions.onPreviewImage, "Preview image file", afterClick),
+    createActionButton("choose-image", "Photo", () => actions.onChooseImage?.(), !actions.onChooseImage, "Choose image and insert saved path", afterClick),
+    createActionButton("capture-image", "Cam", () => actions.onCaptureImage?.(), !actions.onCaptureImage, "Take photo and insert saved path", afterClick)
   ]);
 
   panesGroup.classList.add("is-left");

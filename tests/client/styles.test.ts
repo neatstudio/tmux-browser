@@ -136,6 +136,18 @@ describe("client layout styles", () => {
       /\.session-sidebar\.is-collapsed\s+\.session-sidebar-text\s*\{[^}]*display:\s*none;/s
     );
     expect(styles).toMatch(
+      /\.session-sidebar\.is-collapsed\s+\.session-sidebar-collapse-hidden\s*\{[^}]*display:\s*none;/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.app-shell--sidebar\s+\.session-sidebar\.is-collapsed\s+\.session-sidebar-text\s*\{[^}]*display:\s*inline-flex;/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.app-shell--sidebar\s+\.session-sidebar\.is-collapsed\s+\.session-sidebar-collapse-hidden\s*\{[^}]*display:\s*flex;/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.app-shell--sidebar\s+\.session-sidebar\.is-collapsed\s+\.session-sidebar-icon\s*\{[^}]*display:\s*none;/s
+    );
+    expect(styles).toMatch(
       /\.session-sidebar-icon\s*\{[^}]*display:\s*none;/s
     );
     expect(styles).toMatch(
@@ -200,6 +212,21 @@ describe("client layout styles", () => {
     );
   });
 
+  it("styles the kanban route as project and agent cards", () => {
+    expect(styles).toMatch(
+      /\.kanban-root\s*\{[^}]*height:\s*100%;[^}]*overflow:\s*auto;/s
+    );
+    expect(styles).toMatch(
+      /\.kanban-create-form\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\);/s
+    );
+    expect(styles).toMatch(
+      /\.kanban-project-list\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(18rem,\s*1fr\)\);/s
+    );
+    expect(styles).toMatch(
+      /\.kanban-agent-card\s*\{[^}]*display:\s*grid;[^}]*border:\s*1px\s+solid\s+rgba\(217,\s*226,\s*234,\s*0\.12\);/s
+    );
+  });
+
   it("turns sidebar mode into a mobile drawer instead of squeezing the terminal", () => {
     expect(styles).toMatch(
       /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.app-shell--sidebar\s+\.content-root,\s*\.app-shell--sidebar\.is-sidebar-collapsed\s+\.content-root\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);/s
@@ -245,6 +272,25 @@ describe("client layout styles", () => {
     );
     expect(styles).toMatch(
       /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.terminal-status-mobile-sheet\s+\.terminal-status-soft-key\s*\{[^}]*min-height:\s*36px;/s
+    );
+  });
+
+  it("uses an adaptive narrow-phone layout for the sidebar drawer and terminal action sheet", () => {
+    expect(styles).toMatch(/@media\s*\(max-width:\s*430px\)\s*\{/);
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*430px\)\s*\{[\s\S]*\.app-shell--sidebar\s+\.session-sidebar\s*\{[^}]*width:\s*calc\(100vw\s*-\s*0\.7rem\);[^}]*max-width:\s*none;/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*430px\)\s*\{[\s\S]*\.terminal-status-bar\s*\{[^}]*min-height:\s*38px;[^}]*padding:\s*0\s+0\.35rem;/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*430px\)\s*\{[\s\S]*\.terminal-status-mobile-sheet\s*\{[^}]*right:\s*0\.35rem;[^}]*left:\s*0\.35rem;[^}]*padding:\s*0\.46rem;/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*430px\)\s*\{[\s\S]*\.terminal-status-mobile-sheet\s+\.terminal-status-action-group\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(4\.8rem,\s*1fr\)\);/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*430px\)\s*\{[\s\S]*\.terminal-status-mobile-sheet\s+\.terminal-status-action-group\[data-group="soft-keys"\]\s*\{[^}]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(3\.25rem,\s*1fr\)\);/s
     );
   });
 

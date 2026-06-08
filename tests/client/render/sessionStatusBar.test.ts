@@ -138,6 +138,8 @@ describe("sessionStatusBar", () => {
     const onSendCommand = vi.fn();
     const onSwitchSession = vi.fn();
     const onPreviewImage = vi.fn();
+    const onChooseImage = vi.fn();
+    const onCaptureImage = vi.fn();
     const onSplitHorizontal = vi.fn();
     const onSplitVertical = vi.fn();
     const onToggleBrowserScroll = vi.fn();
@@ -155,6 +157,8 @@ describe("sessionStatusBar", () => {
       onSendCommand,
       onSwitchSession,
       onPreviewImage,
+      onChooseImage,
+      onCaptureImage,
       onSplitHorizontal,
       onSplitVertical,
       onToggleBrowserScroll,
@@ -174,6 +178,8 @@ describe("sessionStatusBar", () => {
     root.querySelector<HTMLButtonElement>("[data-action='send']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='switch-session']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='preview-image']")?.click();
+    root.querySelector<HTMLButtonElement>("[data-action='choose-image']")?.click();
+    root.querySelector<HTMLButtonElement>("[data-action='capture-image']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='split-horizontal']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='split-vertical']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='scroll-history-back']")?.click();
@@ -190,6 +196,8 @@ describe("sessionStatusBar", () => {
     expect(onSendCommand).toHaveBeenCalledOnce();
     expect(onSwitchSession).toHaveBeenCalledOnce();
     expect(onPreviewImage).toHaveBeenCalledOnce();
+    expect(onChooseImage).toHaveBeenCalledOnce();
+    expect(onCaptureImage).toHaveBeenCalledOnce();
     expect(onSplitHorizontal).toHaveBeenCalledOnce();
     expect(onSplitVertical).toHaveBeenCalledOnce();
     expect(onToggleBrowserScroll).toHaveBeenCalledOnce();
@@ -346,6 +354,8 @@ describe("sessionStatusBar", () => {
       onSendCommand: vi.fn(),
       onSwitchSession: vi.fn(),
       onPreviewImage: vi.fn(),
+      onChooseImage: vi.fn(),
+      onCaptureImage: vi.fn(),
       onSplitHorizontal: vi.fn(),
       onSplitVertical: vi.fn(),
       onToggleBrowserScroll: vi.fn(),
@@ -364,6 +374,8 @@ describe("sessionStatusBar", () => {
       "Cfg",
       "Ren",
       "Img",
+      "Photo",
+      "Cam",
       "Actions",
       "Page",
       "Live",
@@ -391,6 +403,8 @@ describe("sessionStatusBar", () => {
       onSendCommand: vi.fn(),
       onSwitchSession: vi.fn(),
       onPreviewImage: vi.fn(),
+      onChooseImage: vi.fn(),
+      onCaptureImage: vi.fn(),
       onSplitHorizontal: vi.fn(),
       onSplitVertical: vi.fn(),
       onToggleBrowserScroll: vi.fn(),
@@ -418,7 +432,14 @@ describe("sessionStatusBar", () => {
       },
       {
         group: "tools",
-        actions: ["reconnect", "config", "rename", "preview-image"]
+        actions: [
+          "reconnect",
+          "config",
+          "rename",
+          "preview-image",
+          "choose-image",
+          "capture-image"
+        ]
       },
       {
         group: "view",
@@ -449,6 +470,8 @@ describe("sessionStatusBar", () => {
       onSendCommand: vi.fn(),
       onSwitchSession: vi.fn(),
       onPreviewImage: vi.fn(),
+      onChooseImage: vi.fn(),
+      onCaptureImage: vi.fn(),
       onSplitHorizontal: vi.fn(),
       onSplitVertical: vi.fn(),
       onToggleBrowserScroll: vi.fn(),
@@ -548,6 +571,12 @@ describe("sessionStatusBar", () => {
     ).toBe(true);
     expect(
       root.querySelector<HTMLButtonElement>("[data-action='preview-image']")?.disabled
+    ).toBe(true);
+    expect(
+      root.querySelector<HTMLButtonElement>("[data-action='choose-image']")?.disabled
+    ).toBe(true);
+    expect(
+      root.querySelector<HTMLButtonElement>("[data-action='capture-image']")?.disabled
     ).toBe(true);
     expect(
       root.querySelector<HTMLButtonElement>("[data-action='split-horizontal']")?.disabled

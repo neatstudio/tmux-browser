@@ -28,9 +28,16 @@ function loadTabs(): BrowserTab[] {
   }
 }
 
-export function createTabState() {
+export function createTabState(options: { initialActiveTabId?: string | null } = {}) {
   let tabs = loadTabs();
-  let activeTabId: string | null = tabs[0]?.id ?? null;
+  let activeTabId: string | null =
+    options.initialActiveTabId === undefined
+      ? tabs[0]?.id ?? null
+      : options.initialActiveTabId;
+
+  if (activeTabId !== null && !tabs.some((tab) => tab.id === activeTabId)) {
+    activeTabId = tabs[0]?.id ?? null;
+  }
 
   function persist() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(tabs));

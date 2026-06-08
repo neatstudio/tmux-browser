@@ -6,11 +6,12 @@ Lightweight browser UI for listing tmux sessions, opening browser terminal tabs,
 creating sessions, configuring per-session terminal rendering, and killing
 sessions from the UI.
 
-## Prerequisites
+## Requirements
 
-- Node.js 20+
-- npm 11+
-- `tmux` installed and available on `PATH`
+- Source development needs Node.js/npm and `tmux` on `PATH`.
+- Packaged `.run install` auto-installs nvm when Node is missing, installs Node
+  22 through nvm, and installs `tmux` through Homebrew, apt, dnf, yum, apk, or
+  pacman when one of those package managers is available.
 
 ## Scripts
 
@@ -118,6 +119,7 @@ tmux-ui help
 tmux-ui start
 tmux-ui restart
 tmux-ui stop
+tmux-ui upgrade
 tmux-ui uninstall
 ```
 
@@ -147,6 +149,11 @@ named `tmux-ui`. Stop or remove it with:
 tmux-ui stop
 tmux-ui uninstall
 ```
+
+Use `tmux-ui upgrade` to download the latest GitHub Release `release.run` and
+reinstall it in place. If tmux-ui was installed as a service, `upgrade` keeps the
+service mode and restarts through service install; otherwise it runs `install`
+and `restart`.
 
 On Linux/systemd servers, prefer service mode when you do not want a keeper
 tmux session:
@@ -211,7 +218,7 @@ HOST=100.x.y.z PORT=3000 ./release/release.run start
 Publish an existing run file to one or more servers:
 
 ```bash
-npm run publish -- --target tw0:/root/tmux --install --restart
+npm run publish -- --target server-a:/root/tmux --install --restart
 ```
 
 Without `--target`, `publish` reads `.tmux-ui.publish.json` when present. That
@@ -235,6 +242,20 @@ ssh server-a
 On GitHub, pushing to `main` creates tag `v<package.json version>` when it does
 not already exist. That tag builds the same two run files and publishes them as
 a GitHub Release.
+
+## Kanban Projects
+
+Open `/?view=kanban` to create project-scoped agent sessions. A project defines
+the project name, path, optional SSH server, and agents such as `claude`,
+`codex`, or `kiro`. Each agent gets a stable tmux session name:
+`<project>-<agent>`.
+
+For local projects, tmux-ui creates the agent session in the project path and
+optionally starts the configured command. For remote projects, tmux-ui creates a
+local wrapper session with the same stable name; that wrapper SSHes to the
+server and attaches to or creates the same named tmux session on the remote
+host. This keeps browser tabs openable from the local tmux-ui while still giving
+remote agents a predictable resume name.
 
 ## tmux Restoration
 

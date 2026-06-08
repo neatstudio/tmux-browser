@@ -86,6 +86,7 @@ cd "$(dirname "$0")"
 load_node_runtime() {
   export NVM_DIR="\${NVM_DIR:-$HOME/.nvm}"
   local node_version="\${TMUX_UI_NODE_VERSION:-22}"
+  NVM_INSTALL_VERSION="\${TMUX_UI_NVM_VERSION:-v0.40.4}"
 
   prepend_path_if_dir() {
     local directory="$1"
@@ -111,6 +112,33 @@ load_node_runtime() {
 
   export PATH
 
+  install_nvm_if_missing() {
+    if [[ -s "$NVM_DIR/nvm.sh" ]]; then
+      return
+    fi
+
+    local install_url="https://raw.githubusercontent.com/nvm-sh/nvm/$NVM_INSTALL_VERSION/install.sh"
+    echo "Installing nvm $NVM_INSTALL_VERSION into $NVM_DIR"
+    mkdir -p "$NVM_DIR"
+
+    if command -v curl >/dev/null 2>&1; then
+      PROFILE=/dev/null curl -fsSL "$install_url" | bash
+      return
+    fi
+
+    if command -v wget >/dev/null 2>&1; then
+      PROFILE=/dev/null wget -qO- "$install_url" | bash
+      return
+    fi
+
+    echo "Missing curl or wget; cannot install nvm automatically." >&2
+    exit 1
+  }
+
+  if [[ ! -s "$NVM_DIR/nvm.sh" ]]; then
+    install_nvm_if_missing
+  fi
+
   if [[ -s "$NVM_DIR/nvm.sh" ]]; then
     # shellcheck disable=SC1090
     . "$NVM_DIR/nvm.sh"
@@ -123,7 +151,63 @@ load_node_runtime() {
   if command -v nvm >/dev/null 2>&1; then
     nvm install "$node_version"
     nvm use "$node_version"
+    nvm alias default "$node_version" >/dev/null 2>&1 || true
+    return
   fi
+
+  echo "nvm installation failed; node/npm are still unavailable." >&2
+  exit 1
+}
+
+run_privileged() {
+  if [[ "\${EUID:-$(id -u)}" -eq 0 ]]; then
+    "$@"
+    return
+  fi
+
+  if command -v sudo >/dev/null 2>&1; then
+    sudo "$@"
+    return
+  fi
+
+  echo "Need root privileges to install: $*" >&2
+  exit 1
+}
+
+install_system_packages() {
+  if command -v brew >/dev/null 2>&1; then
+    brew install "$@"
+    return
+  fi
+
+  if command -v apt-get >/dev/null 2>&1; then
+    run_privileged apt-get update
+    run_privileged apt-get install -y "$@"
+    return
+  fi
+
+  if command -v dnf >/dev/null 2>&1; then
+    run_privileged dnf install -y "$@"
+    return
+  fi
+
+  if command -v yum >/dev/null 2>&1; then
+    run_privileged yum install -y "$@"
+    return
+  fi
+
+  if command -v apk >/dev/null 2>&1; then
+    run_privileged apk add --no-cache "$@"
+    return
+  fi
+
+  if command -v pacman >/dev/null 2>&1; then
+    run_privileged pacman -Sy --noconfirm "$@"
+    return
+  fi
+
+  echo "No supported package manager found for installing: $*" >&2
+  exit 1
 }
 
 require_install_command() {
@@ -140,11 +224,26 @@ check_native_build_requirements() {
   require_install_command python3
 
   if [[ "\${#missing[@]}" -gt 0 ]]; then
-    echo "Missing native build tools required by node-pty: \${missing[*]}" >&2
-    echo "Install them first, then rerun this command." >&2
-    echo "Debian/Ubuntu: apt-get update && apt-get install -y build-essential python3" >&2
-    echo "RHEL/CentOS: dnf groupinstall -y 'Development Tools' && dnf install -y python3" >&2
-    exit 1
+    echo "Installing native build tools required by node-pty: \${missing[*]}"
+
+    if command -v apt-get >/dev/null 2>&1; then
+      install_system_packages build-essential python3
+    elif command -v dnf >/dev/null 2>&1; then
+      run_privileged dnf groupinstall -y "Development Tools" || true
+      install_system_packages python3 gcc-c++ make
+    elif command -v yum >/dev/null 2>&1; then
+      run_privileged yum groupinstall -y "Development Tools" || true
+      install_system_packages python3 gcc-c++ make
+    elif command -v apk >/dev/null 2>&1; then
+      install_system_packages build-base python3
+    elif command -v pacman >/dev/null 2>&1; then
+      install_system_packages base-devel python
+    elif command -v brew >/dev/null 2>&1; then
+      install_system_packages python
+    else
+      echo "Missing native build tools required by node-pty: \${missing[*]}" >&2
+      exit 1
+    fi
   fi
 }
 
@@ -164,6 +263,7 @@ TMUX_UI_TMUX_AUTO_RESTORE="\${TMUX_UI_TMUX_AUTO_RESTORE:-1}"
 load_node_runtime() {
   export NVM_DIR="\${NVM_DIR:-$HOME/.nvm}"
   local node_version="\${TMUX_UI_NODE_VERSION:-22}"
+  NVM_INSTALL_VERSION="\${TMUX_UI_NVM_VERSION:-v0.40.4}"
 
   prepend_path_if_dir() {
     local directory="$1"
@@ -189,6 +289,33 @@ load_node_runtime() {
 
   export PATH
 
+  install_nvm_if_missing() {
+    if [[ -s "$NVM_DIR/nvm.sh" ]]; then
+      return
+    fi
+
+    local install_url="https://raw.githubusercontent.com/nvm-sh/nvm/$NVM_INSTALL_VERSION/install.sh"
+    echo "Installing nvm $NVM_INSTALL_VERSION into $NVM_DIR"
+    mkdir -p "$NVM_DIR"
+
+    if command -v curl >/dev/null 2>&1; then
+      PROFILE=/dev/null curl -fsSL "$install_url" | bash
+      return
+    fi
+
+    if command -v wget >/dev/null 2>&1; then
+      PROFILE=/dev/null wget -qO- "$install_url" | bash
+      return
+    fi
+
+    echo "Missing curl or wget; cannot install nvm automatically." >&2
+    exit 1
+  }
+
+  if [[ ! -s "$NVM_DIR/nvm.sh" ]]; then
+    install_nvm_if_missing
+  fi
+
   if [[ -s "$NVM_DIR/nvm.sh" ]]; then
     # shellcheck disable=SC1090
     . "$NVM_DIR/nvm.sh"
@@ -201,7 +328,72 @@ load_node_runtime() {
   if command -v nvm >/dev/null 2>&1; then
     nvm install "$node_version"
     nvm use "$node_version"
+    nvm alias default "$node_version" >/dev/null 2>&1 || true
+    return
   fi
+
+  echo "nvm installation failed; node/npm are still unavailable." >&2
+  exit 1
+}
+
+run_privileged() {
+  if [[ "\${EUID:-$(id -u)}" -eq 0 ]]; then
+    "$@"
+    return
+  fi
+
+  if command -v sudo >/dev/null 2>&1; then
+    sudo "$@"
+    return
+  fi
+
+  echo "Need root privileges to install: $*" >&2
+  exit 1
+}
+
+install_system_packages() {
+  if command -v brew >/dev/null 2>&1; then
+    brew install "$@"
+    return
+  fi
+
+  if command -v apt-get >/dev/null 2>&1; then
+    run_privileged apt-get update
+    run_privileged apt-get install -y "$@"
+    return
+  fi
+
+  if command -v dnf >/dev/null 2>&1; then
+    run_privileged dnf install -y "$@"
+    return
+  fi
+
+  if command -v yum >/dev/null 2>&1; then
+    run_privileged yum install -y "$@"
+    return
+  fi
+
+  if command -v apk >/dev/null 2>&1; then
+    run_privileged apk add --no-cache "$@"
+    return
+  fi
+
+  if command -v pacman >/dev/null 2>&1; then
+    run_privileged pacman -Sy --noconfirm "$@"
+    return
+  fi
+
+  echo "No supported package manager found for installing: $*" >&2
+  exit 1
+}
+
+ensure_tmux_available() {
+  if command -v tmux >/dev/null 2>&1; then
+    return
+  fi
+
+  echo "tmux not found; installing tmux."
+  install_system_packages tmux
 }
 
 reject_wildcard_host() {
@@ -250,7 +442,7 @@ require_command() {
 }
 
 load_node_runtime
-require_command tmux
+ensure_tmux_available
 if [[ "$TMUX_UI_TMUX_AUTO_RESTORE" != "0" && -x "./tmux-resurrect.sh" ]]; then
   ./tmux-resurrect.sh restore-if-empty || true
 fi
@@ -336,6 +528,7 @@ COMMAND="\${1:-help}"
 MARKER="${payloadMarker}"
 ORIGINAL_PATH="\${PATH:-}"
 TMUX_UI_PROFILE_UPDATED=""
+TMUX_UI_UPGRADE_URL="\${TMUX_UI_UPGRADE_URL:-https://github.com/neatstudio/tmux-browser/releases/latest/download/release.run}"
 
 archive_line() {
   awk "/^\${MARKER}$/ { print NR + 1; exit 0; }" "$0"
@@ -505,6 +698,7 @@ require_command() {
 load_node_runtime() {
   export NVM_DIR="\${NVM_DIR:-$HOME/.nvm}"
   local node_version="\${TMUX_UI_NODE_VERSION:-22}"
+  NVM_INSTALL_VERSION="\${TMUX_UI_NVM_VERSION:-v0.40.4}"
 
   prepend_path_if_dir() {
     local directory="$1"
@@ -530,6 +724,33 @@ load_node_runtime() {
 
   export PATH
 
+  install_nvm_if_missing() {
+    if [[ -s "$NVM_DIR/nvm.sh" ]]; then
+      return
+    fi
+
+    local install_url="https://raw.githubusercontent.com/nvm-sh/nvm/$NVM_INSTALL_VERSION/install.sh"
+    echo "Installing nvm $NVM_INSTALL_VERSION into $NVM_DIR"
+    mkdir -p "$NVM_DIR"
+
+    if command -v curl >/dev/null 2>&1; then
+      PROFILE=/dev/null curl -fsSL "$install_url" | bash
+      return
+    fi
+
+    if command -v wget >/dev/null 2>&1; then
+      PROFILE=/dev/null wget -qO- "$install_url" | bash
+      return
+    fi
+
+    echo "Missing curl or wget; cannot install nvm automatically." >&2
+    exit 1
+  }
+
+  if [[ ! -s "$NVM_DIR/nvm.sh" ]]; then
+    install_nvm_if_missing
+  fi
+
   if [[ -s "$NVM_DIR/nvm.sh" ]]; then
     # shellcheck disable=SC1090
     . "$NVM_DIR/nvm.sh"
@@ -542,7 +763,72 @@ load_node_runtime() {
   if command -v nvm >/dev/null 2>&1; then
     nvm install "$node_version"
     nvm use "$node_version"
+    nvm alias default "$node_version" >/dev/null 2>&1 || true
+    return
   fi
+
+  echo "nvm installation failed; node/npm are still unavailable." >&2
+  exit 1
+}
+
+run_privileged() {
+  if [[ "\${EUID:-$(id -u)}" -eq 0 ]]; then
+    "$@"
+    return
+  fi
+
+  if command -v sudo >/dev/null 2>&1; then
+    sudo "$@"
+    return
+  fi
+
+  echo "Need root privileges to install: $*" >&2
+  exit 1
+}
+
+install_system_packages() {
+  if command -v brew >/dev/null 2>&1; then
+    brew install "$@"
+    return
+  fi
+
+  if command -v apt-get >/dev/null 2>&1; then
+    run_privileged apt-get update
+    run_privileged apt-get install -y "$@"
+    return
+  fi
+
+  if command -v dnf >/dev/null 2>&1; then
+    run_privileged dnf install -y "$@"
+    return
+  fi
+
+  if command -v yum >/dev/null 2>&1; then
+    run_privileged yum install -y "$@"
+    return
+  fi
+
+  if command -v apk >/dev/null 2>&1; then
+    run_privileged apk add --no-cache "$@"
+    return
+  fi
+
+  if command -v pacman >/dev/null 2>&1; then
+    run_privileged pacman -Sy --noconfirm "$@"
+    return
+  fi
+
+  echo "No supported package manager found for installing: $*" >&2
+  exit 1
+}
+
+ensure_tmux_available() {
+  if command -v tmux >/dev/null 2>&1; then
+    return
+  fi
+
+  echo "tmux not found; installing tmux."
+  install_system_packages tmux
 }
 
 show_help() {
@@ -554,6 +840,7 @@ Commands:
   install      Extract and install production npm dependencies
   start        Extract and start the server, installing deps if missing
   restart      Extract, install if needed, and restart inside a tmux-ui tmux session
+  upgrade      Download/install latest tmux-ui run file
   stop         Stop the tmux-ui service started by restart
   service-install  Install systemd/launchd service
   service-start    Start systemd/launchd service
@@ -578,6 +865,7 @@ Environment:
   TMUX_UI_LAUNCHD_LABEL macOS launchd label, default: com.neatstudio.$SERVICE_NAME
   TMUX_UI_LAUNCHD_PLIST macOS launchd plist path, default: ~/Library/LaunchAgents/$LAUNCHD_LABEL.plist
   TMUX_UI_TMUX_AUTO_RESTORE set to 0 to disable automatic restore when tmux is empty
+  TMUX_UI_UPGRADE_URL latest release.run URL for upgrade
   HOST              Bind host for start. Defaults to the first 100.* Tailscale IP, then 127.0.0.1. 0.0.0.0 is rejected.
   PORT              Bind port for start, default: 3000
 
@@ -923,6 +1211,45 @@ is_launchd_running() {
   [[ "$output" == *"state = running"* ]] && [[ "$output" == *"pid ="* ]]
 }
 
+download_upgrade_run() {
+  local upgrade_file
+  upgrade_file="$(mktemp "\${TMPDIR:-/tmp}/tmux-ui-upgrade.XXXXXX.run")"
+
+  echo "Downloading tmux-ui upgrade from $TMUX_UI_UPGRADE_URL" >&2
+  if command -v curl >/dev/null 2>&1; then
+    curl -fL "$TMUX_UI_UPGRADE_URL" -o "$upgrade_file"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -O "$upgrade_file" "$TMUX_UI_UPGRADE_URL"
+  else
+    echo "Missing curl or wget; cannot download upgrade." >&2
+    exit 1
+  fi
+
+  chmod +x "$upgrade_file"
+  echo "$upgrade_file"
+}
+
+upgrade_server() {
+  local upgrade_file
+  upgrade_file="$(download_upgrade_run)"
+
+  if is_macos && [[ -f "$LAUNCHD_PLIST_PATH" ]]; then
+    "$upgrade_file" service-install
+    rm -f "$upgrade_file"
+    return
+  fi
+
+  if command -v systemctl >/dev/null 2>&1 && [[ -f "$SYSTEMD_UNIT_PATH" ]]; then
+    "$upgrade_file" service-install
+    rm -f "$upgrade_file"
+    return
+  fi
+
+  "$upgrade_file" install
+  "$upgrade_file" restart
+  rm -f "$upgrade_file"
+}
+
 install_service() {
   if is_macos; then
     install_launchd_service
@@ -932,7 +1259,7 @@ install_service() {
   load_node_runtime
   require_command node
   require_command npm
-  require_command tmux
+  ensure_tmux_available
   require_command systemctl
   extract_payload
   install_cli_entrypoint
@@ -1024,7 +1351,7 @@ stop_server() {
 restart_server() {
   require_command node
   require_command npm
-  require_command tmux
+  ensure_tmux_available
   extract_payload
 
   if [[ ! -d "$APP_HOME/node_modules" ]]; then
@@ -1055,6 +1382,7 @@ case "$COMMAND" in
   install)
     load_node_runtime
     require_command npm
+    ensure_tmux_available
     extract_payload
     install_cli_entrypoint
     "$APP_HOME/install.sh"
@@ -1063,7 +1391,7 @@ case "$COMMAND" in
     load_node_runtime
     require_command node
     require_command npm
-    require_command tmux
+    ensure_tmux_available
     extract_payload
     install_cli_entrypoint
 
@@ -1082,6 +1410,9 @@ case "$COMMAND" in
     load_node_runtime
     install_cli_entrypoint
     restart_server
+    ;;
+  upgrade)
+    upgrade_server
     ;;
   service-install)
     install_service

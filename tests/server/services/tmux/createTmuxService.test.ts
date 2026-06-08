@@ -256,6 +256,157 @@ describe("createTmuxService", () => {
     ]);
   });
 
+  it("creates project agent sessions with stable names and project paths", async () => {
+    const run = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("missing"))
+      .mockResolvedValueOnce({ stdout: "", stderr: "" })
+      .mockRejectedValueOnce(new Error("missing"))
+      .mockResolvedValueOnce({ stdout: "", stderr: "" })
+      .mockRejectedValueOnce(new Error("missing"))
+      .mockResolvedValueOnce({ stdout: "", stderr: "" });
+    const service = createTmuxService({ run, homeDirectory: "/home/app" });
+
+    await service.createProjectSessions({
+      projectName: "xxvisa",
+      projectPath: "/srv/xxvisa",
+      agents: [
+        { name: "claude", command: "claude --resume xxvisa-claude" },
+        { name: "codex", command: "" },
+        { name: "kiro", command: null }
+      ]
+    });
+
+    expect(run).toHaveBeenNthCalledWith(1, "has-session", [
+      "-t",
+      "xxvisa-claude"
+    ]);
+    expect(run).toHaveBeenNthCalledWith(2, "new-session", [
+      "-d",
+      "-c",
+      "/srv/xxvisa",
+      "-e",
+      "CLICOLOR=1",
+      "-e",
+      "COLORTERM=truecolor",
+      "-e",
+      "TERM=xterm-256color",
+      "-s",
+      "xxvisa-claude",
+      "claude --resume xxvisa-claude"
+    ]);
+    expect(run).toHaveBeenNthCalledWith(3, "has-session", [
+      "-t",
+      "xxvisa-codex"
+    ]);
+    expect(run).toHaveBeenNthCalledWith(4, "new-session", [
+      "-d",
+      "-c",
+      "/srv/xxvisa",
+      "-e",
+      "CLICOLOR=1",
+      "-e",
+      "COLORTERM=truecolor",
+      "-e",
+      "TERM=xterm-256color",
+      "-s",
+      "xxvisa-codex"
+    ]);
+    expect(run).toHaveBeenNthCalledWith(5, "has-session", [
+      "-t",
+      "xxvisa-kiro"
+    ]);
+    expect(run).toHaveBeenNthCalledWith(6, "new-session", [
+      "-d",
+      "-c",
+      "/srv/xxvisa",
+      "-e",
+      "CLICOLOR=1",
+      "-e",
+      "COLORTERM=truecolor",
+      "-e",
+      "TERM=xterm-256color",
+      "-s",
+      "xxvisa-kiro"
+    ]);
+  });
+
+  it("creates project agent sessions on the selected remote server", async () => {
+    const run = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("missing"))
+      .mockResolvedValueOnce({ stdout: "", stderr: "" });
+    const service = createTmuxService({ run, homeDirectory: "/home/app" });
+
+    await service.createProjectSessions({
+      projectName: "xxvisa",
+      projectPath: "/srv/xxvisa",
+      server: "tw1",
+      agents: [{ name: "claude", command: "claude --resume xxvisa-claude" }]
+    });
+
+    expect(run).toHaveBeenNthCalledWith(1, "has-session", [
+      "-t",
+      "xxvisa-claude"
+    ]);
+    expect(run).toHaveBeenNthCalledWith(2, "new-session", [
+      "-d",
+      "-c",
+      "/home/app",
+      "-e",
+      "CLICOLOR=1",
+      "-e",
+      "COLORTERM=truecolor",
+      "-e",
+      "TERM=xterm-256color",
+      "-s",
+      "xxvisa-claude",
+      "ssh -tt tw1 'tmux new-session -A -s xxvisa-claude -c /srv/xxvisa '\\''claude --resume xxvisa-claude'\\'''"
+    ]);
+  });
+
+  it("skips project agent sessions that already exist", async () => {
+    const run = vi
+      .fn()
+      .mockResolvedValueOnce({ stdout: "", stderr: "" })
+      .mockRejectedValueOnce(new Error("missing"))
+      .mockResolvedValueOnce({ stdout: "", stderr: "" });
+    const service = createTmuxService({ run, homeDirectory: "/home/app" });
+
+    await expect(
+      service.createProjectSessions({
+        projectName: "xxvisa",
+        projectPath: "/srv/xxvisa",
+        agents: [
+          { name: "claude", command: "claude --resume xxvisa-claude" },
+          { name: "codex", command: null }
+        ]
+      })
+    ).resolves.toEqual(["xxvisa-claude", "xxvisa-codex"]);
+
+    expect(run).toHaveBeenNthCalledWith(1, "has-session", [
+      "-t",
+      "xxvisa-claude"
+    ]);
+    expect(run).toHaveBeenNthCalledWith(2, "has-session", [
+      "-t",
+      "xxvisa-codex"
+    ]);
+    expect(run).toHaveBeenNthCalledWith(3, "new-session", [
+      "-d",
+      "-c",
+      "/srv/xxvisa",
+      "-e",
+      "CLICOLOR=1",
+      "-e",
+      "COLORTERM=truecolor",
+      "-e",
+      "TERM=xterm-256color",
+      "-s",
+      "xxvisa-codex"
+    ]);
+  });
+
   it("caches captured pane previews for one minute", async () => {
     const run = vi
       .fn()

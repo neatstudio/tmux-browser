@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   createSessionSettingsStore,
@@ -112,5 +112,38 @@ describe("createSessionSettingsStore", () => {
 
     expect(restored.get("build")).toEqual(DEFAULT_SESSION_SETTINGS);
     expect(restored.get("build-test").fontSize).toBe(18);
+  });
+
+  it("loads and updates per-session settings through server preferences", async () => {
+    const api = {
+      getPreferences: vi.fn().mockResolvedValue({
+        pinnedSessionNames: [],
+        mutedSessionNames: [],
+        sessionSettings: {
+          build: {
+            fontSize: 19,
+            fontFamily: "Menlo, monospace",
+            lineHeight: 1.25,
+            themeId: "paper"
+          }
+        }
+      }),
+      setSessionSettings: vi.fn().mockResolvedValue(undefined)
+    };
+    const store = createSessionSettingsStore(createMemoryStorage(), api);
+
+    await store.load();
+    const nextSettings = store.setFontSize("build", 42);
+
+    expect(store.get("build").fontFamily).toBe(FONT_FAMILY_OPTIONS[2]);
+    expect(nextSettings.fontSize).toBe(24);
+    await vi.waitFor(() => {
+      expect(api.setSessionSettings).toHaveBeenCalledWith("build", {
+        fontSize: 24,
+        fontFamily: FONT_FAMILY_OPTIONS[2],
+        lineHeight: 1.25,
+        themeId: "paper"
+      });
+    });
   });
 });

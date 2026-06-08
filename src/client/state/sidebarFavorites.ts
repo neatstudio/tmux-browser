@@ -36,7 +36,9 @@ export function createSidebarFavoritesStore(api: SidebarFavoritesApi) {
       applyPreferences({
         pinnedSessionNames: pinned
           ? [...pinnedSessionNames, sessionName]
-          : pinnedSessionNames.filter((name) => name !== sessionName)
+          : pinnedSessionNames.filter((name) => name !== sessionName),
+        mutedSessionNames: [],
+        sessionSettings: {}
       });
       await api.setPinnedSession(sessionName, pinned);
     }

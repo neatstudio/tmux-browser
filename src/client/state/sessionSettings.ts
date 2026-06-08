@@ -1,88 +1,26 @@
-export type SessionSettings = {
-  fontSize: number;
-  fontFamily: string;
-  lineHeight: number;
-  themeId: string;
+import type { Preferences, SessionApi } from "../api/sessionApi";
+import {
+  clampSessionFontSize,
+  clampSessionLineHeight,
+  DEFAULT_SESSION_SETTINGS,
+  FONT_FAMILY_OPTIONS,
+  normalizeSessionFontFamily,
+  normalizeSessionSettings,
+  type SessionSettings
+} from "../../shared/sessionSettings";
+
+export {
+  DEFAULT_SESSION_SETTINGS,
+  FONT_FAMILY_OPTIONS,
+  type SessionSettings
 };
-
-export const DEFAULT_SESSION_SETTINGS: SessionSettings = {
-  fontSize: 14,
-  fontFamily:
-    "Iosevka Term, Menlo, PingFang SC, Hiragino Sans GB, Noto Sans Mono CJK SC, Microsoft YaHei UI, monospace",
-  lineHeight: 1.1,
-  themeId: "graphite"
-};
-
-export const FONT_FAMILY_OPTIONS = [
-  DEFAULT_SESSION_SETTINGS.fontFamily,
-  "JetBrains Mono, PingFang SC, Hiragino Sans GB, Noto Sans Mono CJK SC, Microsoft YaHei UI, monospace",
-  "Menlo, PingFang SC, Hiragino Sans GB, Noto Sans Mono CJK SC, Microsoft YaHei UI, monospace",
-  "SFMono-Regular, Consolas, PingFang SC, Hiragino Sans GB, Noto Sans Mono CJK SC, Microsoft YaHei UI, monospace",
-  "monospace"
-];
-
-const FONT_FAMILY_MIGRATIONS = new Map<string, string>([
-  ["Iosevka Term, Menlo, monospace", FONT_FAMILY_OPTIONS[0]!],
-  ["JetBrains Mono, monospace", FONT_FAMILY_OPTIONS[1]!],
-  ["Menlo, monospace", FONT_FAMILY_OPTIONS[2]!],
-  ["SFMono-Regular, Consolas, monospace", FONT_FAMILY_OPTIONS[3]!]
-]);
 
 const SESSION_SETTINGS_STORAGE_KEY = "browser-tmux-dashboard-session-settings";
-const MIN_FONT_SIZE = 10;
-const MAX_FONT_SIZE = 24;
-const MIN_LINE_HEIGHT = 1;
-const MAX_LINE_HEIGHT = 1.8;
 
-function clampFontSize(value: number) {
-  if (!Number.isFinite(value)) {
-    return DEFAULT_SESSION_SETTINGS.fontSize;
-  }
-
-  return Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, Math.round(value)));
-}
-
-function clampLineHeight(value: number) {
-  if (!Number.isFinite(value)) {
-    return DEFAULT_SESSION_SETTINGS.lineHeight;
-  }
-
-  return Number(
-    Math.min(MAX_LINE_HEIGHT, Math.max(MIN_LINE_HEIGHT, value)).toFixed(2)
-  );
-}
-
-function normalizeFontFamily(value: unknown) {
-  if (typeof value !== "string") {
-    return DEFAULT_SESSION_SETTINGS.fontFamily;
-  }
-
-  return FONT_FAMILY_MIGRATIONS.get(value) ?? value;
-}
-
-function normalizeSettings(value: unknown): SessionSettings {
-  if (!value || typeof value !== "object") {
-    return DEFAULT_SESSION_SETTINGS;
-  }
-
-  return {
-    fontSize: clampFontSize(
-      "fontSize" in value ? Number(value.fontSize) : DEFAULT_SESSION_SETTINGS.fontSize
-    ),
-    fontFamily: normalizeFontFamily(
-      "fontFamily" in value ? value.fontFamily : undefined
-    ),
-    lineHeight: clampLineHeight(
-      "lineHeight" in value
-        ? Number(value.lineHeight)
-        : DEFAULT_SESSION_SETTINGS.lineHeight
-    ),
-    themeId:
-      "themeId" in value && typeof value.themeId === "string"
-        ? value.themeId
-        : DEFAULT_SESSION_SETTINGS.themeId
-  };
-}
+type SessionSettingsApi = Pick<
+  SessionApi,
+  "getPreferences" | "setSessionSettings"
+>;
 
 function readSettings(storage: Storage): Record<string, SessionSettings> {
   const stored = storage.getItem(SESSION_SETTINGS_STORAGE_KEY);
@@ -101,7 +39,7 @@ function readSettings(storage: Storage): Record<string, SessionSettings> {
     return Object.fromEntries(
       Object.entries(parsed).map(([sessionName, settings]) => [
         sessionName,
-        normalizeSettings(settings)
+        normalizeSessionSettings(settings)
       ])
     );
   } catch {
@@ -109,8 +47,19 @@ function readSettings(storage: Storage): Record<string, SessionSettings> {
   }
 }
 
+function normalizeSettingsRecord(
+  settings: Preferences["sessionSettings"] | undefined
+) {
+  return Object.fromEntries(
+    Object.entries(settings ?? {})
+      .map(([sessionName, value]) => [sessionName.trim(), normalizeSessionSettings(value)])
+      .filter(([sessionName]) => sessionName)
+  );
+}
+
 export function createSessionSettingsStore(
-  storage: Storage = window.localStorage
+  storage: Storage = window.localStorage,
+  api?: SessionSettingsApi
 ) {
   let settingsBySession = readSettings(storage);
 
@@ -125,12 +74,32 @@ export function createSessionSettingsStore(
     );
   }
 
+  function persistRemote(sessionName: string, settings: SessionSettings) {
+    void api?.setSessionSettings(sessionName, settings).catch(() => {
+      // Local settings remain usable when the preference API is temporarily unavailable.
+    });
+  }
+
   return {
+    async load() {
+      if (!api) {
+        return;
+      }
+
+      try {
+        settingsBySession = normalizeSettingsRecord(
+          (await api.getPreferences()).sessionSettings
+        );
+        persist();
+      } catch {
+        settingsBySession = readSettings(storage);
+      }
+    },
     get,
     setFontSize(sessionName: string, fontSize: number): SessionSettings {
       const nextSettings = {
         ...get(sessionName),
-        fontSize: clampFontSize(fontSize)
+        fontSize: clampSessionFontSize(fontSize)
       };
 
       settingsBySession = {
@@ -138,13 +107,17 @@ export function createSessionSettingsStore(
         [sessionName]: nextSettings
       };
       persist();
+      persistRemote(sessionName, nextSettings);
 
       return nextSettings;
     },
-    setFontFamily(sessionName: string, fontFamily: string): SessionSettings {
+    setFontFamily(
+      sessionName: string,
+      fontFamily: string
+    ): SessionSettings {
       const nextSettings = {
         ...get(sessionName),
-        fontFamily: normalizeFontFamily(fontFamily)
+        fontFamily: normalizeSessionFontFamily(fontFamily)
       };
 
       settingsBySession = {
@@ -152,13 +125,17 @@ export function createSessionSettingsStore(
         [sessionName]: nextSettings
       };
       persist();
+      persistRemote(sessionName, nextSettings);
 
       return nextSettings;
     },
-    setLineHeight(sessionName: string, lineHeight: number): SessionSettings {
+    setLineHeight(
+      sessionName: string,
+      lineHeight: number
+    ): SessionSettings {
       const nextSettings = {
         ...get(sessionName),
-        lineHeight: clampLineHeight(lineHeight)
+        lineHeight: clampSessionLineHeight(lineHeight)
       };
 
       settingsBySession = {
@@ -166,6 +143,7 @@ export function createSessionSettingsStore(
         [sessionName]: nextSettings
       };
       persist();
+      persistRemote(sessionName, nextSettings);
 
       return nextSettings;
     },
@@ -180,6 +158,7 @@ export function createSessionSettingsStore(
         [sessionName]: nextSettings
       };
       persist();
+      persistRemote(sessionName, nextSettings);
 
       return nextSettings;
     },

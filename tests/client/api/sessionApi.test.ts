@@ -70,16 +70,46 @@ describe("createSessionApi", () => {
       .fn()
       .mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve({ pinnedSessionNames: ["build"] })
+        json: () =>
+          Promise.resolve({
+            pinnedSessionNames: ["build"],
+            mutedSessionNames: ["tmux-ui"],
+            sessionSettings: {
+              build: {
+                fontSize: 16,
+                fontFamily: "Menlo, monospace",
+                lineHeight: 1.2,
+                themeId: "paper"
+              }
+            }
+          })
       })
+      .mockResolvedValueOnce({ ok: true })
+      .mockResolvedValueOnce({ ok: true })
       .mockResolvedValueOnce({ ok: true });
     vi.stubGlobal("fetch", fetch);
     const api = createSessionApi();
 
     await expect(api.getPreferences()).resolves.toEqual({
-      pinnedSessionNames: ["build"]
+      pinnedSessionNames: ["build"],
+      mutedSessionNames: ["tmux-ui"],
+      sessionSettings: {
+        build: {
+          fontSize: 16,
+          fontFamily: "Menlo, monospace",
+          lineHeight: 1.2,
+          themeId: "paper"
+        }
+      }
     });
     await api.setPinnedSession("build", false);
+    await api.setMutedSession("tmux-ui", false);
+    await api.setSessionSettings("build", {
+      fontSize: 18,
+      fontFamily: "Menlo, monospace",
+      lineHeight: 1.35,
+      themeId: "solar"
+    });
 
     expect(fetch).toHaveBeenNthCalledWith(1, "/api/preferences");
     expect(fetch).toHaveBeenNthCalledWith(
@@ -93,6 +123,119 @@ describe("createSessionApi", () => {
         body: JSON.stringify({ pinned: false })
       }
     );
+    expect(fetch).toHaveBeenNthCalledWith(
+      3,
+      "/api/preferences/muted-sessions/tmux-ui",
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ muted: false })
+      }
+    );
+    expect(fetch).toHaveBeenNthCalledWith(
+      4,
+      "/api/preferences/session-settings/build",
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          settings: {
+            fontSize: 18,
+            fontFamily: "Menlo, monospace",
+            lineHeight: 1.35,
+            themeId: "solar"
+          }
+        })
+      }
+    );
+  });
+
+  it("loads and creates kanban projects", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            projects: [
+              {
+                name: "xxvisa",
+                path: "/srv/xxvisa",
+                server: "tw1",
+                agents: [
+                  {
+                    kind: "claude",
+                    name: "claude",
+                    command: "claude --resume xxvisa"
+                  }
+                ]
+              }
+            ]
+          })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            ok: true,
+            sessions: ["xxvisa-claude"]
+          })
+      });
+    vi.stubGlobal("fetch", fetch);
+    const api = createSessionApi();
+
+    await expect(api.listKanbanProjects()).resolves.toEqual([
+      {
+        name: "xxvisa",
+        path: "/srv/xxvisa",
+        server: "tw1",
+        agents: [
+          {
+            kind: "claude",
+            name: "claude",
+            command: "claude --resume xxvisa"
+          }
+        ]
+      }
+    ]);
+    await expect(
+      api.createKanbanProject({
+        name: "xxvisa",
+        path: "/srv/xxvisa",
+        server: "tw1",
+        agents: [
+          {
+            kind: "claude",
+            name: "claude",
+            command: "claude --resume xxvisa"
+          }
+        ]
+      })
+    ).resolves.toEqual(["xxvisa-claude"]);
+
+    expect(fetch).toHaveBeenNthCalledWith(1, "/api/kanban/projects");
+    expect(fetch).toHaveBeenNthCalledWith(2, "/api/kanban/projects", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        name: "xxvisa",
+        path: "/srv/xxvisa",
+        server: "tw1",
+        agents: [
+          {
+            kind: "claude",
+            name: "claude",
+            command: "claude --resume xxvisa"
+          }
+        ]
+      })
+    });
   });
 
   it("loads lightweight sessions without previews by default", async () => {

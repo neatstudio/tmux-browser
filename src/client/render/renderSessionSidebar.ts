@@ -44,6 +44,16 @@ function getBrowserStatus(
   return tab.active ? "ACTIVE" : "OPEN";
 }
 
+function getCompactSessionMarker(sessionName: string) {
+  const normalized = sessionName
+    .trim()
+    .replace(/^[^a-zA-Z0-9]+/, "")
+    .slice(0, 2)
+    .toLowerCase();
+
+  return normalized || "?";
+}
+
 function renderSessionButton(
   session: SessionSummary,
   state: DashboardState,
@@ -66,13 +76,14 @@ function renderSessionButton(
     session.currentPath,
     state.serverStatus?.homeDirectory
   );
-  const iconText = session.name.trim().slice(0, 1).toLowerCase() || "?";
+  const iconText = getCompactSessionMarker(session.name);
 
   button.type = "button";
   button.className = `session-sidebar-item${isActive ? " is-active" : ""}${
     isPinned ? " is-pinned" : ""
   }${isMuted ? " is-muted" : ""}`;
   button.dataset.sessionName = session.name;
+  button.setAttribute("aria-label", [session.name, path].filter(Boolean).join(" · "));
   button.title = [session.name, path, session.currentCommand]
     .filter(Boolean)
     .join(" · ");
@@ -87,13 +98,14 @@ function renderSessionButton(
   icon.setAttribute("aria-hidden", "true");
 
   const name = document.createElement("strong");
-  name.className = "session-sidebar-text";
+  name.className = "session-sidebar-name session-sidebar-text";
   name.textContent = session.name;
   header.append(icon, name);
 
   const pinButton = document.createElement("button");
   pinButton.type = "button";
-  pinButton.className = "session-sidebar-pin";
+  pinButton.className = "session-sidebar-pin session-sidebar-collapse-hidden";
+  pinButton.dataset.collapsedHidden = "true";
   pinButton.dataset.action = "toggle-sidebar-pin";
   pinButton.setAttribute("aria-label", `${isPinned ? "Unpin" : "Pin"} ${session.name}`);
   pinButton.setAttribute("aria-pressed", isPinned ? "true" : "false");
@@ -107,7 +119,8 @@ function renderSessionButton(
 
   const muteButton = document.createElement("button");
   muteButton.type = "button";
-  muteButton.className = "session-sidebar-mute";
+  muteButton.className = "session-sidebar-mute session-sidebar-collapse-hidden";
+  muteButton.dataset.collapsedHidden = "true";
   muteButton.dataset.action = "toggle-sidebar-muted";
   muteButton.setAttribute("aria-label", `${isMuted ? "Unmute" : "Mute"} ${session.name}`);
   muteButton.setAttribute("aria-pressed", isMuted ? "true" : "false");
@@ -120,7 +133,9 @@ function renderSessionButton(
   });
 
   const badges = document.createElement("span");
-  badges.className = "session-sidebar-badges session-sidebar-text";
+  badges.className =
+    "session-sidebar-badges session-sidebar-text session-sidebar-collapse-hidden";
+  badges.dataset.collapsedHidden = "true";
 
   const tmuxStatus = document.createElement("span");
   tmuxStatus.className = `session-sidebar-badge is-${session.status}`;

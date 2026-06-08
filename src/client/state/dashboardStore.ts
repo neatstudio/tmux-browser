@@ -1,4 +1,5 @@
 import type {
+  KanbanProject,
   ServerStatus,
   SessionApi,
   SessionSummary,
@@ -10,6 +11,7 @@ import type { BrowserTab } from "./tabState";
 export type DashboardState = {
   sessions: SessionSummary[];
   serverStatus: ServerStatus | null;
+  kanbanProjects: KanbanProject[];
   timelineEvents?: TimelineEvent[];
   loading: boolean;
   error: string | null;
@@ -30,6 +32,8 @@ type DashboardStoreDeps = {
     | "splitPane"
     | "selectPane"
     | "killPane"
+    | "listKanbanProjects"
+    | "createKanbanProject"
   > &
     Partial<Pick<SessionApi, "listTimelineEvents">>;
   pollMs: number;
@@ -56,6 +60,7 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
   let state: DashboardState = {
     sessions: [],
     serverStatus: null,
+    kanbanProjects: [],
     timelineEvents: [],
     loading: false,
     error: null
@@ -102,6 +107,8 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
       state.error !== nextState.error ||
       JSON.stringify(state.serverStatus) !==
         JSON.stringify(nextState.serverStatus) ||
+      JSON.stringify(state.kanbanProjects) !==
+        JSON.stringify(nextState.kanbanProjects) ||
       JSON.stringify(state.timelineEvents ?? []) !==
         JSON.stringify(nextState.timelineEvents ?? []) ||
       !sessionsEqual(state.sessions, nextState.sessions);
@@ -214,6 +221,7 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
       commit({
         sessions,
         serverStatus,
+        kanbanProjects: state.kanbanProjects,
         timelineEvents: state.timelineEvents,
         loading: false,
         error: null
@@ -265,6 +273,24 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
         });
       }
     },
+    async refreshKanbanProjects() {
+      try {
+        const kanbanProjects = await deps.api.listKanbanProjects();
+
+        commit({
+          ...state,
+          kanbanProjects,
+          loading: false,
+          error: null
+        });
+      } catch (error) {
+        commit({
+          ...state,
+          loading: false,
+          error: error instanceof Error ? error.message : "Failed to refresh kanban projects"
+        });
+      }
+    },
     subscribe(listener: (state: DashboardState) => void) {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -303,6 +329,15 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
       await deps.api.killPane(name, paneId);
       await refreshTimeline();
       await refresh({ includePanes: true });
+    },
+    async createKanbanProject(project: KanbanProject) {
+      await deps.api.createKanbanProject(project);
+      await refresh({
+        includePreview: false,
+        includePanes: true,
+        includeServerStatus: false,
+        preferActiveSessionStatus: false
+      });
     },
     startPolling() {
       if (timer !== null || dashboardTimer !== null || serverStatusTimer !== null) {

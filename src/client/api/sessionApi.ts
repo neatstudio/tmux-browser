@@ -1,4 +1,5 @@
 import type { TerminalInputPrompt } from "../../shared/inputPromptDetector";
+import type { SessionSettings } from "../../shared/sessionSettings";
 import type { TimelineEvent } from "../../shared/timeline";
 
 export type SessionSummary = {
@@ -38,6 +39,22 @@ export type SplitPaneDirection = "horizontal" | "vertical";
 
 export type Preferences = {
   pinnedSessionNames: string[];
+  mutedSessionNames: string[];
+  sessionSettings: Record<string, SessionSettings>;
+  kanbanProjects: KanbanProject[];
+};
+
+export type KanbanAgent = {
+  kind: string;
+  name: string;
+  command: string | null;
+};
+
+export type KanbanProject = {
+  name: string;
+  path: string;
+  server: string | null;
+  agents: KanbanAgent[];
 };
 
 export type ServerStatus = {
@@ -58,7 +75,11 @@ export type SessionApi = {
   listDashboardSessions: (onlySessionNames?: string[]) => Promise<SessionSummary[]>;
   listTimelineEvents: (limit?: number) => Promise<TimelineEvent[]>;
   getPreferences: () => Promise<Preferences>;
+  listKanbanProjects: () => Promise<KanbanProject[]>;
+  createKanbanProject: (project: KanbanProject) => Promise<string[]>;
   setPinnedSession: (name: string, pinned: boolean) => Promise<void>;
+  setMutedSession: (name: string, muted: boolean) => Promise<void>;
+  setSessionSettings: (name: string, settings: SessionSettings) => Promise<void>;
   getSessionStatus: (name: string) => Promise<SessionSummary>;
   getServerStatus: () => Promise<ServerStatus>;
   createSession: (name: string) => Promise<void>;
@@ -139,6 +160,34 @@ export function createSessionApi(baseUrl = ""): SessionApi {
 
       return (await response.json()) as Preferences;
     },
+    async listKanbanProjects() {
+      const response = await fetch(`${baseUrl}/api/kanban/projects`);
+
+      if (!response.ok) {
+        throw new Error("Failed to load kanban projects");
+      }
+
+      const payload = (await response.json()) as { projects: KanbanProject[] };
+
+      return payload.projects;
+    },
+    async createKanbanProject(project) {
+      const response = await fetch(`${baseUrl}/api/kanban/projects`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(project)
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to create kanban project");
+      }
+
+      const payload = (await response.json()) as { sessions: string[] };
+
+      return payload.sessions;
+    },
     async setPinnedSession(name: string, pinned: boolean) {
       const response = await fetch(
         `${baseUrl}/api/preferences/pinned-sessions/${encodeURIComponent(name)}`,
@@ -153,6 +202,38 @@ export function createSessionApi(baseUrl = ""): SessionApi {
 
       if (!response.ok) {
         throw new Error("Failed to update favorite session");
+      }
+    },
+    async setMutedSession(name: string, muted: boolean) {
+      const response = await fetch(
+        `${baseUrl}/api/preferences/muted-sessions/${encodeURIComponent(name)}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ muted })
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to update muted session");
+      }
+    },
+    async setSessionSettings(name: string, settings: SessionSettings) {
+      const response = await fetch(
+        `${baseUrl}/api/preferences/session-settings/${encodeURIComponent(name)}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ settings })
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to update session settings");
       }
     },
     async getSessionStatus(name: string) {

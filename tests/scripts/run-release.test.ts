@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 
 import { describe, expect, it } from "vitest";
 import {
@@ -19,6 +20,15 @@ const readmeZh = readFileSync("README.zh-CN.md", "utf8");
 const publishExample = readFileSync(".tmux-ui.publish.json.example", "utf8");
 
 describe("run release scripts", () => {
+  it("loads the pack script without template syntax errors", () => {
+    const result = spawnSync(process.execPath, ["--check", "scripts/pack-run.mjs"], {
+      encoding: "utf8"
+    });
+
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+  });
+
   it("uses tmux-ui as the public package identity", () => {
     expect(packageJson.name).toBe("tmux-ui");
   });
@@ -49,15 +59,32 @@ describe("run release scripts", () => {
 
   it("loads node through nvm in non-interactive service shells", () => {
     expect(packScript).toContain('local node_version="\\${TMUX_UI_NODE_VERSION:-22}"');
+    expect(packScript).toContain('NVM_INSTALL_VERSION="\\${TMUX_UI_NVM_VERSION:-v0.40.4}"');
+    expect(packScript).toContain("install_nvm_if_missing()");
+    expect(packScript).toContain("https://raw.githubusercontent.com/nvm-sh/nvm/");
+    expect(packScript).toContain('curl -fsSL "$install_url" | bash');
+    expect(packScript).toContain('wget -qO- "$install_url" | bash');
     expect(packScript).toContain('[[ -d "$directory" ]] || return 0');
     expect(packScript).toContain('prepend_path_if_dir "$HOME/.local/bin"');
     expect(packScript).toContain('prepend_path_if_dir "$HOME/.hermes/node/bin"');
     expect(packScript).toContain('prepend_path_if_dir "/opt/homebrew/bin"');
     expect(packScript).toContain('prepend_path_if_dir "/usr/local/bin"');
-    expect(packScript).toContain("require_command tmux");
+    expect(packScript).toContain("ensure_tmux_available");
     expect(packScript).toContain("require_command()");
     expect(packScript).toContain('nvm install "$node_version"');
     expect(packScript).toContain('nvm use "$node_version"');
+  });
+
+  it("auto-installs tmux on supported host package managers", () => {
+    expect(packScript).toContain("ensure_tmux_available()");
+    expect(packScript).toContain("install_system_packages()");
+    expect(packScript).toContain('brew install "$@"');
+    expect(packScript).toContain('apt-get install -y "$@"');
+    expect(packScript).toContain('dnf install -y "$@"');
+    expect(packScript).toContain('yum install -y "$@"');
+    expect(packScript).toContain('apk add --no-cache "$@"');
+    expect(packScript).toContain('pacman -Sy --noconfirm "$@"');
+    expect(packScript).toContain('install_system_packages tmux');
   });
 
   it("uses ~/.tmux-ui and a dedicated tmux-ui tmux session", () => {
@@ -134,6 +161,17 @@ describe("run release scripts", () => {
     expect(packScript).toContain("uninstall    Stop tmux-ui and remove the install directory");
     expect(packScript).toContain("uninstall_server()");
     expect(packScript).toContain('rm -rf "$APP_HOME"');
+  });
+
+  it("supports self-upgrade from the latest release run file", () => {
+    expect(packScript).toContain("upgrade      Download/install latest tmux-ui run file");
+    expect(packScript).toContain('TMUX_UI_UPGRADE_URL="\\${TMUX_UI_UPGRADE_URL:-https://github.com/neatstudio/tmux-browser/releases/latest/download/release.run}"');
+    expect(packScript).toContain("download_upgrade_run()");
+    expect(packScript).toContain("upgrade_server()");
+    expect(packScript).toContain('"$upgrade_file" install');
+    expect(packScript).toContain('"$upgrade_file" service-install');
+    expect(packScript).toContain('"$upgrade_file" restart');
+    expect(packScript).toContain('upgrade)');
   });
 
   it("exposes short tmux resurrection management commands", () => {
@@ -376,6 +414,10 @@ describe("run release scripts", () => {
     expect(readmeZh).toContain("tmux-ui service-status");
     expect(readme).toContain("After install, use the stable `tmux-ui` command");
     expect(readmeZh).toContain("安装完成后，使用稳定命令 `tmux-ui`");
+    expect(readme).toContain("tmux-ui upgrade");
+    expect(readmeZh).toContain("tmux-ui upgrade");
+    expect(readme).toContain("auto-installs nvm when Node is missing");
+    expect(readmeZh).toContain("如果宿主机没有 Node，会自动安装 nvm");
     expect(readme).toContain("systemctl status tmux-ui");
     expect(readmeZh).toContain("systemctl status tmux-ui");
     expect(readme).toContain("launchctl print");
@@ -388,6 +430,10 @@ describe("run release scripts", () => {
     expect(readmeZh).toContain("默认会自动绑定到第一个 `100.*` Tailscale IP");
     expect(readme).toContain("`HOST=0.0.0.0` is rejected");
     expect(readmeZh).toContain("`HOST=0.0.0.0` 会被拒绝");
+    expect(readme).toContain("Open `/?view=kanban`");
+    expect(readmeZh).toContain("打开 `/?view=kanban`");
+    expect(readme).toContain("local wrapper session");
+    expect(readmeZh).toContain("本机创建同名 wrapper session");
   });
 
   it("ships a publish target example without committing private targets", () => {

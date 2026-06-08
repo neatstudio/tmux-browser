@@ -878,6 +878,84 @@ describe("createTerminalTab", () => {
     mounted.destroy();
   });
 
+  it("uploads selected mobile images and inserts the saved path", async () => {
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    };
+    const fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          ok: true,
+          absolutePath: "/Users/gouki/.tmux-ui/uploads/build/mobile.png"
+        })
+    });
+    vi.stubGlobal("fetch", fetch);
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        constructor() {
+          return socket;
+        }
+      }
+    );
+
+    const container = document.createElement("div");
+    const mounted = createTerminalTab({
+      container,
+      tabId: "tab-1",
+      sessionName: "build",
+      onClosed: vi.fn()
+    });
+    socket.send.mockClear();
+
+    const imageInput = container.querySelector<HTMLInputElement>(
+      "input[data-terminal-image-input='library']"
+    )!;
+    const cameraInput = container.querySelector<HTMLInputElement>(
+      "input[data-terminal-image-input='camera']"
+    )!;
+    const file = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "mobile.png", {
+      type: "image/png"
+    });
+
+    expect(imageInput).not.toBeNull();
+    expect(imageInput.accept).toBe("image/*");
+    expect(cameraInput.accept).toBe("image/*");
+    expect(cameraInput.getAttribute("capture")).toBe("environment");
+
+    Object.defineProperty(imageInput, "files", {
+      value: { 0: file, length: 1, item: () => file },
+      configurable: true
+    });
+    imageInput.dispatchEvent(new Event("change", { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(fetch).toHaveBeenCalledWith("/api/uploads/image", {
+      method: "POST",
+      headers: {
+        "Content-Type": "image/png",
+        "X-Tmux-Session": "build"
+      },
+      body: file
+    });
+    expect(socket.send).toHaveBeenCalledWith(
+      JSON.stringify({
+        type: "input",
+        data: "/Users/gouki/.tmux-ui/uploads/build/mobile.png"
+      })
+    );
+
+    mounted.destroy();
+
+    expect(
+      container.querySelector("input[data-terminal-image-input='library']")
+    ).toBeNull();
+  });
+
   it("uploads dropped image files even when the browser omits the MIME type", async () => {
     const socket = {
       send: vi.fn(),
