@@ -1,4 +1,4 @@
-import type { SessionSummary } from "../api/sessionApi";
+import type { KanbanProject, SessionSummary } from "../api/sessionApi";
 import type { TimelineEvent } from "../../shared/timeline";
 import type { DashboardState } from "../state/dashboardStore";
 import {
@@ -272,6 +272,41 @@ function renderTimeline(events: TimelineEvent[]) {
   return timeline;
 }
 
+function renderKanbanProjectShortcuts(
+  projects: KanbanProject[],
+  onOpenProject: (name: string) => void
+) {
+  const section = document.createElement("section");
+  section.className = "session-sidebar-kanban-projects session-sidebar-text";
+
+  const title = document.createElement("div");
+  title.className = "session-sidebar-kanban-title";
+  title.textContent = "Boards";
+  section.append(title);
+
+  projects.forEach((project) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "session-sidebar-kanban-project";
+    button.dataset.action = "open-kanban-project";
+    button.dataset.projectName = project.name;
+    button.title = `${project.name} · ${project.path}`;
+    button.addEventListener("click", () => onOpenProject(project.name));
+
+    const name = document.createElement("span");
+    name.textContent = project.name;
+
+    const count = document.createElement("span");
+    count.className = "session-sidebar-kanban-count";
+    count.textContent = String(project.agents.length);
+
+    button.append(name, count);
+    section.append(button);
+  });
+
+  return section;
+}
+
 export function renderSessionSidebar(
   root: HTMLElement,
   state: DashboardState,
@@ -286,10 +321,13 @@ export function renderSessionSidebar(
     actionCount?: number;
     actionCenterOpen?: boolean;
     activeView?: "dashboard" | "kanban";
+    hiddenSessionNames?: Set<string>;
+    kanbanProjects?: KanbanProject[];
     onCreateSession: (name: string) => void;
     onDraftChange: (value: string) => void;
     onOpenDashboard: () => void;
     onOpenKanban?: () => void;
+    onOpenKanbanProject?: (name: string) => void;
     onOpenSession: (name: string) => void;
     onTogglePinned: (name: string) => void;
     onToggleMuted?: (name: string) => void;
@@ -464,6 +502,14 @@ export function renderSessionSidebar(
   kanbanButton.append(kanbanIcon, kanbanText);
   kanbanButton.addEventListener("click", () => actions.onOpenKanban?.());
 
+  const kanbanProjects =
+    actions.kanbanProjects && actions.kanbanProjects.length > 0
+      ? renderKanbanProjectShortcuts(
+          actions.kanbanProjects,
+          actions.onOpenKanbanProject ?? (() => actions.onOpenKanban?.())
+        )
+      : null;
+
   const list = document.createElement("div");
   list.className = "session-sidebar-list";
 
@@ -515,7 +561,13 @@ export function renderSessionSidebar(
     list.append(error);
   }
 
-  sidebar.append(header, dashboardButton, kanbanButton, list);
+  sidebar.append(
+    header,
+    dashboardButton,
+    kanbanButton,
+    ...(kanbanProjects ? [kanbanProjects] : []),
+    list
+  );
 
   if (!actions.collapsed && actions.timelineEvents?.length) {
     sidebar.append(renderTimeline(actions.timelineEvents));

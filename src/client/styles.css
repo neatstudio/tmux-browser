@@ -219,8 +219,8 @@ select {
 }
 
 .session-sidebar {
-  display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto auto;
+  display: flex;
+  flex-direction: column;
   height: 100%;
   min-width: 0;
   overflow: hidden;
@@ -360,10 +360,68 @@ select {
 }
 
 .session-sidebar-dashboard {
+  flex: 0 0 auto;
   min-height: 30px;
   margin-bottom: 0.45rem;
   padding: 0.25rem 0.45rem;
   font-size: 0.78rem;
+}
+
+.session-sidebar-kanban-projects {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 0.25rem;
+  max-height: min(10rem, 24vh);
+  overflow: auto;
+  margin: -0.16rem 0 0.45rem;
+  border: 1px solid rgba(217, 226, 234, 0.08);
+  border-radius: 3px;
+  background: rgba(217, 226, 234, 0.025);
+  padding: 0.32rem;
+  scrollbar-width: thin;
+}
+
+.session-sidebar-kanban-title {
+  color: rgba(217, 226, 234, 0.42);
+  font-size: 0.56rem;
+  font-weight: 820;
+  letter-spacing: 0.11em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.session-sidebar-kanban-project {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  min-width: 0;
+  border: 1px solid rgba(143, 217, 255, 0.12);
+  border-radius: 3px;
+  background: rgba(91, 192, 255, 0.045);
+  color: rgba(239, 246, 252, 0.84);
+  cursor: pointer;
+  font-size: 0.7rem;
+  padding: 0.24rem 0.34rem;
+}
+
+.session-sidebar-kanban-project span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-sidebar-kanban-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.2rem;
+  border: 1px solid rgba(143, 217, 255, 0.18);
+  border-radius: 999px;
+  color: #bfeeff;
+  font-size: 0.58rem;
+  line-height: 1;
+  padding: 0.11rem 0.18rem;
 }
 
 .session-sidebar-action-center {
@@ -415,6 +473,7 @@ select {
 
 .session-sidebar-list {
   display: grid;
+  flex: 1 1 auto;
   align-content: start;
   gap: 0.32rem;
   min-height: 0;
@@ -475,6 +534,10 @@ select {
 
 .session-sidebar.is-collapsed .session-sidebar-icon {
   display: grid;
+}
+
+.session-sidebar.is-collapsed .session-sidebar-kanban-projects {
+  display: none;
 }
 
 .session-sidebar.is-collapsed .session-sidebar-text {
@@ -866,15 +929,17 @@ select {
 }
 
 .kanban-project-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
-  gap: 0.6rem;
+  columns: 18rem;
+  column-gap: 0.6rem;
 }
 
 .kanban-project-card {
-  display: grid;
+  break-inside: avoid;
+  display: inline-grid;
+  width: 100%;
   gap: 0.55rem;
   min-width: 0;
+  margin: 0 0 0.6rem;
   border: 1px solid var(--border-soft);
   border-radius: 4px;
   background:
@@ -2545,7 +2610,7 @@ select {
   }
 
   .kanban-project-list {
-    grid-template-columns: 1fr;
+    columns: 1;
   }
 
   .app-shell--sidebar .content-root,
