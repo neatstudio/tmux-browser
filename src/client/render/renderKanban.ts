@@ -15,6 +15,7 @@ export type KanbanDraft = {
 export type KanbanState = {
   projects: KanbanProject[];
   draft: KanbanDraft;
+  availableSessions: string[];
   loading: boolean;
   error: string | null;
   onDraftChange: (draft: KanbanDraft, options?: { render?: boolean }) => void;
@@ -22,6 +23,7 @@ export type KanbanState = {
   onOpenSession: (sessionName: string) => void;
   onRemoveSession: (projectName: string, agentName: string) => void;
   onKillSession: (projectName: string, agentName: string) => void;
+  onAddSession: (projectName: string, sessionName: string) => void;
   onDeleteProject: (projectName: string) => void;
   confirm?: (message: string) => boolean;
 };
@@ -52,6 +54,10 @@ function renderField(
 
 function getSessionNameForProject(projectName: string, sessionName: string) {
   return getKanbanAgentSessionName(projectName, sessionName);
+}
+
+function getKanbanAgentActualSessionName(projectName: string, agent: KanbanProject["agents"][number]) {
+  return agent.sessionName ?? getKanbanAgentSessionName(projectName, agent.name);
 }
 
 export function renderKanban(root: HTMLElement, state: KanbanState) {
@@ -233,7 +239,7 @@ export function renderKanban(root: HTMLElement, state: KanbanState) {
     agents.className = "kanban-agent-list";
 
     project.agents.forEach((agent) => {
-      const sessionName = getKanbanAgentSessionName(project.name, agent.name);
+      const sessionName = getKanbanAgentActualSessionName(project.name, agent);
       const agentCard = document.createElement("div");
       agentCard.className = "kanban-agent-card";
 
@@ -261,7 +267,7 @@ export function renderKanban(root: HTMLElement, state: KanbanState) {
       removeButton.textContent = "Remove";
       removeButton.title = "Remove from kanban only";
       removeButton.addEventListener("click", () =>
-        state.onRemoveSession(project.name, agent.name)
+        state.onRemoveSession(project.name, sessionName)
       );
 
       const killButton = document.createElement("button");
@@ -270,7 +276,7 @@ export function renderKanban(root: HTMLElement, state: KanbanState) {
       killButton.textContent = "Kill";
       killButton.title = "Kill tmux session and remove from kanban";
       killButton.addEventListener("click", () =>
-        state.onKillSession(project.name, agent.name)
+        state.onKillSession(project.name, sessionName)
       );
 
       const agentActions = document.createElement("div");
@@ -287,6 +293,51 @@ export function renderKanban(root: HTMLElement, state: KanbanState) {
     const createInfo = document.createElement("span");
     createInfo.textContent = `${project.agents.length} recommended sessions`;
     actions.append(createInfo);
+
+    const addSessionForm = document.createElement("form");
+    addSessionForm.className = "kanban-add-session-form";
+
+    const addSessionSelect = document.createElement("select");
+    addSessionSelect.className = "kanban-add-session-select";
+    addSessionSelect.setAttribute("aria-label", `Add existing session to ${project.name}`);
+
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "Add existing";
+    addSessionSelect.append(placeholder);
+
+    const existingSessionNames = new Set(
+      project.agents.map((agent) =>
+        getKanbanAgentActualSessionName(project.name, agent)
+      )
+    );
+
+    state.availableSessions
+      .filter((sessionName) => !existingSessionNames.has(sessionName))
+      .forEach((sessionName) => {
+        const option = document.createElement("option");
+        option.value = sessionName;
+        option.textContent = sessionName;
+        addSessionSelect.append(option);
+      });
+
+    const addSessionButton = document.createElement("button");
+    addSessionButton.type = "submit";
+    addSessionButton.className = "kanban-add-session-button";
+    addSessionButton.textContent = "Add";
+
+    addSessionForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+
+      if (!addSessionSelect.value) {
+        return;
+      }
+
+      state.onAddSession(project.name, addSessionSelect.value);
+    });
+
+    addSessionForm.append(addSessionSelect, addSessionButton);
+    actions.append(addSessionForm);
 
     card.append(cardHeader, path, actions, agents);
     list.append(card);

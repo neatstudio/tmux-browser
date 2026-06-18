@@ -38,6 +38,7 @@ describe("renderKanban", () => {
       },
       loading: false,
       error: null,
+      availableSessions: [],
       onDraftChange,
       onCreateProject,
       onOpenSession: vi.fn(),
@@ -104,6 +105,7 @@ describe("renderKanban", () => {
       },
       loading: false,
       error: null,
+      availableSessions: [],
       onDraftChange,
       onCreateProject: vi.fn(),
       onOpenSession: vi.fn(),
@@ -140,6 +142,7 @@ describe("renderKanban", () => {
       },
       loading: false,
       error: null,
+      availableSessions: [],
       onDraftChange: vi.fn(),
       onCreateProject,
       onOpenSession: vi.fn(),
@@ -160,6 +163,7 @@ describe("renderKanban", () => {
     const onOpenSession = vi.fn();
     const onRemoveSession = vi.fn();
     const onKillSession = vi.fn();
+    const onAddSession = vi.fn();
 
     renderKanban(root, {
       projects: [
@@ -167,7 +171,14 @@ describe("renderKanban", () => {
           name: "xxvisa",
           path: "/srv/xxvisa",
           server: null,
-          agents: [{ kind: "codex", name: "api", command: null }]
+          agents: [
+            {
+              kind: "session",
+              name: "local-ssh",
+              command: null,
+              sessionName: "local-ssh"
+            }
+          ]
         }
       ],
       draft: {
@@ -178,21 +189,32 @@ describe("renderKanban", () => {
       },
       loading: false,
       error: null,
+      availableSessions: ["build", "local-ssh"],
       onDraftChange: vi.fn(),
       onCreateProject: vi.fn(),
       onOpenSession,
       onRemoveSession,
       onKillSession,
-      onDeleteProject: vi.fn()
+      onDeleteProject: vi.fn(),
+      onAddSession
     });
 
     root.querySelector<HTMLButtonElement>(".kanban-agent-open")?.click();
     root.querySelector<HTMLButtonElement>(".kanban-agent-remove")?.click();
     root.querySelector<HTMLButtonElement>(".kanban-agent-kill")?.click();
+    const select = root.querySelector<HTMLSelectElement>(".kanban-add-session-select")!;
+    select.value = "build";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    root
+      .querySelector<HTMLFormElement>(".kanban-add-session-form")
+      ?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
 
-    expect(onOpenSession).toHaveBeenCalledWith("xxvisa-api");
-    expect(onRemoveSession).toHaveBeenCalledWith("xxvisa", "api");
-    expect(onKillSession).toHaveBeenCalledWith("xxvisa", "api");
+    expect(root.textContent).toContain("local-ssh");
+    expect(root.textContent).not.toContain("xxvisa-local-ssh");
+    expect(onOpenSession).toHaveBeenCalledWith("local-ssh");
+    expect(onRemoveSession).toHaveBeenCalledWith("xxvisa", "local-ssh");
+    expect(onKillSession).toHaveBeenCalledWith("xxvisa", "local-ssh");
+    expect(onAddSession).toHaveBeenCalledWith("xxvisa", "build");
   });
 
   it("closes a project only after confirmation", () => {
@@ -219,6 +241,7 @@ describe("renderKanban", () => {
       },
       loading: false,
       error: null,
+      availableSessions: [],
       onDraftChange: vi.fn(),
       onCreateProject: vi.fn(),
       onOpenSession: vi.fn(),

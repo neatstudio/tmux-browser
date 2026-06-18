@@ -192,6 +192,72 @@ describe("createPreferenceStore", () => {
     }
   });
 
+  it("adds an existing tmux session to a kanban project without renaming it", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "tmux-ui-preferences-"));
+    const filePath = join(dir, "preferences.json");
+
+    try {
+      const store = createPreferenceStore({ filePath });
+
+      await store.upsertKanbanProject({
+        name: "xxvisa",
+        path: "~/server/wwwroot/app/xxvisa-v2",
+        server: null,
+        agents: [{ kind: "pm", name: "pm", command: null }]
+      });
+
+      await store.addKanbanSession("xxvisa", "local-ssh");
+
+      expect(store.getPreferences().kanbanProjects).toEqual([
+        {
+          name: "xxvisa",
+          path: "~/server/wwwroot/app/xxvisa-v2",
+          server: null,
+          agents: [
+            { kind: "session", name: "local-ssh", command: null, sessionName: "local-ssh" },
+            { kind: "pm", name: "pm", command: null }
+          ]
+        }
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps manually added kanban sessions during live sync by sessionName", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "tmux-ui-preferences-"));
+    const filePath = join(dir, "preferences.json");
+
+    try {
+      const store = createPreferenceStore({ filePath });
+
+      await store.upsertKanbanProject({
+        name: "xxvisa",
+        path: "~/server/wwwroot/app/xxvisa-v2",
+        server: null,
+        agents: [
+          { kind: "session", name: "local-ssh", command: null, sessionName: "local-ssh" },
+          { kind: "codex", name: "codex", command: null }
+        ]
+      });
+
+      await store.syncKanbanSessions(["local-ssh"]);
+
+      expect(store.getPreferences().kanbanProjects).toEqual([
+        {
+          name: "xxvisa",
+          path: "~/server/wwwroot/app/xxvisa-v2",
+          server: null,
+          agents: [
+            { kind: "session", name: "local-ssh", command: null, sessionName: "local-ssh" }
+          ]
+        }
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("prunes missing kanban agents against live tmux session names", async () => {
     const dir = mkdtempSync(join(tmpdir(), "tmux-ui-preferences-"));
     const filePath = join(dir, "preferences.json");

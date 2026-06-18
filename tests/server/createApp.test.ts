@@ -1083,6 +1083,109 @@ describe("createApp", () => {
     expect(preferences.removeKanbanSession).toHaveBeenCalledWith("xxvisa-codex");
   });
 
+  it("adds an existing tmux session to a kanban project", async () => {
+    const preferences = {
+      getPreferences: vi.fn(),
+      setPinnedSession: vi.fn(),
+      setMutedSession: vi.fn(),
+      setSessionSettings: vi.fn(),
+      upsertKanbanProject: vi.fn(),
+      deleteKanbanProject: vi.fn(),
+      addKanbanSession: vi.fn().mockResolvedValue({
+        pinnedSessionNames: [],
+        mutedSessionNames: ["tmux-ui"],
+        sessionSettings: {},
+        kanbanProjects: [
+          {
+            name: "xxvisa",
+            path: "/srv/xxvisa",
+            server: null,
+            agents: [
+              {
+                kind: "session",
+                name: "local-ssh",
+                command: null,
+                sessionName: "local-ssh"
+              }
+            ]
+          }
+        ]
+      }),
+      removeKanbanSession: vi.fn(),
+      syncKanbanSessions: vi.fn(),
+      renameSession: vi.fn()
+    };
+    const app = createApp({
+      preferences,
+      tmuxService: {
+        listSessions: vi.fn(),
+        getSessionStatus: vi.fn(),
+        createSession: vi.fn(),
+        createProjectSessions: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        sendInput: vi.fn(),
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    const response = await request(app)
+      .post("/api/kanban/projects/xxvisa/sessions")
+      .send({ sessionName: " local-ssh " });
+
+    expect(response.status).toBe(200);
+    expect(preferences.addKanbanSession).toHaveBeenCalledWith("xxvisa", "local-ssh");
+    expect(response.body.preferences.kanbanProjects[0].agents).toEqual([
+      {
+        kind: "session",
+        name: "local-ssh",
+        command: null,
+        sessionName: "local-ssh"
+      }
+    ]);
+  });
+
+  it("rejects adding a blank session to a kanban project", async () => {
+    const preferences = {
+      getPreferences: vi.fn(),
+      setPinnedSession: vi.fn(),
+      setMutedSession: vi.fn(),
+      setSessionSettings: vi.fn(),
+      upsertKanbanProject: vi.fn(),
+      deleteKanbanProject: vi.fn(),
+      addKanbanSession: vi.fn(),
+      removeKanbanSession: vi.fn(),
+      syncKanbanSessions: vi.fn(),
+      renameSession: vi.fn()
+    };
+    const app = createApp({
+      preferences,
+      tmuxService: {
+        listSessions: vi.fn(),
+        getSessionStatus: vi.fn(),
+        createSession: vi.fn(),
+        createProjectSessions: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        sendInput: vi.fn(),
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    const response = await request(app)
+      .post("/api/kanban/projects/xxvisa/sessions")
+      .send({ sessionName: " " });
+
+    expect(response.status).toBe(400);
+    expect(preferences.addKanbanSession).not.toHaveBeenCalled();
+  });
+
   it("kills a kanban project session and removes it from the project", async () => {
     const preferences = {
       getPreferences: vi.fn(),
@@ -1126,6 +1229,52 @@ describe("createApp", () => {
     expect(response.status).toBe(200);
     expect(killSession).toHaveBeenCalledWith("xxvisa-codex");
     expect(preferences.removeKanbanSession).toHaveBeenCalledWith("xxvisa-codex");
+  });
+
+  it("kills a manually attached kanban session by its real session name", async () => {
+    const preferences = {
+      getPreferences: vi.fn(),
+      setPinnedSession: vi.fn(),
+      setMutedSession: vi.fn(),
+      setSessionSettings: vi.fn(),
+      upsertKanbanProject: vi.fn(),
+      deleteKanbanProject: vi.fn(),
+      addKanbanSession: vi.fn(),
+      removeKanbanSession: vi.fn().mockResolvedValue({
+        pinnedSessionNames: [],
+        mutedSessionNames: ["tmux-ui"],
+        sessionSettings: {},
+        kanbanProjects: []
+      }),
+      syncKanbanSessions: vi.fn(),
+      renameSession: vi.fn()
+    };
+    const killSession = vi.fn().mockResolvedValue(undefined);
+    const app = createApp({
+      preferences,
+      killSession,
+      tmuxService: {
+        listSessions: vi.fn(),
+        getSessionStatus: vi.fn(),
+        createSession: vi.fn(),
+        createProjectSessions: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        sendInput: vi.fn(),
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    const response = await request(app)
+      .delete("/api/kanban/projects/xxvisa/sessions/local-ssh")
+      .query({ kill: "true" });
+
+    expect(response.status).toBe(200);
+    expect(killSession).toHaveBeenCalledWith("local-ssh");
+    expect(preferences.removeKanbanSession).toHaveBeenCalledWith("local-ssh");
   });
 
   it("saves kanban projects without creating tmux sessions when none are selected", async () => {

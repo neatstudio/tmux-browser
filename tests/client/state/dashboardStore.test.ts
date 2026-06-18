@@ -761,4 +761,41 @@ describe("createDashboardStore", () => {
       }
     ]);
   });
+
+  it("refreshes kanban projects and sessions after adding an existing session", async () => {
+    const api = {
+      getServerStatus: vi.fn().mockResolvedValue(SERVER_STATUS),
+      listKanbanProjects: vi.fn().mockResolvedValue([
+        {
+          name: "xxvisa",
+          path: "/srv/xxvisa",
+          server: null,
+          agents: [
+            {
+              kind: "session",
+              name: "local-ssh",
+              command: null,
+              sessionName: "local-ssh"
+            }
+          ]
+        }
+      ]),
+      addKanbanSession: vi.fn().mockResolvedValue(undefined),
+      listPaneSessions: vi.fn().mockResolvedValue([{ name: "local-ssh", panes: [] }]),
+      listDashboardSessions: vi.fn()
+    };
+    const store = createDashboardStore({ api, pollMs: 3000 });
+
+    await store.addKanbanSession("xxvisa", "local-ssh");
+
+    expect(api.addKanbanSession).toHaveBeenCalledWith("xxvisa", "local-ssh");
+    expect(api.listKanbanProjects).toHaveBeenCalledOnce();
+    expect(api.listPaneSessions).toHaveBeenCalledOnce();
+    expect(store.getState().kanbanProjects[0]?.agents[0]).toEqual({
+      kind: "session",
+      name: "local-ssh",
+      command: null,
+      sessionName: "local-ssh"
+    });
+  });
 });

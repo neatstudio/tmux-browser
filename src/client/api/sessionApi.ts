@@ -49,6 +49,7 @@ export type KanbanAgent = {
   kind: string;
   name: string;
   command: string | null;
+  sessionName?: string;
 };
 
 export type KanbanProject = {
@@ -83,6 +84,7 @@ export type SessionApi = {
   getPreferences: () => Promise<Preferences>;
   listKanbanProjects: () => Promise<KanbanProject[]>;
   createKanbanProject: (project: CreateKanbanProjectRequest) => Promise<string[]>;
+  addKanbanSession: (projectName: string, sessionName: string) => Promise<void>;
   removeKanbanSession: (
     projectName: string,
     agentName: string,
@@ -216,6 +218,22 @@ export function createSessionApi(baseUrl = ""): SessionApi {
 
       if (!response.ok) {
         throw new Error("Failed to remove kanban session");
+      }
+    },
+    async addKanbanSession(projectName, sessionName) {
+      const response = await fetch(
+        `${baseUrl}/api/kanban/projects/${encodeURIComponent(projectName)}/sessions`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ sessionName })
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to add kanban session");
       }
     },
     async deleteKanbanProject(projectName) {

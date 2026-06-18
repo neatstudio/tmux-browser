@@ -35,6 +35,7 @@ type DashboardStoreDeps = {
     | "killPane"
     | "listKanbanProjects"
     | "createKanbanProject"
+    | "addKanbanSession"
     | "removeKanbanSession"
     | "deleteKanbanProject"
   > &
@@ -339,6 +340,16 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
     },
     async createKanbanProject(project: CreateKanbanProjectRequest) {
       await deps.api.createKanbanProject(project);
+      await refreshKanbanProjects();
+      await refresh({
+        includePreview: false,
+        includePanes: true,
+        includeServerStatus: false,
+        preferActiveSessionStatus: false
+      });
+    },
+    async addKanbanSession(projectName: string, sessionName: string) {
+      await deps.api.addKanbanSession(projectName, sessionName);
       await refreshKanbanProjects();
       await refresh({
         includePreview: false,

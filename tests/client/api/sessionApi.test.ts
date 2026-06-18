@@ -267,6 +267,24 @@ describe("createSessionApi", () => {
     });
   });
 
+  it("adds an existing session to a kanban project", async () => {
+    const fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ ok: true, preferences: {} })
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    await createSessionApi().addKanbanSession("xxvisa", "local-ssh");
+
+    expect(fetch).toHaveBeenCalledWith("/api/kanban/projects/xxvisa/sessions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ sessionName: "local-ssh" })
+    });
+  });
+
   it("loads lightweight sessions without previews by default", async () => {
     const fetch = vi.fn().mockResolvedValue({
       ok: true,
