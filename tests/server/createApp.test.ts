@@ -789,7 +789,7 @@ describe("createApp", () => {
     });
   });
 
-  it("creates kanban projects and starts their agent tmux sessions", async () => {
+  it("creates selected recommended sessions while saving the full kanban project", async () => {
     const preferences = {
       getPreferences: vi.fn(() => ({
         pinnedSessionNames: [],
@@ -811,9 +811,19 @@ describe("createApp", () => {
             server: "tw1",
             agents: [
               {
-                kind: "claude",
-                name: "claude",
-                command: "claude --resume xxvisa"
+                kind: "pm",
+                name: "pm",
+                command: null
+              },
+              {
+                kind: "review",
+                name: "review",
+                command: null
+              },
+              {
+                kind: "codex",
+                name: "codex",
+                command: null
               }
             ]
           }
@@ -824,7 +834,7 @@ describe("createApp", () => {
     };
     const createProjectSessions = vi
       .fn()
-      .mockResolvedValue(["xxvisa-claude"]);
+      .mockResolvedValue(["xxvisa-pm", "xxvisa-codex"]);
     const app = createApp({
       preferences,
       tmuxService: {
@@ -848,11 +858,22 @@ describe("createApp", () => {
         name: "xxvisa",
         path: "/srv/xxvisa",
         server: "tw1",
+        selectedAgentNames: ["pm", "codex"],
         agents: [
           {
-            kind: "claude",
-            name: "claude",
-            command: "claude --resume xxvisa"
+            kind: "pm",
+            name: "pm",
+            command: null
+          },
+          {
+            kind: "review",
+            name: "review",
+            command: null
+          },
+          {
+            kind: "codex",
+            name: "codex",
+            command: null
           }
         ]
       });
@@ -860,7 +881,7 @@ describe("createApp", () => {
     expect(response.status).toBe(201);
     expect(response.body).toEqual({
       ok: true,
-      sessions: ["xxvisa-claude"],
+      sessions: ["xxvisa-pm", "xxvisa-codex"],
       preferences: {
         pinnedSessionNames: [],
         mutedSessionNames: ["tmux-ui"],
@@ -872,9 +893,19 @@ describe("createApp", () => {
             server: "tw1",
             agents: [
               {
-                kind: "claude",
-                name: "claude",
-                command: "claude --resume xxvisa"
+                kind: "pm",
+                name: "pm",
+                command: null
+              },
+              {
+                kind: "review",
+                name: "review",
+                command: null
+              },
+              {
+                kind: "codex",
+                name: "codex",
+                command: null
               }
             ]
           }
@@ -887,9 +918,19 @@ describe("createApp", () => {
       server: "tw1",
       agents: [
         {
-          kind: "claude",
-          name: "claude",
-          command: "claude --resume xxvisa"
+          kind: "pm",
+          name: "pm",
+          command: null
+        },
+        {
+          kind: "review",
+          name: "review",
+          command: null
+        },
+        {
+          kind: "codex",
+          name: "codex",
+          command: null
         }
       ]
     });
@@ -899,10 +940,332 @@ describe("createApp", () => {
       server: "tw1",
       agents: [
         {
-          name: "claude",
-          command: "claude --resume xxvisa"
+          name: "pm",
+          command: null
+        },
+        {
+          name: "codex",
+          command: null
         }
       ]
+    });
+  });
+
+  it("syncs kanban projects against live tmux sessions when listing projects", async () => {
+    const preferences = {
+      getPreferences: vi.fn(() => ({
+        pinnedSessionNames: [],
+        mutedSessionNames: ["tmux-ui"],
+        sessionSettings: {},
+        kanbanProjects: [
+          {
+            name: "xxvisa",
+            path: "/srv/xxvisa",
+            server: null,
+            agents: [
+              { kind: "pm", name: "pm", command: null },
+              { kind: "codex", name: "codex", command: null }
+            ]
+          }
+        ]
+      })),
+      setPinnedSession: vi.fn(),
+      setMutedSession: vi.fn(),
+      setSessionSettings: vi.fn(),
+      upsertKanbanProject: vi.fn(),
+      deleteKanbanProject: vi.fn(),
+      removeKanbanSession: vi.fn(),
+      syncKanbanSessions: vi.fn().mockResolvedValue({
+        pinnedSessionNames: [],
+        mutedSessionNames: ["tmux-ui"],
+        sessionSettings: {},
+        kanbanProjects: [
+          {
+            name: "xxvisa",
+            path: "/srv/xxvisa",
+            server: null,
+            agents: [{ kind: "pm", name: "pm", command: null }]
+          }
+        ]
+      }),
+      renameSession: vi.fn()
+    };
+    const app = createApp({
+      preferences,
+      tmuxService: {
+        listSessions: vi.fn().mockResolvedValue([
+          {
+            name: "xxvisa-pm",
+            windows: 1,
+            status: "detached",
+            lastActivityAt: null,
+            paneCount: 1,
+            activeWindowName: null,
+            currentCommand: null,
+            currentPath: null,
+            gitBranch: null,
+            gitDirty: null,
+            paneDead: false,
+            paneDeadStatus: null,
+            preview: null,
+            inputPrompt: null
+          }
+        ]),
+        getSessionStatus: vi.fn(),
+        createSession: vi.fn(),
+        createProjectSessions: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        sendInput: vi.fn(),
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    const response = await request(app).get("/api/kanban/projects");
+
+    expect(response.status).toBe(200);
+    expect(preferences.syncKanbanSessions).toHaveBeenCalledWith(["xxvisa-pm"]);
+    expect(response.body.projects).toEqual([
+      {
+        name: "xxvisa",
+        path: "/srv/xxvisa",
+        server: null,
+        agents: [{ kind: "pm", name: "pm", command: null }]
+      }
+    ]);
+  });
+
+  it("removes a kanban project session without killing tmux when requested", async () => {
+    const preferences = {
+      getPreferences: vi.fn(),
+      setPinnedSession: vi.fn(),
+      setMutedSession: vi.fn(),
+      setSessionSettings: vi.fn(),
+      upsertKanbanProject: vi.fn(),
+      deleteKanbanProject: vi.fn(),
+      removeKanbanSession: vi.fn().mockResolvedValue({
+        pinnedSessionNames: [],
+        mutedSessionNames: ["tmux-ui"],
+        sessionSettings: {},
+        kanbanProjects: []
+      }),
+      syncKanbanSessions: vi.fn(),
+      renameSession: vi.fn()
+    };
+    const killSession = vi.fn();
+    const app = createApp({
+      preferences,
+      killSession,
+      tmuxService: {
+        listSessions: vi.fn(),
+        getSessionStatus: vi.fn(),
+        createSession: vi.fn(),
+        createProjectSessions: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        sendInput: vi.fn(),
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    const response = await request(app)
+      .delete("/api/kanban/projects/xxvisa/sessions/codex")
+      .query({ kill: "false" });
+
+    expect(response.status).toBe(200);
+    expect(killSession).not.toHaveBeenCalled();
+    expect(preferences.removeKanbanSession).toHaveBeenCalledWith("xxvisa-codex");
+  });
+
+  it("kills a kanban project session and removes it from the project", async () => {
+    const preferences = {
+      getPreferences: vi.fn(),
+      setPinnedSession: vi.fn(),
+      setMutedSession: vi.fn(),
+      setSessionSettings: vi.fn(),
+      upsertKanbanProject: vi.fn(),
+      deleteKanbanProject: vi.fn(),
+      removeKanbanSession: vi.fn().mockResolvedValue({
+        pinnedSessionNames: [],
+        mutedSessionNames: ["tmux-ui"],
+        sessionSettings: {},
+        kanbanProjects: []
+      }),
+      syncKanbanSessions: vi.fn(),
+      renameSession: vi.fn()
+    };
+    const killSession = vi.fn().mockResolvedValue(undefined);
+    const app = createApp({
+      preferences,
+      killSession,
+      tmuxService: {
+        listSessions: vi.fn(),
+        getSessionStatus: vi.fn(),
+        createSession: vi.fn(),
+        createProjectSessions: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        sendInput: vi.fn(),
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    const response = await request(app)
+      .delete("/api/kanban/projects/xxvisa/sessions/codex")
+      .query({ kill: "true" });
+
+    expect(response.status).toBe(200);
+    expect(killSession).toHaveBeenCalledWith("xxvisa-codex");
+    expect(preferences.removeKanbanSession).toHaveBeenCalledWith("xxvisa-codex");
+  });
+
+  it("saves kanban projects without creating tmux sessions when none are selected", async () => {
+    const preferences = {
+      getPreferences: vi.fn(() => ({
+        pinnedSessionNames: [],
+        mutedSessionNames: ["tmux-ui"],
+        sessionSettings: {},
+        kanbanProjects: []
+      })),
+      setPinnedSession: vi.fn(),
+      setMutedSession: vi.fn(),
+      setSessionSettings: vi.fn(),
+      upsertKanbanProject: vi.fn().mockResolvedValue({
+        pinnedSessionNames: [],
+        mutedSessionNames: ["tmux-ui"],
+        sessionSettings: {},
+        kanbanProjects: [
+          {
+            name: "xxvisa",
+            path: "/srv/xxvisa",
+            server: null,
+            agents: [
+              { kind: "pm", name: "pm", command: null },
+              { kind: "review", name: "review", command: null }
+            ]
+          }
+        ]
+      }),
+      deleteKanbanProject: vi.fn(),
+      renameSession: vi.fn()
+    };
+    const createProjectSessions = vi.fn();
+    const app = createApp({
+      preferences,
+      tmuxService: {
+        listSessions: vi.fn(),
+        getSessionStatus: vi.fn(),
+        createSession: vi.fn(),
+        createProjectSessions,
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        sendInput: vi.fn(),
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    const response = await request(app)
+      .post("/api/kanban/projects")
+      .send({
+        name: "xxvisa",
+        path: "/srv/xxvisa",
+        server: null,
+        selectedAgentNames: [],
+        agents: [
+          { kind: "pm", name: "pm", command: null },
+          { kind: "review", name: "review", command: null }
+        ]
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body.sessions).toEqual([]);
+    expect(createProjectSessions).not.toHaveBeenCalled();
+    expect(preferences.upsertKanbanProject).toHaveBeenCalledWith({
+      name: "xxvisa",
+      path: "/srv/xxvisa",
+      server: null,
+      agents: [
+        { kind: "pm", name: "pm", command: null },
+        { kind: "review", name: "review", command: null }
+      ]
+    });
+  });
+
+  it("saves kanban projects even when no recommended agents are provided", async () => {
+    const preferences = {
+      getPreferences: vi.fn(() => ({
+        pinnedSessionNames: [],
+        mutedSessionNames: ["tmux-ui"],
+        sessionSettings: {},
+        kanbanProjects: []
+      })),
+      setPinnedSession: vi.fn(),
+      setMutedSession: vi.fn(),
+      setSessionSettings: vi.fn(),
+      upsertKanbanProject: vi.fn().mockResolvedValue({
+        pinnedSessionNames: [],
+        mutedSessionNames: ["tmux-ui"],
+        sessionSettings: {},
+        kanbanProjects: [
+          {
+            name: "solo",
+            path: "~",
+            server: null,
+            agents: []
+          }
+        ]
+      }),
+      deleteKanbanProject: vi.fn(),
+      renameSession: vi.fn()
+    };
+    const createProjectSessions = vi.fn();
+    const app = createApp({
+      preferences,
+      tmuxService: {
+        listSessions: vi.fn(),
+        getSessionStatus: vi.fn(),
+        createSession: vi.fn(),
+        createProjectSessions,
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        sendInput: vi.fn(),
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    const response = await request(app)
+      .post("/api/kanban/projects")
+      .send({
+        name: "solo",
+        path: "~",
+        server: null,
+        selectedAgentNames: [],
+        agents: []
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body.sessions).toEqual([]);
+    expect(createProjectSessions).not.toHaveBeenCalled();
+    expect(preferences.upsertKanbanProject).toHaveBeenCalledWith({
+      name: "solo",
+      path: "~",
+      server: null,
+      agents: []
     });
   });
 });

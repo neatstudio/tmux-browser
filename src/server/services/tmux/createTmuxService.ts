@@ -215,6 +215,8 @@ export function createTmuxService(deps: {
   >();
   const paneFormat =
     "#{session_name}\t#{pane_id}\t#{window_index}\t#{window_name}\t#{window_active}\t#{pane_index}\t#{pane_active}\t#{pane_current_command}\t#{pane_current_path}\t#{pane_dead}\t#{pane_dead_status}\t#{pane_pid}";
+  const sessionFormat =
+    "#{session_name}\t#{session_windows}\t#{session_attached}\t#{session_activity}";
 
   async function sessionExists(sessionName: string) {
     try {
@@ -375,7 +377,7 @@ export function createTmuxService(deps: {
       try {
         const sessionResult = await run("list-sessions", [
           "-F",
-          "#{session_name}\t#{session_windows}\t#{session_attached}\t#{session_activity}"
+          sessionFormat
         ]);
         const paneResult = await run("list-panes", [
           "-a",
@@ -435,9 +437,11 @@ export function createTmuxService(deps: {
     async getSessionStatus(name: string) {
       validateSessionName(name);
       const [sessionResult, paneResult] = await Promise.all([
-        run("list-sessions", [
-          "-F",
-          "#{session_name}\t#{session_windows}\t#{session_attached}\t#{session_activity}"
+        run("display-message", [
+          "-p",
+          "-t",
+          name,
+          sessionFormat
         ]),
         run("list-panes", [
           "-t",

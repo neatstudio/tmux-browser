@@ -220,10 +220,22 @@ describe("client layout styles", () => {
       /\.kanban-create-form\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\);/s
     );
     expect(styles).toMatch(
+      /\.kanban-template\s*\{[^}]*grid-column:\s*1\s*\/\s*-1;/s
+    );
+    expect(styles).toMatch(
+      /\.kanban-template-list\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(12rem,\s*1fr\)\);/s
+    );
+    expect(styles).toMatch(
       /\.kanban-project-list\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(18rem,\s*1fr\)\);/s
     );
     expect(styles).toMatch(
       /\.kanban-agent-card\s*\{[^}]*display:\s*grid;[^}]*border:\s*1px\s+solid\s+rgba\(217,\s*226,\s*234,\s*0\.12\);/s
+    );
+    expect(styles).toMatch(
+      /\.kanban-agent-actions\s*\{[^}]*display:\s*flex;[^}]*justify-content:\s*flex-end;/s
+    );
+    expect(styles).toMatch(
+      /\.kanban-project-close\s*\{[^}]*background:\s*rgba\(255,\s*91,\s*91,\s*0\.08\);/s
     );
   });
 

@@ -159,4 +159,80 @@ describe("createPreferenceStore", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("removes a kanban agent by its tmux session name", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "tmux-ui-preferences-"));
+    const filePath = join(dir, "preferences.json");
+
+    try {
+      const store = createPreferenceStore({ filePath });
+
+      await store.upsertKanbanProject({
+        name: "xxvisa",
+        path: "~/server/wwwroot/app/xxvisa-v2",
+        server: null,
+        agents: [
+          { kind: "pm", name: "pm", command: null },
+          { kind: "codex", name: "codex", command: null }
+        ]
+      });
+
+      await store.removeKanbanSession("xxvisa-codex");
+
+      expect(store.getPreferences().kanbanProjects).toEqual([
+        {
+          name: "xxvisa",
+          path: "~/server/wwwroot/app/xxvisa-v2",
+          server: null,
+          agents: [{ kind: "pm", name: "pm", command: null }]
+        }
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("prunes missing kanban agents against live tmux session names", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "tmux-ui-preferences-"));
+    const filePath = join(dir, "preferences.json");
+
+    try {
+      const store = createPreferenceStore({ filePath });
+
+      await store.upsertKanbanProject({
+        name: "xxvisa",
+        path: "~/server/wwwroot/app/xxvisa-v2",
+        server: null,
+        agents: [
+          { kind: "pm", name: "pm", command: null },
+          { kind: "codex", name: "codex", command: null }
+        ]
+      });
+      await store.upsertKanbanProject({
+        name: "seo",
+        path: "~/server/wwwroot/app/seo-server",
+        server: null,
+        agents: [{ kind: "review", name: "review", command: null }]
+      });
+
+      await store.syncKanbanSessions(["xxvisa-pm"]);
+
+      expect(store.getPreferences().kanbanProjects).toEqual([
+        {
+          name: "seo",
+          path: "~/server/wwwroot/app/seo-server",
+          server: null,
+          agents: []
+        },
+        {
+          name: "xxvisa",
+          path: "~/server/wwwroot/app/xxvisa-v2",
+          server: null,
+          agents: [{ kind: "pm", name: "pm", command: null }]
+        }
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

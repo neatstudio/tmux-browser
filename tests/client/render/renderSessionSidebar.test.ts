@@ -74,6 +74,7 @@ describe("renderSessionSidebar", () => {
 
     expect(root.querySelector(".session-sidebar")).not.toBeNull();
     expect(root.textContent).toContain("Dashboard");
+    expect(root.textContent).toContain("Kanban");
     expect(root.textContent).toContain("api");
     expect(root.textContent).toContain("1w 2p");
     expect(root.textContent).toContain("~/server/wwwroot/gemm4");
@@ -89,6 +90,7 @@ describe("renderSessionSidebar", () => {
   it("opens dashboard and sessions through callbacks", () => {
     const root = document.createElement("div");
     const onOpenDashboard = vi.fn();
+    const onOpenKanban = vi.fn();
     const onOpenSession = vi.fn();
     const onRefresh = vi.fn();
     const onCreateSession = vi.fn();
@@ -112,6 +114,7 @@ describe("renderSessionSidebar", () => {
         onCreateSession,
         onDraftChange,
         onOpenDashboard,
+        onOpenKanban,
         onOpenSession,
         onTogglePinned,
         onRefresh,
@@ -120,6 +123,7 @@ describe("renderSessionSidebar", () => {
     );
 
     root.querySelector<HTMLButtonElement>("[data-action='open-dashboard']")?.click();
+    root.querySelector<HTMLButtonElement>("[data-action='open-kanban']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='refresh-sidebar']")?.click();
     root.querySelector<HTMLInputElement>("input[name='sidebar-session-name']")!.value =
       "logs";
@@ -135,6 +139,7 @@ describe("renderSessionSidebar", () => {
     root.querySelector<HTMLButtonElement>("[data-session-name='api']")?.click();
 
     expect(onOpenDashboard).toHaveBeenCalledTimes(1);
+    expect(onOpenKanban).toHaveBeenCalledTimes(1);
     expect(onRefresh).toHaveBeenCalledTimes(1);
     expect(onDraftChange).toHaveBeenCalledWith("logs");
     expect(onCreateSession).toHaveBeenCalledWith("logs");
@@ -149,6 +154,47 @@ describe("renderSessionSidebar", () => {
       root.querySelector<HTMLButtonElement>("[data-action='refresh-sidebar']")
         ?.textContent
     ).toBe("↻");
+  });
+
+  it("marks the kanban entry active while the kanban view is open", () => {
+    const root = document.createElement("div");
+
+    renderSessionSidebar(
+      root,
+      {
+        sessions: [BASE_SESSION],
+        serverStatus: null,
+        loading: false,
+        error: null
+      },
+      {
+        activeSessionName: null,
+        activeView: "kanban",
+        collapsed: false,
+        draftSessionName: "",
+        browserTabs: [],
+        pinnedSessionNames: new Set(),
+        onCreateSession: vi.fn(),
+        onDraftChange: vi.fn(),
+        onOpenDashboard: vi.fn(),
+        onOpenKanban: vi.fn(),
+        onOpenSession: vi.fn(),
+        onTogglePinned: vi.fn(),
+        onRefresh: vi.fn(),
+        onToggleCollapsed: vi.fn()
+      }
+    );
+
+    expect(
+      root
+        .querySelector<HTMLButtonElement>("[data-action='open-kanban']")
+        ?.classList.contains("is-active")
+    ).toBe(true);
+    expect(
+      root
+        .querySelector<HTMLButtonElement>("[data-action='open-dashboard']")
+        ?.classList.contains("is-active")
+    ).toBe(false);
   });
 
   it("shows pending actions as a compact header badge", () => {
@@ -398,6 +444,43 @@ describe("renderSessionSidebar", () => {
     expect(onToggleMuted).toHaveBeenCalledWith("tmux-ui");
   });
 
+  it("hides sessions that belong to kanban projects", () => {
+    const root = document.createElement("div");
+
+    renderSessionSidebar(
+      root,
+      {
+        sessions: [
+          { ...BASE_SESSION, name: "xxvisa-codex" },
+          { ...BASE_SESSION, name: "regular" }
+        ],
+        serverStatus: null,
+        loading: false,
+        error: null
+      },
+      {
+        activeSessionName: null,
+        collapsed: false,
+        draftSessionName: "",
+        browserTabs: [],
+        pinnedSessionNames: new Set(),
+        hiddenSessionNames: new Set(["xxvisa-codex"]),
+        onCreateSession: vi.fn(),
+        onDraftChange: vi.fn(),
+        onOpenDashboard: vi.fn(),
+        onOpenKanban: vi.fn(),
+        onOpenSession: vi.fn(),
+        onTogglePinned: vi.fn(),
+        onRefresh: vi.fn(),
+        onToggleCollapsed: vi.fn()
+      }
+    );
+
+    expect(root.querySelector("[data-session-name='xxvisa-codex']")).toBeNull();
+    expect(root.querySelector("[data-session-name='regular']")).not.toBeNull();
+    expect(root.textContent).toContain("1 sessions");
+  });
+
   it("can collapse to clean compact icon-style session entries", () => {
     const root = document.createElement("div");
     const onToggleCollapsed = vi.fn();
@@ -614,6 +697,7 @@ describe("renderSessionSidebar", () => {
       )
     ).toEqual([
       "session-sidebar-header",
+      "session-sidebar-dashboard",
       "session-sidebar-dashboard",
       "session-sidebar-list",
       "session-sidebar-toolbar"

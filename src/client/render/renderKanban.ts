@@ -1,10 +1,15 @@
-import type { KanbanProject } from "../api/sessionApi";
+import type {
+  KanbanProject
+} from "../api/sessionApi";
+import {
+  KANBAN_RECOMMENDED_SESSIONS
+} from "../../shared/kanbanTemplates";
 
 export type KanbanDraft = {
   name: string;
   path: string;
   server: string;
-  agentsText: string;
+  selectedAgentNames: string[];
 };
 
 export type KanbanState = {
@@ -12,9 +17,13 @@ export type KanbanState = {
   draft: KanbanDraft;
   loading: boolean;
   error: string | null;
-  onDraftChange: (draft: KanbanDraft) => void;
+  onDraftChange: (draft: KanbanDraft, options?: { render?: boolean }) => void;
   onCreateProject: () => void;
   onOpenSession: (sessionName: string) => void;
+  onRemoveSession: (projectName: string, agentName: string) => void;
+  onKillSession: (projectName: string, agentName: string) => void;
+  onDeleteProject: (projectName: string) => void;
+  confirm?: (message: string) => boolean;
 };
 
 function normalizeSessionNamePart(value: string) {
@@ -39,6 +48,10 @@ function renderField(
   label.append(labelTitle, input);
 
   return label;
+}
+
+function getSessionNameForProject(projectName: string, sessionName: string) {
+  return getKanbanAgentSessionName(projectName, sessionName);
 }
 
 export function renderKanban(root: HTMLElement, state: KanbanState) {
@@ -68,7 +81,7 @@ export function renderKanban(root: HTMLElement, state: KanbanState) {
 
   const pathInput = document.createElement("input");
   pathInput.name = "project-path";
-  pathInput.placeholder = "/srv/project";
+  pathInput.placeholder = "~";
   pathInput.value = state.draft.path;
 
   const serverInput = document.createElement("input");
@@ -76,24 +89,18 @@ export function renderKanban(root: HTMLElement, state: KanbanState) {
   serverInput.placeholder = "tw1";
   serverInput.value = state.draft.server;
 
-  const agentsInput = document.createElement("textarea");
-  agentsInput.name = "project-agents";
-  agentsInput.placeholder = "claude:claude --resume project\ncodex\nkiro";
-  agentsInput.value = state.draft.agentsText;
-
   const emitDraftChange = () => {
     state.onDraftChange({
       name: nameInput.value,
       path: pathInput.value,
       server: serverInput.value,
-      agentsText: agentsInput.value
-    });
+      selectedAgentNames: [...state.draft.selectedAgentNames]
+    }, { render: false });
   };
 
   nameInput.addEventListener("input", emitDraftChange);
   pathInput.addEventListener("input", emitDraftChange);
   serverInput.addEventListener("input", emitDraftChange);
-  agentsInput.addEventListener("input", emitDraftChange);
 
   const submit = document.createElement("button");
   submit.type = "submit";
@@ -109,9 +116,70 @@ export function renderKanban(root: HTMLElement, state: KanbanState) {
     renderField("Project", nameInput),
     renderField("Path", pathInput),
     renderField("Server", serverInput),
-    renderField("Agents", agentsInput),
     submit
   );
+
+  const template = document.createElement("section");
+  template.className = "kanban-template";
+
+  const templateHeader = document.createElement("div");
+  templateHeader.className = "kanban-template-header";
+
+  const templateTitle = document.createElement("h2");
+  templateTitle.textContent = "Recommended sessions";
+
+  const templateHint = document.createElement("p");
+  templateHint.textContent =
+    "Choose the tmux sessions to create now. The project is saved either way.";
+  templateHeader.append(templateTitle, templateHint);
+
+  const templateList = document.createElement("div");
+  templateList.className = "kanban-template-list";
+
+  KANBAN_RECOMMENDED_SESSIONS.forEach((session) => {
+    const row = document.createElement("label");
+    row.className = "kanban-template-item";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = state.draft.selectedAgentNames.includes(session.name);
+    checkbox.addEventListener("change", () => {
+      const selectedAgentNames = checkbox.checked
+        ? [...new Set([...state.draft.selectedAgentNames, session.name])]
+        : state.draft.selectedAgentNames.filter((name) => name !== session.name);
+
+      state.onDraftChange({
+        ...state.draft,
+        name: nameInput.value,
+        path: pathInput.value,
+        server: serverInput.value,
+        selectedAgentNames
+      }, { render: true });
+    });
+
+    const info = document.createElement("div");
+    info.className = "kanban-template-info";
+
+    const role = document.createElement("strong");
+    role.textContent = session.name;
+
+    const summary = document.createElement("span");
+    summary.textContent = session.description;
+
+    const derived = document.createElement("code");
+    derived.textContent = getSessionNameForProject(
+      state.draft.name || "project",
+      session.name
+    );
+
+    info.append(role, summary, derived);
+    row.append(checkbox, info);
+
+    templateList.append(row);
+  });
+
+  template.append(templateHeader, templateList);
+  form.append(template);
 
   section.append(header, form);
 
@@ -138,7 +206,23 @@ export function renderKanban(root: HTMLElement, state: KanbanState) {
     const server = document.createElement("span");
     server.className = "kanban-project-server";
     server.textContent = project.server || "local";
-    cardHeader.append(projectTitle, server);
+
+    const closeButton = document.createElement("button");
+    closeButton.type = "button";
+    closeButton.className = "kanban-project-close";
+    closeButton.textContent = "Close";
+    closeButton.title = "Close this kanban project";
+    closeButton.addEventListener("click", () => {
+      const shouldClose = (state.confirm ?? window.confirm)(
+        `Close kanban project ${project.name}?`
+      );
+
+      if (shouldClose) {
+        state.onDeleteProject(project.name);
+      }
+    });
+
+    cardHeader.append(projectTitle, server, closeButton);
 
     const path = document.createElement("div");
     path.className = "kanban-project-path";
@@ -171,11 +255,40 @@ export function renderKanban(root: HTMLElement, state: KanbanState) {
       openButton.textContent = "Open";
       openButton.addEventListener("click", () => state.onOpenSession(sessionName));
 
-      agentCard.append(agentName, agentKind, agentSession, agentCommand, openButton);
+      const removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.className = "kanban-agent-remove";
+      removeButton.textContent = "Remove";
+      removeButton.title = "Remove from kanban only";
+      removeButton.addEventListener("click", () =>
+        state.onRemoveSession(project.name, agent.name)
+      );
+
+      const killButton = document.createElement("button");
+      killButton.type = "button";
+      killButton.className = "kanban-agent-kill";
+      killButton.textContent = "Kill";
+      killButton.title = "Kill tmux session and remove from kanban";
+      killButton.addEventListener("click", () =>
+        state.onKillSession(project.name, agent.name)
+      );
+
+      const agentActions = document.createElement("div");
+      agentActions.className = "kanban-agent-actions";
+      agentActions.append(openButton, removeButton, killButton);
+
+      agentCard.append(agentName, agentKind, agentSession, agentCommand, agentActions);
       agents.append(agentCard);
     });
 
-    card.append(cardHeader, path, agents);
+    const actions = document.createElement("div");
+    actions.className = "kanban-project-actions";
+
+    const createInfo = document.createElement("span");
+    createInfo.textContent = `${project.agents.length} recommended sessions`;
+    actions.append(createInfo);
+
+    card.append(cardHeader, path, actions, agents);
     list.append(card);
   });
 

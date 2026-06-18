@@ -43,6 +43,9 @@ import {
 } from "./imageUpload";
 import { getAppView, getLayoutMode } from "./layoutMode";
 import { isPageVisible } from "./pageVisibility";
+import {
+  getDefaultKanbanSelectedSessionNames
+} from "../shared/kanbanTemplates";
 import "./styles.css";
 
 declare const __TMUX_UI_CLIENT_VERSION__: string;
@@ -104,9 +107,9 @@ let activeTheme = getTheme(loadThemeId());
 let draftSessionName = "";
 let kanbanDraft: KanbanDraft = {
   name: "",
-  path: "",
+  path: "~",
   server: "",
-  agentsText: "claude\ncodex\nkiro"
+  selectedAgentNames: getDefaultKanbanSelectedSessionNames()
 };
 let activeConfigSessionName: string | null = null;
 let activeSendSessionName: string | null = null;
@@ -265,39 +268,28 @@ function toggleResponsiveSidebar() {
   setSidebarCollapsed(!isSidebarCollapsed);
 }
 
+function navigateAppView(view: "terminal" | "kanban") {
+  const url = new URL(window.location.href);
+
+  if (view === "kanban") {
+    url.searchParams.set("view", "kanban");
+  } else {
+    url.searchParams.delete("view");
+  }
+
+  window.location.href = `${url.pathname}${url.search}${url.hash}`;
+}
+
 function setActionCenterOpen(open: boolean) {
   isActionCenterOpen = open;
   scheduleRender();
 }
 
-function parseKanbanAgents(agentsText: string) {
-  return agentsText
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const separatorIndex = line.indexOf(":");
-      const rawName =
-        separatorIndex === -1 ? line : line.slice(0, separatorIndex);
-      const command =
-        separatorIndex === -1 ? null : line.slice(separatorIndex + 1).trim() || null;
-      const name = rawName.trim();
-
-      return {
-        kind: name,
-        name,
-        command
-      };
-    })
-    .filter((agent) => agent.name);
-}
-
 function createKanbanProject() {
   const name = kanbanDraft.name.trim();
-  const path = kanbanDraft.path.trim();
-  const agents = parseKanbanAgents(kanbanDraft.agentsText);
+  const path = kanbanDraft.path.trim() || "~";
 
-  if (!name || !path || agents.length === 0) {
+  if (!name || !path) {
     return;
   }
 
@@ -306,15 +298,14 @@ function createKanbanProject() {
       name,
       path,
       server: kanbanDraft.server.trim() || null,
-      agents
+      selectedAgentNames: kanbanDraft.selectedAgentNames
     })
-    .then(() => store.refreshKanbanProjects())
     .then(() => {
       kanbanDraft = {
         name: "",
-        path: "",
+        path: "~",
         server: "",
-        agentsText: "claude\ncodex\nkiro"
+        selectedAgentNames: getDefaultKanbanSelectedSessionNames()
       };
       scheduleRender();
     });
@@ -346,6 +337,28 @@ function getTabForSession(sessionName: string) {
 
 function getPinnedSessionNames() {
   return new Set(sidebarFavorites.getPinnedSessionNames());
+}
+
+function normalizeKanbanSessionNamePart(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function getKanbanSessionNames() {
+  return new Set(
+    store.getState().kanbanProjects.flatMap((project) =>
+      project.agents.map((agent) => {
+        const projectName = normalizeKanbanSessionNamePart(project.name);
+        const agentName = normalizeKanbanSessionNamePart(agent.name);
+
+        return projectName && agentName ? `${projectName}-${agentName}` : "";
+      })
+    )
+    .filter(Boolean)
+  );
 }
 
 function togglePinnedSession(sessionName: string) {
@@ -1506,14 +1519,29 @@ function render() {
         draft: kanbanDraft,
         loading: store.getState().loading,
         error: store.getState().error,
-        onDraftChange: (draft) => {
+        onDraftChange: (draft, options) => {
           kanbanDraft = draft;
-          scheduleRender();
+          if (options?.render !== false) {
+            scheduleRender();
+          }
         },
         onCreateProject: createKanbanProject,
         onOpenSession: (name) => {
           getOrOpenTab(name);
           scheduleRender();
+        },
+        onRemoveSession: (projectName, agentName) => {
+          void store
+            .removeKanbanSession(projectName, agentName, { kill: false })
+            .then(() => scheduleRender());
+        },
+        onKillSession: (projectName, agentName) => {
+          void store
+            .removeKanbanSession(projectName, agentName, { kill: true })
+            .then(() => scheduleRender());
+        },
+        onDeleteProject: (projectName) => {
+          void store.deleteKanbanProject(projectName).then(() => scheduleRender());
         }
       });
     } else {
@@ -1585,9 +1613,11 @@ function render() {
       })),
       pinnedSessionNames: getPinnedSessionNames(),
       mutedSessionNames: new Set(mutedSessions.getMutedSessionNames()),
+      hiddenSessionNames: getKanbanSessionNames(),
       timelineEvents: store.getState().timelineEvents ?? [],
       actionCount: actionCenterItems.length,
       actionCenterOpen: isActionCenterOpen,
+      activeView: appView === "kanban" ? "kanban" : "dashboard",
       onCreateSession: (name) => {
         void store.createSession(name).then(() => {
           draftSessionName = "";
@@ -1599,9 +1629,10 @@ function render() {
         draftSessionName = value;
       },
       onOpenDashboard: () => {
-        tabState.setActiveTab(null);
-        setMobileSidebarOpen(false);
-        scheduleRender();
+        navigateAppView("terminal");
+      },
+      onOpenKanban: () => {
+        navigateAppView("kanban");
       },
       onOpenSession: (name) => {
         getOrOpenTab(name);
