@@ -197,6 +197,66 @@ describe("renderSessionSidebar", () => {
     ).toBe(false);
   });
 
+  it("shows compact kanban board shortcuts in the sidebar", () => {
+    const root = document.createElement("div");
+    const onOpenKanbanProject = vi.fn();
+
+    renderSessionSidebar(
+      root,
+      {
+        sessions: [BASE_SESSION],
+        serverStatus: null,
+        loading: false,
+        error: null
+      },
+      {
+        activeSessionName: null,
+        activeView: "dashboard",
+        collapsed: false,
+        draftSessionName: "",
+        browserTabs: [],
+        pinnedSessionNames: new Set(),
+        kanbanProjects: [
+          {
+            name: "xxvisa",
+            path: "~/server/wwwroot/app/xxvisa-v2",
+            server: null,
+            agents: [
+              { kind: "pm", name: "pm", command: null, sessionName: "xxvisa-pm" },
+              {
+                kind: "review",
+                name: "review",
+                command: null,
+                sessionName: "xxvisa-review"
+              }
+            ]
+          }
+        ],
+        onCreateSession: vi.fn(),
+        onDraftChange: vi.fn(),
+        onOpenDashboard: vi.fn(),
+        onOpenKanban: vi.fn(),
+        onOpenKanbanProject,
+        onOpenSession: vi.fn(),
+        onTogglePinned: vi.fn(),
+        onRefresh: vi.fn(),
+        onToggleCollapsed: vi.fn()
+      }
+    );
+
+    const projectButton = root.querySelector<HTMLButtonElement>(
+      "[data-action='open-kanban-project'][data-project-name='xxvisa']"
+    );
+
+    expect(root.querySelector(".session-sidebar-kanban-projects")).not.toBeNull();
+    expect(projectButton?.textContent).toContain("xxvisa");
+    expect(projectButton?.textContent).toContain("2");
+
+    projectButton?.click();
+
+    expect(onOpenKanbanProject).toHaveBeenCalledWith("xxvisa");
+  });
+
   it("shows pending actions as a compact header badge", () => {
     const root = document.createElement("div");
     const onToggleActionCenter = vi.fn();

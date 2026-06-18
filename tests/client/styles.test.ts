@@ -181,7 +181,13 @@ describe("client layout styles", () => {
       /\.session-sidebar-tool-button\[data-action="refresh-sidebar"\]\s*\{[^}]*font-size:\s*1\.05rem;/s
     );
     expect(styles).toMatch(
-      /\.session-sidebar\s*\{[^}]*grid-template-rows:\s*auto\s+auto\s+auto\s+minmax\(0,\s*1fr\)\s+auto\s+auto;/s
+      /\.session-sidebar\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;/s
+    );
+    expect(styles).toMatch(
+      /\.session-sidebar-kanban-projects\s*\{[^}]*max-height:\s*min\(10rem,\s*24vh\);[^}]*overflow:\s*auto;/s
+    );
+    expect(styles).toMatch(
+      /\.session-sidebar-list\s*\{[^}]*flex:\s*1\s+1\s+auto;[^}]*overflow:\s*auto;/s
     );
     expect(styles).toMatch(
       /\.session-sidebar-timeline\s*\{[^}]*border-top:\s*1px\s+solid\s+rgba\(217,\s*226,\s*234,\s*0\.1\);/s
@@ -226,7 +232,10 @@ describe("client layout styles", () => {
       /\.kanban-template-list\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(12rem,\s*1fr\)\);/s
     );
     expect(styles).toMatch(
-      /\.kanban-project-list\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(18rem,\s*1fr\)\);/s
+      /\.kanban-project-list\s*\{[^}]*columns:\s*18rem;[^}]*column-gap:\s*0\.6rem;/s
+    );
+    expect(styles).toMatch(
+      /\.kanban-project-card\s*\{[^}]*break-inside:\s*avoid;[^}]*display:\s*inline-grid;[^}]*width:\s*100%;/s
     );
     expect(styles).toMatch(
       /\.kanban-agent-card\s*\{[^}]*display:\s*grid;[^}]*border:\s*1px\s+solid\s+rgba\(217,\s*226,\s*234,\s*0\.12\);/s

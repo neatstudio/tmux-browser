@@ -280,6 +280,30 @@ function navigateAppView(view: "terminal" | "kanban") {
   window.location.href = `${url.pathname}${url.search}${url.hash}`;
 }
 
+function openDashboardView() {
+  tabState.setActiveTab(null);
+  setMobileSidebarOpen(false);
+
+  if (appView === "kanban") {
+    navigateAppView("terminal");
+    return;
+  }
+
+  scheduleRender();
+}
+
+function openKanbanView() {
+  tabState.setActiveTab(null);
+  setMobileSidebarOpen(false);
+
+  if (appView !== "kanban") {
+    navigateAppView("kanban");
+    return;
+  }
+
+  scheduleRender();
+}
+
 function setActionCenterOpen(open: boolean) {
   isActionCenterOpen = open;
   scheduleRender();
@@ -1498,7 +1522,12 @@ function render() {
   if (tabListSignature !== lastRenderedTabListSignature) {
     renderTabs(tabsRoot, tabs, activeTabId, {
       onSelectTab: (tabId) => {
-        tabState.setActiveTab(tabId === "__dashboard__" ? null : tabId);
+        if (tabId === "__dashboard__") {
+          openDashboardView();
+          return;
+        }
+
+        tabState.setActiveTab(tabId);
         scheduleRender();
       },
       onCloseTab: (tabId) => closeTab(tabId),
@@ -1630,6 +1659,7 @@ function render() {
       pinnedSessionNames: getPinnedSessionNames(),
       mutedSessionNames: new Set(mutedSessions.getMutedSessionNames()),
       hiddenSessionNames: getKanbanSessionNames(),
+      kanbanProjects: store.getState().kanbanProjects,
       timelineEvents: store.getState().timelineEvents ?? [],
       actionCount: actionCenterItems.length,
       actionCenterOpen: isActionCenterOpen,
@@ -1644,12 +1674,9 @@ function render() {
       onDraftChange: (value) => {
         draftSessionName = value;
       },
-      onOpenDashboard: () => {
-        navigateAppView("terminal");
-      },
-      onOpenKanban: () => {
-        navigateAppView("kanban");
-      },
+      onOpenDashboard: openDashboardView,
+      onOpenKanban: openKanbanView,
+      onOpenKanbanProject: openKanbanView,
       onOpenSession: (name) => {
         getOrOpenTab(name);
         setMobileSidebarOpen(false);
