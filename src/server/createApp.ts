@@ -120,6 +120,11 @@ function normalizeKanbanProjectPayload(body: unknown): {
             typeof agentRecord.command === "string" && agentRecord.command.trim()
               ? agentRecord.command.trim()
               : null;
+          const sessionName =
+            typeof agentRecord.sessionName === "string" &&
+            agentRecord.sessionName.trim()
+              ? agentRecord.sessionName.trim()
+              : undefined;
 
           if (!kind || !agentName) {
             return null;
@@ -128,7 +133,8 @@ function normalizeKanbanProjectPayload(body: unknown): {
           return {
             kind,
             name: agentName,
-            command
+            command,
+            ...(sessionName ? { sessionName } : {})
           };
         })
         .filter((agent): agent is KanbanProject["agents"][number] => agent !== null)
@@ -522,14 +528,37 @@ export function createApp(options: {
     }
   });
 
+  app.post("/api/kanban/projects/:name/sessions", async (req, res, next) => {
+    try {
+      const sessionName =
+        typeof req.body.sessionName === "string" ? req.body.sessionName.trim() : "";
+
+      if (!sessionName) {
+        throw new HttpError("Kanban session name is required", 400);
+      }
+
+      const nextPreferences = await preferences.addKanbanSession(
+        req.params.name,
+        sessionName
+      );
+      options.eventHub?.publish({
+        type: "sessions-invalidated",
+        reason: "session-created",
+        sessionName
+      });
+      res.json({ ok: true, preferences: nextPreferences });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.delete(
     "/api/kanban/projects/:name/sessions/:agent",
     async (req, res, next) => {
       try {
-        const sessionName = getKanbanAgentSessionName(
-          req.params.name,
-          req.params.agent
-        );
+        const sessionName = req.params.agent.includes("-")
+          ? req.params.agent
+          : getKanbanAgentSessionName(req.params.name, req.params.agent);
         const shouldKill = req.query.kill === "true";
 
         if (shouldKill) {

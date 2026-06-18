@@ -19,6 +19,7 @@ export type KanbanAgent = {
   kind: string;
   name: string;
   command: string | null;
+  sessionName?: string;
 };
 
 export type KanbanProject = {
@@ -38,6 +39,10 @@ export type PreferenceStore = {
   ) => Promise<Preferences>;
   upsertKanbanProject: (project: KanbanProject) => Promise<Preferences>;
   deleteKanbanProject: (projectName: string) => Promise<Preferences>;
+  addKanbanSession: (
+    projectName: string,
+    sessionName: string
+  ) => Promise<Preferences>;
   removeKanbanSession: (sessionName: string) => Promise<Preferences>;
   syncKanbanSessions: (sessionNames: string[]) => Promise<Preferences>;
   renameSession: (fromName: string, toName: string) => Promise<Preferences>;
@@ -81,6 +86,7 @@ function normalizeKanbanAgents(agents: unknown): KanbanAgent[] {
       const record = agent as Record<string, unknown>;
       const kind = normalizeNullableString(record.kind);
       const name = normalizeNullableString(record.name);
+      const sessionName = normalizeNullableString(record.sessionName);
 
       if (!kind || !name) {
         return null;
@@ -89,7 +95,8 @@ function normalizeKanbanAgents(agents: unknown): KanbanAgent[] {
       return {
         kind,
         name,
-        command: normalizeNullableString(record.command)
+        command: normalizeNullableString(record.command),
+        ...(sessionName ? { sessionName } : {})
       };
     })
     .filter((agent): agent is KanbanAgent => agent !== null)
@@ -141,6 +148,10 @@ function getKanbanAgentSessionName(projectName: string, agentName: string) {
   return normalizedProjectName && normalizedAgentName
     ? `${normalizedProjectName}-${normalizedAgentName}`
     : "";
+}
+
+function getKanbanAgentActualSessionName(projectName: string, agent: KanbanAgent) {
+  return agent.sessionName ?? getKanbanAgentSessionName(projectName, agent.name);
 }
 
 function normalizePreferences(preferences: Partial<Preferences>): Preferences {
@@ -294,6 +305,49 @@ export function createPreferenceStore(
 
       return this.getPreferences();
     },
+    async addKanbanSession(projectName, sessionName) {
+      const normalizedProjectName = projectName.trim();
+      const normalizedSessionName = sessionName.trim();
+
+      if (!normalizedProjectName || !normalizedSessionName) {
+        return this.getPreferences();
+      }
+
+      preferences = normalizePreferences({
+        ...preferences,
+        kanbanProjects: preferences.kanbanProjects.map((project) => {
+          if (project.name !== normalizedProjectName) {
+            return project;
+          }
+
+          const hasSession = project.agents.some(
+            (agent) =>
+              getKanbanAgentActualSessionName(project.name, agent) ===
+              normalizedSessionName
+          );
+
+          if (hasSession) {
+            return project;
+          }
+
+          return {
+            ...project,
+            agents: [
+              ...project.agents,
+              {
+                kind: "session",
+                name: normalizedSessionName,
+                command: null,
+                sessionName: normalizedSessionName
+              }
+            ]
+          };
+        })
+      });
+      await persist();
+
+      return this.getPreferences();
+    },
     async removeKanbanSession(sessionName) {
       const normalizedSessionName = sessionName.trim();
 
@@ -307,7 +361,7 @@ export function createPreferenceStore(
           ...project,
           agents: project.agents.filter(
             (agent) =>
-              getKanbanAgentSessionName(project.name, agent.name) !==
+              getKanbanAgentActualSessionName(project.name, agent) !==
               normalizedSessionName
           )
         }))
@@ -324,7 +378,7 @@ export function createPreferenceStore(
         kanbanProjects: preferences.kanbanProjects.map((project) => ({
           ...project,
           agents: project.agents.filter((agent) =>
-            liveSessionNames.has(getKanbanAgentSessionName(project.name, agent.name))
+            liveSessionNames.has(getKanbanAgentActualSessionName(project.name, agent))
           )
         }))
       });

@@ -354,11 +354,21 @@ function getKanbanSessionNames() {
         const projectName = normalizeKanbanSessionNamePart(project.name);
         const agentName = normalizeKanbanSessionNamePart(agent.name);
 
-        return projectName && agentName ? `${projectName}-${agentName}` : "";
+        return agent.sessionName ??
+          (projectName && agentName ? `${projectName}-${agentName}` : "");
       })
     )
     .filter(Boolean)
   );
+}
+
+function getAvailableKanbanSessionNames() {
+  const kanbanSessionNames = getKanbanSessionNames();
+
+  return store
+    .getState()
+    .sessions.map((session) => session.name)
+    .filter((sessionName) => !kanbanSessionNames.has(sessionName));
 }
 
 function togglePinnedSession(sessionName: string) {
@@ -1517,6 +1527,7 @@ function render() {
       renderKanban(dashboardRoot, {
         projects: store.getState().kanbanProjects,
         draft: kanbanDraft,
+        availableSessions: getAvailableKanbanSessionNames(),
         loading: store.getState().loading,
         error: store.getState().error,
         onDraftChange: (draft, options) => {
@@ -1538,6 +1549,11 @@ function render() {
         onKillSession: (projectName, agentName) => {
           void store
             .removeKanbanSession(projectName, agentName, { kill: true })
+            .then(() => scheduleRender());
+        },
+        onAddSession: (projectName, sessionName) => {
+          void store
+            .addKanbanSession(projectName, sessionName)
             .then(() => scheduleRender());
         },
         onDeleteProject: (projectName) => {
