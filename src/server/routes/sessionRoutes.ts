@@ -228,6 +228,7 @@ export function createSessionRoutes(
   router.delete("/:name", async (req, res, next) => {
     try {
       await deps.killSession(req.params.name);
+      await deps.preferences?.removeKanbanSession(req.params.name);
       deps.timeline?.addEvent({
         type: "session-killed",
         sessionName: req.params.name,

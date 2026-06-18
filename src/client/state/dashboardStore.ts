@@ -1,5 +1,6 @@
 import type {
   KanbanProject,
+  CreateKanbanProjectRequest,
   ServerStatus,
   SessionApi,
   SessionSummary,
@@ -34,11 +35,14 @@ type DashboardStoreDeps = {
     | "killPane"
     | "listKanbanProjects"
     | "createKanbanProject"
+    | "removeKanbanSession"
+    | "deleteKanbanProject"
   > &
     Partial<Pick<SessionApi, "listTimelineEvents">>;
   pollMs: number;
   dashboardPollMs?: number;
   serverStatusPollMs?: number;
+  kanbanPollMs?: number;
   pruneTabs?: (validSessionNames: string[]) => void;
   shouldIncludePreview?: () => boolean;
   shouldIncludePanes?: () => boolean;
@@ -69,6 +73,7 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
   let timer: ReturnType<typeof setInterval> | null = null;
   let dashboardTimer: ReturnType<typeof setInterval> | null = null;
   let serverStatusTimer: ReturnType<typeof setInterval> | null = null;
+  let kanbanTimer: ReturnType<typeof setInterval> | null = null;
 
   function sessionsEqual(previous: SessionSummary[], next: SessionSummary[]) {
     if (previous.length !== next.length) {
@@ -235,6 +240,25 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
     }
   }
 
+  async function refreshKanbanProjects() {
+    try {
+      const kanbanProjects = await deps.api.listKanbanProjects();
+
+      commit({
+        ...state,
+        kanbanProjects,
+        loading: false,
+        error: null
+      });
+    } catch (error) {
+      commit({
+        ...state,
+        loading: false,
+        error: error instanceof Error ? error.message : "Failed to refresh kanban projects"
+      });
+    }
+  }
+
   return {
     getState() {
       return state;
@@ -273,24 +297,7 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
         });
       }
     },
-    async refreshKanbanProjects() {
-      try {
-        const kanbanProjects = await deps.api.listKanbanProjects();
-
-        commit({
-          ...state,
-          kanbanProjects,
-          loading: false,
-          error: null
-        });
-      } catch (error) {
-        commit({
-          ...state,
-          loading: false,
-          error: error instanceof Error ? error.message : "Failed to refresh kanban projects"
-        });
-      }
-    },
+    refreshKanbanProjects,
     subscribe(listener: (state: DashboardState) => void) {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -330,8 +337,33 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
       await refreshTimeline();
       await refresh({ includePanes: true });
     },
-    async createKanbanProject(project: KanbanProject) {
+    async createKanbanProject(project: CreateKanbanProjectRequest) {
       await deps.api.createKanbanProject(project);
+      await refreshKanbanProjects();
+      await refresh({
+        includePreview: false,
+        includePanes: true,
+        includeServerStatus: false,
+        preferActiveSessionStatus: false
+      });
+    },
+    async removeKanbanSession(
+      projectName: string,
+      agentName: string,
+      options: { kill?: boolean } = {}
+    ) {
+      await deps.api.removeKanbanSession(projectName, agentName, options);
+      await refreshKanbanProjects();
+      await refresh({
+        includePreview: false,
+        includePanes: true,
+        includeServerStatus: false,
+        preferActiveSessionStatus: false
+      });
+    },
+    async deleteKanbanProject(projectName: string) {
+      await deps.api.deleteKanbanProject(projectName);
+      await refreshKanbanProjects();
       await refresh({
         includePreview: false,
         includePanes: true,
@@ -340,7 +372,12 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
       });
     },
     startPolling() {
-      if (timer !== null || dashboardTimer !== null || serverStatusTimer !== null) {
+      if (
+        timer !== null ||
+        dashboardTimer !== null ||
+        serverStatusTimer !== null ||
+        kanbanTimer !== null
+      ) {
         return;
       }
 
@@ -384,6 +421,10 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
 
         void refreshServerStatus();
       }, deps.serverStatusPollMs ?? Math.max(deps.pollMs, 60_000));
+
+      kanbanTimer = globalThis.setInterval(() => {
+        void refreshKanbanProjects();
+      }, deps.kanbanPollMs ?? Math.max(deps.pollMs, 300_000));
     },
     stopPolling() {
       if (timer !== null) {
@@ -399,6 +440,11 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
       if (serverStatusTimer !== null) {
         globalThis.clearInterval(serverStatusTimer);
         serverStatusTimer = null;
+      }
+
+      if (kanbanTimer !== null) {
+        globalThis.clearInterval(kanbanTimer);
+        kanbanTimer = null;
       }
     }
   };

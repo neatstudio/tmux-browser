@@ -31,6 +31,9 @@ import {
   type KanbanProject,
   type PreferenceStore
 } from "./services/preferences/createPreferenceStore.js";
+import {
+  getDefaultKanbanSelectedSessionNames
+} from "../shared/kanbanTemplates.js";
 
 const faviconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#15181c"/><path d="M14 14h36v10H37v28H27V24H14z" fill="#b7ffb0"/></svg>`;
 const IMAGE_MIME_TYPES = new Map([
@@ -73,7 +76,25 @@ function optionalSessionNameList(value: unknown) {
   return names.length > 0 ? names : undefined;
 }
 
-function normalizeKanbanProjectPayload(body: unknown): KanbanProject {
+function normalizeSelectedAgentNames(value: unknown) {
+  if (!Array.isArray(value)) {
+    return getDefaultKanbanSelectedSessionNames();
+  }
+
+  return [
+    ...new Set(
+      value
+        .filter((agentName): agentName is string => typeof agentName === "string")
+        .map((agentName) => agentName.trim())
+        .filter(Boolean)
+    )
+  ];
+}
+
+function normalizeKanbanProjectPayload(body: unknown): {
+  project: KanbanProject;
+  selectedAgentNames: string[];
+} {
   const payload =
     body && typeof body === "object" ? (body as Record<string, unknown>) : {};
   const name = typeof payload.name === "string" ? payload.name.trim() : "";
@@ -82,6 +103,7 @@ function normalizeKanbanProjectPayload(body: unknown): KanbanProject {
     typeof payload.server === "string" && payload.server.trim()
       ? payload.server.trim()
       : null;
+  const selectedAgentNames = normalizeSelectedAgentNames(payload.selectedAgentNames);
   const agents = Array.isArray(payload.agents)
     ? payload.agents
         .map((agent) => {
@@ -112,16 +134,38 @@ function normalizeKanbanProjectPayload(body: unknown): KanbanProject {
         .filter((agent): agent is KanbanProject["agents"][number] => agent !== null)
     : [];
 
-  if (!name || !path || agents.length === 0) {
-    throw new HttpError("Kanban project requires name, path, and agents", 400);
+  if (!name || !path) {
+    throw new HttpError("Kanban project requires name and path", 400);
   }
 
   return {
-    name,
-    path,
-    server,
-    agents
+    project: {
+      name,
+      path,
+      server,
+      agents
+    },
+    selectedAgentNames
   };
+}
+
+function normalizeSessionNamePart(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function getKanbanAgentSessionName(projectName: string, agentName: string) {
+  const normalizedProjectName = normalizeSessionNamePart(projectName);
+  const normalizedAgentName = normalizeSessionNamePart(agentName);
+
+  if (!normalizedProjectName || !normalizedAgentName) {
+    throw new HttpError("Invalid kanban session name", 400);
+  }
+
+  return `${normalizedProjectName}-${normalizedAgentName}`;
 }
 
 function resolvePreviewImagePath(imagePath: string, basePath: string | undefined) {
@@ -421,22 +465,37 @@ export function createApp(options: {
     }
   });
 
-  app.get("/api/kanban/projects", (_req, res) => {
-    res.json({ projects: preferences.getPreferences().kanbanProjects });
+  app.get("/api/kanban/projects", async (_req, res, next) => {
+    try {
+      const sessions = await tmuxService.listSessions({ includePreview: false });
+      const nextPreferences = await preferences.syncKanbanSessions(
+        sessions.map((session) => session.name)
+      );
+
+      res.json({ projects: nextPreferences.kanbanProjects });
+    } catch (error) {
+      next(error);
+    }
   });
 
   app.post("/api/kanban/projects", async (req, res, next) => {
     try {
-      const project = normalizeKanbanProjectPayload(req.body);
-      const createdSessions = await tmuxService.createProjectSessions({
-        projectName: project.name,
-        projectPath: project.path,
-        server: project.server,
-        agents: project.agents.map((agent) => ({
-          name: agent.name,
-          command: agent.command
-        }))
-      });
+      const { project, selectedAgentNames } = normalizeKanbanProjectPayload(req.body);
+      const selectedAgents = project.agents.filter((agent) =>
+        selectedAgentNames.includes(agent.name)
+      );
+      const createdSessions =
+        selectedAgents.length === 0
+          ? []
+          : await tmuxService.createProjectSessions({
+              projectName: project.name,
+              projectPath: project.path,
+              server: project.server,
+              agents: selectedAgents.map((agent) => ({
+                name: agent.name,
+                command: agent.command
+              }))
+            });
       const nextPreferences = await preferences.upsertKanbanProject(project);
 
       options.eventHub?.publish({
@@ -462,6 +521,33 @@ export function createApp(options: {
       next(error);
     }
   });
+
+  app.delete(
+    "/api/kanban/projects/:name/sessions/:agent",
+    async (req, res, next) => {
+      try {
+        const sessionName = getKanbanAgentSessionName(
+          req.params.name,
+          req.params.agent
+        );
+        const shouldKill = req.query.kill === "true";
+
+        if (shouldKill) {
+          await (options.killSession ?? tmuxService.killSession)(sessionName);
+        }
+
+        const nextPreferences = await preferences.removeKanbanSession(sessionName);
+        options.eventHub?.publish({
+          type: "sessions-invalidated",
+          reason: "session-killed",
+          sessionName
+        });
+        res.json({ ok: true, preferences: nextPreferences });
+      } catch (error) {
+        next(error);
+      }
+    }
+  );
 
   app.post(
     "/api/uploads/image",

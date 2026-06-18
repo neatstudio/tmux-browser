@@ -38,4 +38,33 @@ describe("session route app events", () => {
       }
     ]);
   });
+
+  it("removes killed sessions from kanban preferences", async () => {
+    const app = express();
+    const preferences = {
+      removeKanbanSession: vi.fn().mockResolvedValue(undefined),
+      renameSession: vi.fn()
+    };
+
+    app.use(express.json());
+    app.use(
+      "/api/sessions",
+      createSessionRoutes({
+        listSessions: vi.fn(),
+        getSessionStatus: vi.fn(),
+        createSession: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn().mockResolvedValue(undefined),
+        sendCommand: vi.fn(),
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn(),
+        preferences
+      })
+    );
+
+    await request(app).delete("/api/sessions/xxvisa-codex").expect(204);
+
+    expect(preferences.removeKanbanSession).toHaveBeenCalledWith("xxvisa-codex");
+  });
 });

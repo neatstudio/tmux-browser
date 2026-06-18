@@ -1,4 +1,5 @@
 import type { TerminalInputPrompt } from "../../shared/inputPromptDetector";
+import { getKanbanTemplateAgents } from "../../shared/kanbanTemplates";
 import type { SessionSettings } from "../../shared/sessionSettings";
 import type { TimelineEvent } from "../../shared/timeline";
 
@@ -57,6 +58,11 @@ export type KanbanProject = {
   agents: KanbanAgent[];
 };
 
+export type CreateKanbanProjectRequest = Omit<KanbanProject, "agents"> & {
+  agents?: KanbanAgent[];
+  selectedAgentNames?: string[];
+};
+
 export type ServerStatus = {
   platform: string;
   cpuCount: number;
@@ -76,7 +82,13 @@ export type SessionApi = {
   listTimelineEvents: (limit?: number) => Promise<TimelineEvent[]>;
   getPreferences: () => Promise<Preferences>;
   listKanbanProjects: () => Promise<KanbanProject[]>;
-  createKanbanProject: (project: KanbanProject) => Promise<string[]>;
+  createKanbanProject: (project: CreateKanbanProjectRequest) => Promise<string[]>;
+  removeKanbanSession: (
+    projectName: string,
+    agentName: string,
+    options?: { kill?: boolean }
+  ) => Promise<void>;
+  deleteKanbanProject: (projectName: string) => Promise<void>;
   setPinnedSession: (name: string, pinned: boolean) => Promise<void>;
   setMutedSession: (name: string, muted: boolean) => Promise<void>;
   setSessionSettings: (name: string, settings: SessionSettings) => Promise<void>;
@@ -177,7 +189,10 @@ export function createSessionApi(baseUrl = ""): SessionApi {
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify(project)
+        body: JSON.stringify({
+          ...project,
+          agents: project.agents ?? getKanbanTemplateAgents()
+        })
       });
 
       if (!response.ok) {
@@ -187,6 +202,33 @@ export function createSessionApi(baseUrl = ""): SessionApi {
       const payload = (await response.json()) as { sessions: string[] };
 
       return payload.sessions;
+    },
+    async removeKanbanSession(projectName, agentName, options = {}) {
+      const params = new URLSearchParams({
+        kill: options.kill ? "true" : "false"
+      });
+      const response = await fetch(
+        `${baseUrl}/api/kanban/projects/${encodeURIComponent(projectName)}/sessions/${encodeURIComponent(agentName)}?${params.toString()}`,
+        {
+          method: "DELETE"
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to remove kanban session");
+      }
+    },
+    async deleteKanbanProject(projectName) {
+      const response = await fetch(
+        `${baseUrl}/api/kanban/projects/${encodeURIComponent(projectName)}`,
+        {
+          method: "DELETE"
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to delete kanban project");
+      }
     },
     async setPinnedSession(name: string, pinned: boolean) {
       const response = await fetch(

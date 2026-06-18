@@ -182,7 +182,7 @@ describe("createSessionApi", () => {
         json: () =>
           Promise.resolve({
             ok: true,
-            sessions: ["xxvisa-claude"]
+            sessions: ["xxvisa-pm", "xxvisa-codex"]
           })
       });
     vi.stubGlobal("fetch", fetch);
@@ -207,15 +207,9 @@ describe("createSessionApi", () => {
         name: "xxvisa",
         path: "/srv/xxvisa",
         server: "tw1",
-        agents: [
-          {
-            kind: "claude",
-            name: "claude",
-            command: "claude --resume xxvisa"
-          }
-        ]
+        selectedAgentNames: ["pm", "codex"]
       })
-    ).resolves.toEqual(["xxvisa-claude"]);
+    ).resolves.toEqual(["xxvisa-pm", "xxvisa-codex"]);
 
     expect(fetch).toHaveBeenNthCalledWith(1, "/api/kanban/projects");
     expect(fetch).toHaveBeenNthCalledWith(2, "/api/kanban/projects", {
@@ -227,14 +221,49 @@ describe("createSessionApi", () => {
         name: "xxvisa",
         path: "/srv/xxvisa",
         server: "tw1",
+        selectedAgentNames: ["pm", "codex"],
         agents: [
-          {
-            kind: "claude",
-            name: "claude",
-            command: "claude --resume xxvisa"
-          }
+          { kind: "pm", name: "pm", command: null },
+          { kind: "review", name: "review", command: null },
+          { kind: "codex", name: "codex", command: null },
+          { kind: "claude", name: "claude", command: null },
+          { kind: "scratch", name: "scratch", command: null }
         ]
       })
+    });
+  });
+
+  it("removes, kills, and deletes kanban projects", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ ok: true, preferences: {} })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ ok: true, preferences: {} })
+      })
+      .mockResolvedValueOnce({ ok: true });
+    vi.stubGlobal("fetch", fetch);
+    const api = createSessionApi();
+
+    await api.removeKanbanSession("xxvisa", "codex", { kill: false });
+    await api.removeKanbanSession("xxvisa", "pm", { kill: true });
+    await api.deleteKanbanProject("xxvisa");
+
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      "/api/kanban/projects/xxvisa/sessions/codex?kill=false",
+      { method: "DELETE" }
+    );
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      "/api/kanban/projects/xxvisa/sessions/pm?kill=true",
+      { method: "DELETE" }
+    );
+    expect(fetch).toHaveBeenNthCalledWith(3, "/api/kanban/projects/xxvisa", {
+      method: "DELETE"
     });
   });
 

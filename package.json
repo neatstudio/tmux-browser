@@ -1,12 +1,13 @@
 {
   "name": "tmux-ui",
   "private": true,
-  "version": "0.1.54",
+  "version": "0.1.59",
   "type": "module",
   "scripts": {
     "dev:server": "tsx watch src/server/index.ts",
     "dev:client": "vite",
     "build": "tsc -p tsconfig.server.json && vite build",
+    "bench:api": "node scripts/bench-api.mjs",
     "pack:run": "node scripts/pack-run.mjs",
     "publish": "node scripts/publish-run.mjs",
     "release:notes": "node scripts/generate-release-notes.mjs",
@@ -21,7 +22,7 @@
     "@xterm/xterm": "^6.0.0",
     "express": "^5.2.1",
     "node-pty": "^1.1.0",
-    "ws": "^8.20.0"
+    "ws": "^8.21.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
@@ -33,7 +34,12 @@
     "supertest": "^7.2.2",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",
-    "vite": "^8.0.8",
+    "vite": "^8.0.16",
     "vitest": "^4.1.4"
+  },
+  "overrides": {
+    "qs": "^6.15.2",
+    "form-data": "^4.0.6",
+    "esbuild": "^0.28.1"
   }
 }

@@ -62,6 +62,7 @@ function renderSessionButton(
     browserTabs?: BrowserSessionTabState[];
     pinnedSessionNames?: Set<string>;
     mutedSessionNames?: Set<string>;
+    hiddenSessionNames?: Set<string>;
     onOpenSession: (name: string) => void;
     onTogglePinned: (name: string) => void;
     onToggleMuted?: (name: string) => void;
@@ -284,9 +285,11 @@ export function renderSessionSidebar(
     timelineEvents?: TimelineEvent[];
     actionCount?: number;
     actionCenterOpen?: boolean;
+    activeView?: "dashboard" | "kanban";
     onCreateSession: (name: string) => void;
     onDraftChange: (value: string) => void;
     onOpenDashboard: () => void;
+    onOpenKanban?: () => void;
     onOpenSession: (name: string) => void;
     onTogglePinned: (name: string) => void;
     onToggleMuted?: (name: string) => void;
@@ -309,9 +312,13 @@ export function renderSessionSidebar(
   launcherLogo.className = "mobile-sidebar-logo";
   launcherLogo.textContent = "T";
 
+  const visibleSessions = state.sessions.filter(
+    (session) => !actions.hiddenSessionNames?.has(session.name)
+  );
+
   const launcherCount = document.createElement("span");
   launcherCount.className = "mobile-sidebar-count";
-  launcherCount.textContent = String(state.sessions.length);
+  launcherCount.textContent = String(visibleSessions.length);
 
   mobileLauncher.append(launcherLogo, launcherCount);
 
@@ -327,7 +334,7 @@ export function renderSessionSidebar(
 
   const count = document.createElement("span");
   count.className = "session-sidebar-text";
-  count.textContent = `${state.sessions.length} sessions`;
+  count.textContent = `${visibleSessions.length} sessions`;
 
   const toggleButton = document.createElement("button");
   toggleButton.type = "button";
@@ -418,7 +425,9 @@ export function renderSessionSidebar(
   const dashboardButton = document.createElement("button");
   dashboardButton.type = "button";
   dashboardButton.className = `session-sidebar-dashboard${
-    actions.activeSessionName === null ? " is-active" : ""
+    actions.activeSessionName === null && actions.activeView !== "kanban"
+      ? " is-active"
+      : ""
   }`;
   dashboardButton.dataset.action = "open-dashboard";
   const dashboardIcon = document.createElement("span");
@@ -433,18 +442,40 @@ export function renderSessionSidebar(
   dashboardButton.append(dashboardIcon, dashboardText);
   dashboardButton.addEventListener("click", actions.onOpenDashboard);
 
+  const kanbanButton = document.createElement("button");
+  kanbanButton.type = "button";
+  kanbanButton.className = `session-sidebar-dashboard${
+    actions.activeSessionName === null && actions.activeView === "kanban"
+      ? " is-active"
+      : ""
+  }`;
+  kanbanButton.dataset.action = "open-kanban";
+  kanbanButton.title = "Open Kanban projects";
+
+  const kanbanIcon = document.createElement("span");
+  kanbanIcon.className = "session-sidebar-icon";
+  kanbanIcon.textContent = "K";
+  kanbanIcon.setAttribute("aria-hidden", "true");
+
+  const kanbanText = document.createElement("span");
+  kanbanText.className = "session-sidebar-text";
+  kanbanText.textContent = "Kanban";
+
+  kanbanButton.append(kanbanIcon, kanbanText);
+  kanbanButton.addEventListener("click", () => actions.onOpenKanban?.());
+
   const list = document.createElement("div");
   list.className = "session-sidebar-list";
 
-  const pinnedSessions = state.sessions.filter((session) =>
+  const pinnedSessions = visibleSessions.filter((session) =>
     isPinnedSession(session.name, actions.pinnedSessionNames)
   );
-  const mutedSessions = state.sessions.filter(
+  const mutedSessions = visibleSessions.filter(
     (session) =>
       !isPinnedSession(session.name, actions.pinnedSessionNames) &&
       isMutedSession(session.name, actions.mutedSessionNames)
   );
-  const regularSessions = state.sessions.filter(
+  const regularSessions = visibleSessions.filter(
     (session) =>
       !isPinnedSession(session.name, actions.pinnedSessionNames) &&
       !isMutedSession(session.name, actions.mutedSessionNames)
@@ -484,7 +515,7 @@ export function renderSessionSidebar(
     list.append(error);
   }
 
-  sidebar.append(header, dashboardButton, list);
+  sidebar.append(header, dashboardButton, kanbanButton, list);
 
   if (!actions.collapsed && actions.timelineEvents?.length) {
     sidebar.append(renderTimeline(actions.timelineEvents));

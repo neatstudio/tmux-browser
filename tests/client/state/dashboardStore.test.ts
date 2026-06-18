@@ -558,6 +558,46 @@ describe("createDashboardStore", () => {
     expect(api.getServerStatus).toHaveBeenCalledOnce();
   });
 
+  it("polls kanban projects on a separate low-frequency interval", async () => {
+    vi.useFakeTimers();
+    const api = {
+      getServerStatus: vi.fn().mockResolvedValue(SERVER_STATUS),
+      listSessions: vi.fn(),
+      listPaneSessions: vi.fn(),
+      listDashboardSessions: vi.fn(),
+      listKanbanProjects: vi.fn().mockResolvedValue([
+        {
+          name: "xxvisa",
+          path: "/srv/xxvisa",
+          server: null,
+          agents: [{ kind: "codex", name: "codex", command: null }]
+        }
+      ])
+    };
+    const store = createDashboardStore({
+      api,
+      pollMs: 3000,
+      shouldIncludePreview: () => false
+    });
+
+    store.startPolling();
+    await vi.advanceTimersByTimeAsync(299_999);
+
+    expect(api.listKanbanProjects).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(api.listKanbanProjects).toHaveBeenCalledOnce();
+    expect(store.getState().kanbanProjects).toEqual([
+      {
+        name: "xxvisa",
+        path: "/srv/xxvisa",
+        server: null,
+        agents: [{ kind: "codex", name: "codex", command: null }]
+      }
+    ]);
+  });
+
   it("polls only the active session status without server status when a terminal tab is active", async () => {
     vi.useFakeTimers();
     const api = {
@@ -626,6 +666,19 @@ describe("createDashboardStore", () => {
           server: "tw1",
           agents: [{ kind: "claude", name: "claude", command: null }]
         }
+      ]).mockResolvedValueOnce([
+        {
+          name: "xxvisa",
+          path: "/srv/xxvisa",
+          server: "tw1",
+          agents: [{ kind: "claude", name: "claude", command: null }]
+        },
+        {
+          name: "stake",
+          path: "/srv/stake",
+          server: null,
+          agents: [{ kind: "codex", name: "codex", command: null }]
+        }
       ]),
       createKanbanProject: vi.fn().mockResolvedValue(["stake-codex"]),
       listPaneSessions: vi.fn().mockResolvedValue([
@@ -640,15 +693,15 @@ describe("createDashboardStore", () => {
       name: "stake",
       path: "/srv/stake",
       server: null,
-      agents: [{ kind: "codex", name: "codex", command: null }]
+      selectedAgentNames: ["codex"]
     });
 
-    expect(api.listKanbanProjects).toHaveBeenCalledOnce();
+    expect(api.listKanbanProjects).toHaveBeenCalledTimes(2);
     expect(api.createKanbanProject).toHaveBeenCalledWith({
       name: "stake",
       path: "/srv/stake",
       server: null,
-      agents: [{ kind: "codex", name: "codex", command: null }]
+      selectedAgentNames: ["codex"]
     });
     expect(api.listPaneSessions).toHaveBeenCalledOnce();
     expect(api.listDashboardSessions).not.toHaveBeenCalled();
@@ -658,10 +711,54 @@ describe("createDashboardStore", () => {
         path: "/srv/xxvisa",
         server: "tw1",
         agents: [{ kind: "claude", name: "claude", command: null }]
+      },
+      {
+        name: "stake",
+        path: "/srv/stake",
+        server: null,
+        agents: [{ kind: "codex", name: "codex", command: null }]
       }
     ]);
     expect(store.getState().sessions).toEqual([
       { name: "stake-codex", panes: [] }
+    ]);
+  });
+
+  it("refreshes kanban projects and sessions after kanban removals", async () => {
+    const api = {
+      getServerStatus: vi.fn().mockResolvedValue(SERVER_STATUS),
+      listKanbanProjects: vi.fn().mockResolvedValue([
+        {
+          name: "xxvisa",
+          path: "/srv/xxvisa",
+          server: null,
+          agents: [{ kind: "pm", name: "pm", command: null }]
+        }
+      ]),
+      removeKanbanSession: vi.fn().mockResolvedValue(undefined),
+      deleteKanbanProject: vi.fn().mockResolvedValue(undefined),
+      listPaneSessions: vi.fn().mockResolvedValue([{ name: "build", panes: [] }]),
+      listDashboardSessions: vi.fn()
+    };
+    const store = createDashboardStore({ api, pollMs: 3000 });
+
+    await store.removeKanbanSession("xxvisa", "codex", { kill: false });
+    await store.deleteKanbanProject("xxvisa");
+
+    expect(api.removeKanbanSession).toHaveBeenCalledWith("xxvisa", "codex", {
+      kill: false
+    });
+    expect(api.deleteKanbanProject).toHaveBeenCalledWith("xxvisa");
+    expect(api.listKanbanProjects).toHaveBeenCalledTimes(2);
+    expect(api.listPaneSessions).toHaveBeenCalledTimes(2);
+    expect(api.listDashboardSessions).not.toHaveBeenCalled();
+    expect(store.getState().kanbanProjects).toEqual([
+      {
+        name: "xxvisa",
+        path: "/srv/xxvisa",
+        server: null,
+        agents: [{ kind: "pm", name: "pm", command: null }]
+      }
     ]);
   });
 });

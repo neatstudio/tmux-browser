@@ -38,6 +38,8 @@ export type PreferenceStore = {
   ) => Promise<Preferences>;
   upsertKanbanProject: (project: KanbanProject) => Promise<Preferences>;
   deleteKanbanProject: (projectName: string) => Promise<Preferences>;
+  removeKanbanSession: (sessionName: string) => Promise<Preferences>;
+  syncKanbanSessions: (sessionNames: string[]) => Promise<Preferences>;
   renameSession: (fromName: string, toName: string) => Promise<Preferences>;
 };
 
@@ -122,6 +124,23 @@ function normalizeKanbanProjects(projects: unknown): KanbanProject[] {
     })
     .filter((project): project is KanbanProject => project !== null)
     .sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function normalizeSessionNamePart(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function getKanbanAgentSessionName(projectName: string, agentName: string) {
+  const normalizedProjectName = normalizeSessionNamePart(projectName);
+  const normalizedAgentName = normalizeSessionNamePart(agentName);
+
+  return normalizedProjectName && normalizedAgentName
+    ? `${normalizedProjectName}-${normalizedAgentName}`
+    : "";
 }
 
 function normalizePreferences(preferences: Partial<Preferences>): Preferences {
@@ -270,6 +289,44 @@ export function createPreferenceStore(
         kanbanProjects: preferences.kanbanProjects.filter(
           (project) => project.name !== normalizedName
         )
+      });
+      await persist();
+
+      return this.getPreferences();
+    },
+    async removeKanbanSession(sessionName) {
+      const normalizedSessionName = sessionName.trim();
+
+      if (!normalizedSessionName) {
+        return this.getPreferences();
+      }
+
+      preferences = normalizePreferences({
+        ...preferences,
+        kanbanProjects: preferences.kanbanProjects.map((project) => ({
+          ...project,
+          agents: project.agents.filter(
+            (agent) =>
+              getKanbanAgentSessionName(project.name, agent.name) !==
+              normalizedSessionName
+          )
+        }))
+      });
+      await persist();
+
+      return this.getPreferences();
+    },
+    async syncKanbanSessions(sessionNames) {
+      const liveSessionNames = new Set(normalizeSessionNames(sessionNames));
+
+      preferences = normalizePreferences({
+        ...preferences,
+        kanbanProjects: preferences.kanbanProjects.map((project) => ({
+          ...project,
+          agents: project.agents.filter((agent) =>
+            liveSessionNames.has(getKanbanAgentSessionName(project.name, agent.name))
+          )
+        }))
       });
       await persist();
 

@@ -611,11 +611,11 @@ describe("createTmuxService", () => {
     ]);
   });
 
-  it("loads one session status with panes without scanning all panes", async () => {
+  it("loads one session status without scanning every session", async () => {
     const run = vi
       .fn()
       .mockResolvedValueOnce({
-        stdout: "build\t1\t1\t1714200000\nops\t1\t0\t1714200060",
+        stdout: "build\t1\t1\t1714200000",
         stderr: ""
       })
       .mockResolvedValueOnce({
@@ -646,8 +646,10 @@ describe("createTmuxService", () => {
       "-S",
       "-20"
     ]);
-    expect(run).toHaveBeenNthCalledWith(1, "list-sessions", [
-      "-F",
+    expect(run).toHaveBeenNthCalledWith(1, "display-message", [
+      "-p",
+      "-t",
+      "build",
       "#{session_name}\t#{session_windows}\t#{session_attached}\t#{session_activity}"
     ]);
     expect(run).toHaveBeenNthCalledWith(2, "list-panes", [
@@ -656,6 +658,7 @@ describe("createTmuxService", () => {
       "-F",
       "#{session_name}\t#{pane_id}\t#{window_index}\t#{window_name}\t#{window_active}\t#{pane_index}\t#{pane_active}\t#{pane_current_command}\t#{pane_current_path}\t#{pane_dead}\t#{pane_dead_status}\t#{pane_pid}"
     ]);
+    expect(run.mock.calls.some(([command]) => command === "list-sessions")).toBe(false);
   });
 
   it("splits the active pane in the current pane directory", async () => {
