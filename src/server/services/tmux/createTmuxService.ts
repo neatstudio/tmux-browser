@@ -48,6 +48,7 @@ export type TmuxService = {
   killSession: (name: string) => Promise<void>;
   sendCommand: (name: string, command: string) => Promise<void>;
   sendInput: (name: string, input: string) => Promise<void>;
+  sendLiteralInput: (name: string, input: string) => Promise<void>;
   captureRecentOutput: (name: string, lineCount?: number) => Promise<string>;
   splitPane: (name: string, direction: SplitPaneDirection) => Promise<void>;
   selectPane: (name: string, paneId: string) => Promise<void>;
@@ -128,6 +129,14 @@ function normalizeProjectServer(server: string | null | undefined) {
 
 function validateInput(input: unknown): string {
   if (typeof input !== "string" || input.length === 0 || input.length > 256) {
+    throw new Error("Invalid tmux input");
+  }
+
+  return input;
+}
+
+function validateLiteralInput(input: unknown): string {
+  if (typeof input !== "string" || input.length === 0 || input.length > 16_384) {
     throw new Error("Invalid tmux input");
   }
 
@@ -557,6 +566,25 @@ export function createTmuxService(deps: {
         invalidateSessionCaches(name);
         return;
       }
+
+      if (normalizedInput.endsWith("\r")) {
+        const literalInput = normalizedInput.slice(0, -1);
+
+        if (literalInput) {
+          await run("send-keys", ["-t", name, "-l", literalInput]);
+        }
+
+        await run("send-keys", ["-t", name, "Enter"]);
+        invalidateSessionCaches(name);
+        return;
+      }
+
+      await run("send-keys", ["-t", name, "-l", normalizedInput]);
+      invalidateSessionCaches(name);
+    },
+    async sendLiteralInput(name: string, input: string) {
+      validateSessionName(name);
+      const normalizedInput = validateLiteralInput(input);
 
       if (normalizedInput.endsWith("\r")) {
         const literalInput = normalizedInput.slice(0, -1);

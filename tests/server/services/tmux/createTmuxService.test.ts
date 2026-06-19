@@ -583,6 +583,26 @@ describe("createTmuxService", () => {
     ]);
   });
 
+  it("sends long literal input for generated group messages", async () => {
+    const run = vi.fn().mockResolvedValue({ stdout: "", stderr: "" });
+    const service = createTmuxService({ run });
+    const longInput = `${"x".repeat(512)}\r`;
+
+    await service.sendLiteralInput("build", longInput);
+
+    expect(run).toHaveBeenNthCalledWith(1, "send-keys", [
+      "-t",
+      "build",
+      "-l",
+      "x".repeat(512)
+    ]);
+    expect(run).toHaveBeenNthCalledWith(2, "send-keys", [
+      "-t",
+      "build",
+      "Enter"
+    ]);
+  });
+
   it("returns pane summaries only when explicitly requested", async () => {
     const run = vi
       .fn()

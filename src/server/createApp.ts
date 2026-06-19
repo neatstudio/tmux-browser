@@ -791,7 +791,10 @@ export function createApp(options: {
             }),
             sessionByName.get(sessionName)?.currentCommand
           );
-          await tmuxService.sendInput(sessionName, deliveryInput.input);
+          await (tmuxService.sendLiteralInput ?? tmuxService.sendInput)(
+            sessionName,
+            deliveryInput.input
+          );
           message = groupMessageStore.markDelivery(message.id, sessionName, {
             status: "sent",
             mode: deliveryInput.mode

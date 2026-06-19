@@ -1508,6 +1508,7 @@ describe("createApp", () => {
 
   it("prints group messages safely for plain shell targets instead of executing the message body", async () => {
     const sendInput = vi.fn().mockResolvedValue(undefined);
+    const sendLiteralInput = vi.fn().mockResolvedValue(undefined);
     const preferences = {
       getPreferences: vi.fn(() => ({
         pinnedSessionNames: [],
@@ -1554,6 +1555,7 @@ describe("createApp", () => {
         killSession: vi.fn(),
         sendCommand: vi.fn(),
         sendInput,
+        sendLiteralInput,
         splitPane: vi.fn(),
         selectPane: vi.fn(),
         killPane: vi.fn()
@@ -1573,12 +1575,13 @@ describe("createApp", () => {
     expect(response.body.message.deliveries).toEqual([
       { sessionName: "local-shell", status: "sent", mode: "shell-print" }
     ]);
-    expect(sendInput).toHaveBeenCalledWith(
+    expect(sendInput).not.toHaveBeenCalled();
+    expect(sendLiteralInput).toHaveBeenCalledWith(
       "local-shell",
       expect.stringMatching(/^printf '%b\\n' /)
     );
-    expect(sendInput.mock.calls[0][1]).toContain("[tmux-ui:task]");
-    expect(sendInput.mock.calls[0][1]).not.toContain("\necho should-not-run\n");
+    expect(sendLiteralInput.mock.calls[0][1]).toContain("[tmux-ui:task]");
+    expect(sendLiteralInput.mock.calls[0][1]).not.toContain("\necho should-not-run\n");
   });
 
   it("keeps successful kanban group deliveries when one target send fails", async () => {
