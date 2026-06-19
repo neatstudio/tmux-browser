@@ -14,6 +14,7 @@ export type KanbanDraft = {
 
 export type KanbanState = {
   projects: KanbanProject[];
+  targetProjectName?: string | null;
   draft: KanbanDraft;
   availableSessions: string[];
   loading: boolean;
@@ -58,6 +59,10 @@ function getSessionNameForProject(projectName: string, sessionName: string) {
 
 function getKanbanAgentActualSessionName(projectName: string, agent: KanbanProject["agents"][number]) {
   return agent.sessionName ?? getKanbanAgentSessionName(projectName, agent.name);
+}
+
+function getKanbanProjectElementId(projectName: string) {
+  return `kanban-project-${normalizeSessionNamePart(projectName)}`;
 }
 
 export function renderKanban(root: HTMLElement, state: KanbanState) {
@@ -201,7 +206,10 @@ export function renderKanban(root: HTMLElement, state: KanbanState) {
 
   state.projects.forEach((project) => {
     const card = document.createElement("article");
-    card.className = "kanban-project-card";
+    const isTargeted = state.targetProjectName === project.name;
+    card.className = `kanban-project-card${isTargeted ? " is-targeted" : ""}`;
+    card.id = getKanbanProjectElementId(project.name);
+    card.dataset.projectName = project.name;
 
     const cardHeader = document.createElement("div");
     cardHeader.className = "kanban-project-header";

@@ -41,7 +41,7 @@ import {
   getImageFileFromFiles,
   uploadImageForSession
 } from "./imageUpload";
-import { getAppView, getLayoutMode } from "./layoutMode";
+import { buildViewUrl, getAppView, getLayoutMode, type AppView } from "./layoutMode";
 import { isPageVisible } from "./pageVisibility";
 import {
   getDefaultKanbanSelectedSessionNames
@@ -79,7 +79,7 @@ if (!app) {
 }
 
 const layoutMode = getLayoutMode();
-const appView = getAppView();
+let appView: AppView = getAppView();
 const isSidebarLayout = layoutMode === "sidebar";
 
 app.innerHTML = `
@@ -116,6 +116,8 @@ let activeSendSessionName: string | null = null;
 let activeSwitchSessionName: string | null = null;
 let draftSendTargetName = "";
 let draftSendCommand = "";
+let activeKanbanProjectName: string | null =
+  new URLSearchParams(window.location.search).get("project");
 const tabState = createTabState({
   initialActiveTabId: appView === "kanban" ? null : undefined
 });
@@ -268,41 +270,57 @@ function toggleResponsiveSidebar() {
   setSidebarCollapsed(!isSidebarCollapsed);
 }
 
-function navigateAppView(view: "terminal" | "kanban") {
-  const url = new URL(window.location.href);
+function setAppView(view: AppView, options: { projectName?: string | null } = {}) {
+  appView = view;
+  activeKanbanProjectName = view === "kanban" ? options.projectName ?? null : null;
 
-  if (view === "kanban") {
-    url.searchParams.set("view", "kanban");
-  } else {
-    url.searchParams.delete("view");
+  const nextUrl = buildViewUrl(window.location.href, {
+    view,
+    projectName: activeKanbanProjectName
+  });
+  const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+
+  if (nextUrl !== currentUrl) {
+    window.history.pushState({}, "", nextUrl);
   }
-
-  window.location.href = `${url.pathname}${url.search}${url.hash}`;
 }
 
 function openDashboardView() {
   tabState.setActiveTab(null);
   setMobileSidebarOpen(false);
-
-  if (appView === "kanban") {
-    navigateAppView("terminal");
-    return;
-  }
-
+  setAppView("terminal");
   scheduleRender();
 }
 
-function openKanbanView() {
+function openKanbanView(projectName?: string | null) {
   tabState.setActiveTab(null);
   setMobileSidebarOpen(false);
+  setAppView("kanban", { projectName });
+  scheduleRender();
+}
 
-  if (appView !== "kanban") {
-    navigateAppView("kanban");
+function scrollTargetKanbanProjectIntoView() {
+  if (!activeKanbanProjectName) {
     return;
   }
 
+  const target = [
+    ...dashboardRoot.querySelectorAll<HTMLElement>(".kanban-project-card")
+  ].find((card) => card.dataset.projectName === activeKanbanProjectName);
+  target?.scrollIntoView({ block: "start", behavior: "smooth" });
+}
+
+function syncAppViewFromUrl() {
+  appView = getAppView();
+  activeKanbanProjectName =
+    appView === "kanban"
+      ? new URLSearchParams(window.location.search).get("project")
+      : null;
+  tabState.setActiveTab(null);
   scheduleRender();
 }
+
+window.addEventListener("popstate", syncAppViewFromUrl);
 
 function setActionCenterOpen(open: boolean) {
   isActionCenterOpen = open;
@@ -1555,6 +1573,7 @@ function render() {
     if (appView === "kanban") {
       renderKanban(dashboardRoot, {
         projects: store.getState().kanbanProjects,
+        targetProjectName: activeKanbanProjectName,
         draft: kanbanDraft,
         availableSessions: getAvailableKanbanSessionNames(),
         loading: store.getState().loading,
@@ -1589,6 +1608,7 @@ function render() {
           void store.deleteKanbanProject(projectName).then(() => scheduleRender());
         }
       });
+      scrollTargetKanbanProjectIntoView();
     } else {
       renderDashboard(dashboardRoot, store.getState(), {
       onCreateSession: (name) => {
@@ -1676,7 +1696,7 @@ function render() {
       },
       onOpenDashboard: openDashboardView,
       onOpenKanban: openKanbanView,
-      onOpenKanbanProject: openKanbanView,
+      onOpenKanbanProject: (name) => openKanbanView(name),
       onOpenSession: (name) => {
         getOrOpenTab(name);
         setMobileSidebarOpen(false);

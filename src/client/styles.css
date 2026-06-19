@@ -949,6 +949,13 @@ select {
   padding: 0.65rem;
 }
 
+.kanban-project-card.is-targeted {
+  border-color: rgba(255, 211, 122, 0.62);
+  box-shadow:
+    inset 3px 0 0 #ffd37a,
+    0 0 0 1px rgba(255, 211, 122, 0.12);
+}
+
 .kanban-project-header {
   display: flex;
   align-items: center;

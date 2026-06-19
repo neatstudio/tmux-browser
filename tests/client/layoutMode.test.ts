@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { getAppView, getLayoutMode } from "../../src/client/layoutMode";
+import {
+  buildViewUrl,
+  getAppView,
+  getLayoutMode
+} from "../../src/client/layoutMode";
 
 describe("getLayoutMode", () => {
   it("uses the sidebar layout by default", () => {
@@ -17,5 +21,19 @@ describe("getLayoutMode", () => {
     expect(getAppView("")).toBe("terminal");
     expect(getAppView("?layout=sidebar")).toBe("terminal");
     expect(getAppView("?view=kanban")).toBe("kanban");
+  });
+
+  it("builds view URLs without dropping sidebar layout or project target", () => {
+    expect(
+      buildViewUrl("http://localhost:3000/?layout=sidebar&view=kanban", {
+        view: "terminal"
+      })
+    ).toBe("/?layout=sidebar");
+    expect(
+      buildViewUrl("http://localhost:3000/?layout=sidebar", {
+        view: "kanban",
+        projectName: "xxvisa"
+      })
+    ).toBe("/?layout=sidebar&view=kanban&project=xxvisa");
   });
 });

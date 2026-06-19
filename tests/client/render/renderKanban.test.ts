@@ -217,6 +217,54 @@ describe("renderKanban", () => {
     expect(onAddSession).toHaveBeenCalledWith("xxvisa", "build");
   });
 
+  it("marks and exposes a targeted project from sidebar shortcuts", () => {
+    const root = document.createElement("div");
+
+    renderKanban(root, {
+      projects: [
+        {
+          name: "xxvisa",
+          path: "/srv/xxvisa",
+          server: null,
+          agents: []
+        },
+        {
+          name: "stake",
+          path: "/srv/stake",
+          server: null,
+          agents: []
+        }
+      ],
+      targetProjectName: "stake",
+      draft: {
+        name: "",
+        path: "~",
+        server: "",
+        selectedAgentNames: []
+      },
+      loading: false,
+      error: null,
+      availableSessions: [],
+      onDraftChange: vi.fn(),
+      onCreateProject: vi.fn(),
+      onOpenSession: vi.fn(),
+      onRemoveSession: vi.fn(),
+      onKillSession: vi.fn(),
+      onDeleteProject: vi.fn()
+    });
+
+    const targeted = root.querySelector<HTMLElement>(
+      "[data-project-name='stake']"
+    );
+
+    expect(targeted?.id).toBe("kanban-project-stake");
+    expect(targeted?.classList.contains("is-targeted")).toBe(true);
+    expect(
+      root.querySelector<HTMLElement>("[data-project-name='xxvisa']")
+        ?.classList.contains("is-targeted")
+    ).toBe(false);
+  });
+
   it("closes a project only after confirmation", () => {
     const root = document.createElement("div");
     const onDeleteProject = vi.fn();
