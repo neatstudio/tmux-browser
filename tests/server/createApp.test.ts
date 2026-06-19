@@ -1757,4 +1757,78 @@ Reviewed and approved.
       ]
     });
   });
+
+  it("removes group messages when a kanban project is deleted", async () => {
+    const preferencesState = {
+      pinnedSessionNames: [],
+      mutedSessionNames: ["tmux-ui"],
+      sessionSettings: {},
+      kanbanProjects: [
+        {
+          name: "xxvisa",
+          path: "/srv/xxvisa",
+          server: null,
+          agents: [
+            { kind: "pm", name: "pm", command: null },
+            { kind: "review", name: "review", command: null }
+          ]
+        }
+      ]
+    };
+    const preferences = {
+      getPreferences: vi.fn(() => preferencesState),
+      setPinnedSession: vi.fn(),
+      setMutedSession: vi.fn(),
+      setSessionSettings: vi.fn(),
+      upsertKanbanProject: vi.fn(),
+      deleteKanbanProject: vi.fn().mockImplementation(async (projectName: string) => {
+        preferencesState.kanbanProjects =
+          preferencesState.kanbanProjects.filter(
+            (project) => project.name !== projectName
+          );
+        return preferencesState;
+      }),
+      addKanbanSession: vi.fn(),
+      removeKanbanSession: vi.fn(),
+      syncKanbanSessions: vi.fn(),
+      renameSession: vi.fn()
+    };
+    const app = createApp({
+      preferences,
+      tmuxService: {
+        listSessions: vi.fn().mockResolvedValue([
+          { name: "xxvisa-pm", currentCommand: "codex" },
+          { name: "xxvisa-review", currentCommand: "claude" }
+        ]),
+        getSessionStatus: vi.fn(),
+        createSession: vi.fn(),
+        createProjectSessions: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        sendInput: vi.fn(),
+        sendLiteralInput: vi.fn().mockResolvedValue(undefined),
+        captureRecentOutput: vi.fn(),
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    await request(app)
+      .post("/api/kanban/projects/xxvisa/messages")
+      .send({
+        fromSession: "xxvisa-pm",
+        kind: "task",
+        target: { type: "session", sessionName: "xxvisa-review" },
+        body: "Please review checkout."
+      });
+    await request(app).delete("/api/kanban/projects/xxvisa");
+    const response = await request(app).get(
+      "/api/kanban/projects/xxvisa/messages"
+    );
+
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({ error: "Kanban project not found" });
+  });
 });

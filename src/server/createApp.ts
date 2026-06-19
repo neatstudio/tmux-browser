@@ -668,6 +668,7 @@ export function createApp(options: {
   app.delete("/api/kanban/projects/:name", async (req, res, next) => {
     try {
       await preferences.deleteKanbanProject(req.params.name);
+      groupMessageStore.deleteProjectMessages(req.params.name);
       res.status(204).send();
     } catch (error) {
       next(error);
@@ -726,6 +727,14 @@ export function createApp(options: {
 
   app.get("/api/kanban/projects/:name/messages", (req, res, next) => {
     try {
+      const projectExists = preferences
+        .getPreferences()
+        .kanbanProjects.some((project) => project.name === req.params.name);
+
+      if (!projectExists) {
+        throw new HttpError("Kanban project not found", 404);
+      }
+
       res.json({
         messages: groupMessageStore.listProjectMessages(req.params.name)
       });

@@ -108,4 +108,32 @@ describe("createGroupMessageStore", () => {
     expect(replied.replies).toHaveLength(2);
     expect(store.listProjectMessages("xxvisa")).toEqual([replied]);
   });
+
+  it("deletes all messages for a project", () => {
+    const store = createGroupMessageStore({
+      now: () => new Date("2026-06-20T00:00:00.000Z")
+    });
+
+    store.createMessage({
+      projectName: "xxvisa",
+      fromSession: "xxvisa-pm",
+      toSessions: ["xxvisa-review"],
+      kind: "task",
+      body: "Review",
+      warnings: []
+    });
+    store.createMessage({
+      projectName: "local",
+      fromSession: "local-pm",
+      toSessions: ["local-worker"],
+      kind: "task",
+      body: "Review",
+      warnings: []
+    });
+
+    store.deleteProjectMessages("xxvisa");
+
+    expect(store.listProjectMessages("xxvisa")).toEqual([]);
+    expect(store.listProjectMessages("local")).toHaveLength(1);
+  });
 });

@@ -140,6 +140,13 @@ export function createGroupMessageStore(options: CreateGroupMessageStoreOptions 
 
       return cloneMessage(message);
     },
+    deleteProjectMessages(projectName: string) {
+      for (const [messageId, message] of messages) {
+        if (message.projectName === projectName) {
+          messages.delete(messageId);
+        }
+      }
+    },
     markDelivery(messageId: string, sessionName: string, result: DeliveryResult) {
       const message = getExistingMessage(messageId);
       const delivery = message.deliveries.find(
