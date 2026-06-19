@@ -8,3 +8,4 @@ release/
 .env
 .superpowers/
 .gstack/
+.omc/
