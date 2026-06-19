@@ -390,6 +390,12 @@ select {
   text-transform: uppercase;
 }
 
+.session-sidebar-kanban-item {
+  display: grid;
+  gap: 0.18rem;
+  min-width: 0;
+}
+
 .session-sidebar-kanban-project {
   display: flex;
   align-items: center;
@@ -403,6 +409,42 @@ select {
   cursor: pointer;
   font-size: 0.7rem;
   padding: 0.24rem 0.34rem;
+}
+
+.session-sidebar-kanban-sessions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.16rem;
+  min-width: 0;
+  padding-left: 0.18rem;
+}
+
+.session-sidebar-kanban-session {
+  max-width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(217, 226, 234, 0.1);
+  border-radius: 3px;
+  background: rgba(217, 226, 234, 0.04);
+  color: rgba(217, 226, 234, 0.74);
+  cursor: pointer;
+  font-size: 0.62rem;
+  line-height: 1;
+  overflow: hidden;
+  padding: 0.18rem 0.28rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-sidebar-kanban-session:hover {
+  border-color: rgba(143, 217, 255, 0.2);
+  background: rgba(91, 192, 255, 0.08);
+  color: #d8f3ff;
+}
+
+.session-sidebar-kanban-session.is-active {
+  border-color: rgba(191, 255, 196, 0.34);
+  background: rgba(94, 255, 130, 0.11);
+  color: #d5ffd8;
 }
 
 .session-sidebar-kanban-project span:first-child {

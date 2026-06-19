@@ -272,9 +272,27 @@ function renderTimeline(events: TimelineEvent[]) {
   return timeline;
 }
 
+function normalizeKanbanSessionNamePart(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function getKanbanAgentSessionName(projectName: string, agentName: string) {
+  const project = normalizeKanbanSessionNamePart(projectName);
+  const agent = normalizeKanbanSessionNamePart(agentName);
+
+  return project && agent ? `${project}-${agent}` : "";
+}
+
 function renderKanbanProjectShortcuts(
   projects: KanbanProject[],
-  onOpenProject: (name: string) => void
+  existingSessionNames: Set<string>,
+  activeSessionName: string | null,
+  onOpenProject: (name: string) => void,
+  onOpenSession: (name: string) => void
 ) {
   const section = document.createElement("section");
   section.className = "session-sidebar-kanban-projects session-sidebar-text";
@@ -285,6 +303,9 @@ function renderKanbanProjectShortcuts(
   section.append(title);
 
   projects.forEach((project) => {
+    const projectItem = document.createElement("div");
+    projectItem.className = "session-sidebar-kanban-item";
+
     const button = document.createElement("button");
     button.type = "button";
     button.className = "session-sidebar-kanban-project";
@@ -301,7 +322,45 @@ function renderKanbanProjectShortcuts(
     count.textContent = String(project.agents.length);
 
     button.append(name, count);
-    section.append(button);
+    projectItem.append(button);
+
+    if (project.agents.length > 0) {
+      const sessions = document.createElement("div");
+      sessions.className = "session-sidebar-kanban-sessions";
+
+      project.agents.forEach((agent) => {
+        const sessionName =
+          agent.sessionName ?? getKanbanAgentSessionName(project.name, agent.name);
+
+        if (!sessionName || !existingSessionNames.has(sessionName)) {
+          return;
+        }
+
+        const sessionButton = document.createElement("button");
+        const isActive = sessionName === activeSessionName;
+
+        sessionButton.type = "button";
+        sessionButton.className = `session-sidebar-kanban-session${
+          isActive ? " is-active" : ""
+        }`;
+        sessionButton.dataset.action = "open-kanban-session";
+        sessionButton.dataset.projectName = project.name;
+        sessionButton.dataset.sessionName = sessionName;
+        sessionButton.textContent = agent.name || sessionName;
+        sessionButton.title = `Open ${sessionName}`;
+        if (isActive) {
+          sessionButton.setAttribute("aria-current", "true");
+        }
+        sessionButton.addEventListener("click", () => onOpenSession(sessionName));
+        sessions.append(sessionButton);
+      });
+
+      if (sessions.childElementCount > 0) {
+        projectItem.append(sessions);
+      }
+    }
+
+    section.append(projectItem);
   });
 
   return section;
@@ -506,7 +565,10 @@ export function renderSessionSidebar(
     actions.kanbanProjects && actions.kanbanProjects.length > 0
       ? renderKanbanProjectShortcuts(
           actions.kanbanProjects,
-          actions.onOpenKanbanProject ?? (() => actions.onOpenKanban?.())
+          new Set(state.sessions.map((session) => session.name)),
+          actions.activeSessionName,
+          actions.onOpenKanbanProject ?? (() => actions.onOpenKanban?.()),
+          actions.onOpenSession
         )
       : null;
 

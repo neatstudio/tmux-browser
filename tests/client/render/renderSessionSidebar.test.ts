@@ -200,17 +200,23 @@ describe("renderSessionSidebar", () => {
   it("shows compact kanban board shortcuts in the sidebar", () => {
     const root = document.createElement("div");
     const onOpenKanbanProject = vi.fn();
+    const onOpenSession = vi.fn();
 
     renderSessionSidebar(
       root,
       {
-        sessions: [BASE_SESSION],
+        sessions: [
+          BASE_SESSION,
+          { ...BASE_SESSION, name: "xxvisa-pm" },
+          { ...BASE_SESSION, name: "xxvisa-review" },
+          { ...BASE_SESSION, name: "xxvisa-claude" }
+        ],
         serverStatus: null,
         loading: false,
         error: null
       },
       {
-        activeSessionName: null,
+        activeSessionName: "xxvisa-pm",
         activeView: "dashboard",
         collapsed: false,
         draftSessionName: "",
@@ -228,6 +234,11 @@ describe("renderSessionSidebar", () => {
                 name: "review",
                 command: null,
                 sessionName: "xxvisa-review"
+              },
+              {
+                kind: "claude",
+                name: "claude",
+                command: null
               }
             ]
           }
@@ -237,7 +248,7 @@ describe("renderSessionSidebar", () => {
         onOpenDashboard: vi.fn(),
         onOpenKanban: vi.fn(),
         onOpenKanbanProject,
-        onOpenSession: vi.fn(),
+        onOpenSession,
         onTogglePinned: vi.fn(),
         onRefresh: vi.fn(),
         onToggleCollapsed: vi.fn()
@@ -250,11 +261,32 @@ describe("renderSessionSidebar", () => {
 
     expect(root.querySelector(".session-sidebar-kanban-projects")).not.toBeNull();
     expect(projectButton?.textContent).toContain("xxvisa");
-    expect(projectButton?.textContent).toContain("2");
+    expect(projectButton?.textContent).toContain("3");
+
+    const sessionButtons = [
+      ...root.querySelectorAll<HTMLButtonElement>(
+        "[data-action='open-kanban-session'][data-project-name='xxvisa']"
+      )
+    ];
+
+    expect(sessionButtons.map((button) => button.dataset.sessionName)).toEqual([
+      "xxvisa-pm",
+      "xxvisa-review",
+      "xxvisa-claude"
+    ]);
+    expect(sessionButtons.map((button) => button.textContent)).toEqual([
+      "pm",
+      "review",
+      "claude"
+    ]);
+    expect(sessionButtons[0]?.classList.contains("is-active")).toBe(true);
+    expect(sessionButtons[0]?.getAttribute("aria-current")).toBe("true");
 
     projectButton?.click();
+    sessionButtons[1]?.click();
 
     expect(onOpenKanbanProject).toHaveBeenCalledWith("xxvisa");
+    expect(onOpenSession).toHaveBeenCalledWith("xxvisa-review");
   });
 
   it("shows pending actions as a compact header badge", () => {

@@ -196,6 +196,18 @@ describe("client layout styles", () => {
       /\.session-sidebar-kanban-projects\s*\{[^}]*max-height:\s*min\(10rem,\s*24vh\);[^}]*overflow:\s*auto;/s
     );
     expect(styles).toMatch(
+      /\.session-sidebar-kanban-item\s*\{[^}]*display:\s*grid;[^}]*gap:\s*0\.18rem;/s
+    );
+    expect(styles).toMatch(
+      /\.session-sidebar-kanban-sessions\s*\{[^}]*display:\s*flex;[^}]*flex-wrap:\s*wrap;/s
+    );
+    expect(styles).toMatch(
+      /\.session-sidebar-kanban-session\s*\{[^}]*font-size:\s*0\.62rem;[^}]*text-overflow:\s*ellipsis;/s
+    );
+    expect(styles).toMatch(
+      /\.session-sidebar-kanban-session\.is-active\s*\{[^}]*background:\s*rgba\(94,\s*255,\s*130,\s*0\.11\);[^}]*color:\s*#d5ffd8;/s
+    );
+    expect(styles).toMatch(
       /\.session-sidebar-list\s*\{[^}]*flex:\s*1\s+1\s+auto;[^}]*overflow:\s*auto;/s
     );
     expect(styles).toMatch(
