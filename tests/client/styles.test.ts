@@ -46,6 +46,9 @@ describe("client layout styles", () => {
       /\.terminal-panel\s*\{[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\)\s+auto;/s
     );
     expect(styles).toMatch(
+      /\.terminal-panel\.has-session-rail\s*\{[^}]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\)\s+auto;/s
+    );
+    expect(styles).toMatch(
       /\.terminal-status-bar\s*\{[^}]*display:\s*flex;[^}]*min-height:\s*32px;/s
     );
     expect(styles).toMatch(
@@ -56,6 +59,15 @@ describe("client layout styles", () => {
     );
     expect(styles).toMatch(
       /\.terminal-status-main\s*\{[^}]*flex:\s*1\s+1\s+auto;/s
+    );
+    expect(styles).toMatch(
+      /\.terminal-session-rail\s*\{[^}]*display:\s*flex;[^}]*min-height:\s*34px;[^}]*padding:\s*0\.34rem\s+3\.8rem\s+0\.34rem\s+0\.62rem;/s
+    );
+    expect(styles).toMatch(
+      /\.terminal-session-rail-sessions\s*\{[^}]*display:\s*flex;[^}]*overflow:\s*hidden;/s
+    );
+    expect(styles).toMatch(
+      /\.terminal-session-rail-session\.is-active\s*\{[^}]*background:\s*rgba\(94,\s*255,\s*130,\s*0\.14\);[^}]*color:\s*#d5ffd8;/s
     );
     expect(styles).toMatch(
       /\.terminal-status-action-group\s*\{[^}]*display:\s*inline-flex;[^}]*border-left:\s*1px\s+solid\s+rgba\(217,\s*226,\s*234,\s*0\.12\);/s
@@ -79,7 +91,13 @@ describe("client layout styles", () => {
       /\.session-floating-menu-panel\s*\{[^}]*width:\s*min\(28rem,\s*calc\(100vw\s*-\s*1\.5rem\)\);[^}]*max-height:\s*min\(70dvh,\s*32rem\);/s
     );
     expect(styles).toMatch(
-      /\.session-floating-menu-session\s*\{[^}]*display:\s*grid;[^}]*flex:\s*1\s+1\s+12\.8rem;[^}]*text-align:\s*left;/s
+      /\.session-floating-menu-session\s*\{[^}]*display:\s*grid;[^}]*width:\s*100%;[^}]*text-align:\s*left;/s
+    );
+    expect(styles).toMatch(
+      /\.session-floating-menu-session-item\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto;[^}]*flex:\s*1\s+1\s+8\.8rem;/s
+    );
+    expect(styles).toMatch(
+      /\.session-floating-menu-session-controls\s+button\[aria-pressed="true"\]\s*\{[^}]*background:\s*rgba\(255,\s*211,\s*122,\s*0\.11\);[^}]*color:\s*#ffe2a7;/s
     );
     expect(styles).toMatch(
       /\.session-floating-menu-session-meta\s*\{[^}]*font-size:\s*0\.58rem;[^}]*text-overflow:\s*ellipsis;/s
@@ -88,13 +106,22 @@ describe("client layout styles", () => {
       /\.session-floating-menu-session\.is-active\s*\{[^}]*background:\s*rgba\(94,\s*255,\s*130,\s*0\.11\);[^}]*color:\s*#d5ffd8;/s
     );
     expect(styles).toMatch(
-      /\.session-floating-menu-board\s*\{[^}]*border-color:\s*rgba\(255,\s*211,\s*122,\s*0\.28\);[^}]*color:\s*#ffe2a7;/s
+      /\.session-floating-menu-board\s*\{[^}]*display:\s*flex;[^}]*border:\s*1px\s+solid\s+rgba\(255,\s*211,\s*122,\s*0\.2\);[^}]*padding:\s*0\.42rem;/s
+    );
+    expect(styles).toMatch(
+      /\.session-floating-menu-board-label\s*\{[^}]*max-width:\s*100%;[^}]*color:\s*#ffe2a7;[^}]*padding:\s*0\s+0\.28rem;/s
     );
     expect(styles).toMatch(
       /\.session-floating-menu-create\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto;/s
     );
     expect(styles).toMatch(
       /\.session-floating-menu-create\s+input\s*\{[^}]*min-width:\s*0;[^}]*font-size:\s*0\.68rem;/s
+    );
+    expect(styles).toMatch(
+      /\.session-floating-menu-timeline-item\s*\{[^}]*grid-template-columns:\s*4\.1rem\s+minmax\(0,\s*1fr\);[^}]*font-size:\s*0\.62rem;/s
+    );
+    expect(styles.indexOf(".session-floating-menu-timeline")).toBeLessThan(
+      styles.indexOf("@media (max-width: 430px)")
     );
   });
 
@@ -155,6 +182,12 @@ describe("client layout styles", () => {
     );
     expect(styles).toMatch(
       /\.app-shell--sidebar\s+\.content-root\s*\{[^}]*grid-template-columns:\s*clamp\(13rem,\s*22vw,\s*18rem\)\s+minmax\(0,\s*1fr\);/s
+    );
+    expect(styles).toMatch(
+      /\.app-shell--sidebar\.app-shell--kanban-view\s+\.content-root\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);/s
+    );
+    expect(styles).toMatch(
+      /\.app-shell--sidebar\.app-shell--kanban-view\s+\.session-sidebar-root\s*\{[^}]*display:\s*none;/s
     );
     expect(styles).toMatch(
       /\.session-sidebar-root\s*\{[^}]*display:\s*none;/s
@@ -302,6 +335,15 @@ describe("client layout styles", () => {
     );
     expect(styles).toMatch(
       /\.kanban-project-close\s*\{[^}]*background:\s*rgba\(255,\s*91,\s*91,\s*0\.08\);/s
+    );
+    expect(styles).toMatch(
+      /\.kanban-ungrouped\s*\{[^}]*display:\s*grid;[^}]*margin-bottom:\s*0\.75rem;/s
+    );
+    expect(styles).toMatch(
+      /\.kanban-ungrouped-list\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(min\(100%,\s*15rem\),\s*1fr\)\);/s
+    );
+    expect(styles).toMatch(
+      /\.kanban-ungrouped-add-form\s*\{[^}]*display:\s*flex;[^}]*min-width:\s*0;/s
     );
     expect(styles).toMatch(
       /\.kanban-add-session-form\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto;/s

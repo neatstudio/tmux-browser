@@ -48,6 +48,7 @@ export type TmuxService = {
   killSession: (name: string) => Promise<void>;
   sendCommand: (name: string, command: string) => Promise<void>;
   sendInput: (name: string, input: string) => Promise<void>;
+  captureRecentOutput: (name: string, lineCount?: number) => Promise<string>;
   splitPane: (name: string, direction: SplitPaneDirection) => Promise<void>;
   selectPane: (name: string, paneId: string) => Promise<void>;
   killPane: (name: string, paneId: string) => Promise<void>;
@@ -69,6 +70,14 @@ function validateCommand(command: string): string {
   }
 
   return normalizedCommand;
+}
+
+function normalizeCaptureLineCount(lineCount: number | undefined) {
+  if (!Number.isFinite(lineCount ?? NaN)) {
+    return 300;
+  }
+
+  return Math.min(Math.max(Math.trunc(lineCount ?? 300), 1), 300);
 }
 
 function normalizeSessionNamePart(value: string) {
@@ -563,6 +572,19 @@ export function createTmuxService(deps: {
 
       await run("send-keys", ["-t", name, "-l", normalizedInput]);
       invalidateSessionCaches(name);
+    },
+    async captureRecentOutput(name: string, lineCount = 300) {
+      validateSessionName(name);
+      const normalizedLineCount = normalizeCaptureLineCount(lineCount);
+      const result = await run("capture-pane", [
+        "-p",
+        "-t",
+        name,
+        "-S",
+        `-${normalizedLineCount}`
+      ]);
+
+      return result.stdout;
     },
     async splitPane(name: string, direction: SplitPaneDirection) {
       validateSessionName(name);

@@ -566,6 +566,23 @@ describe("createTmuxService", () => {
     ]);
   });
 
+  it("captures recent session output with a bounded line count", async () => {
+    const run = vi.fn().mockResolvedValue({ stdout: "recent output\n", stderr: "" });
+    const service = createTmuxService({ run });
+
+    await expect(service.captureRecentOutput("build", 300)).resolves.toBe(
+      "recent output\n"
+    );
+
+    expect(run).toHaveBeenCalledWith("capture-pane", [
+      "-p",
+      "-t",
+      "build",
+      "-S",
+      "-300"
+    ]);
+  });
+
   it("returns pane summaries only when explicitly requested", async () => {
     const run = vi
       .fn()

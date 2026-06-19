@@ -191,6 +191,10 @@ select {
   grid-template-columns: 3.35rem minmax(0, 1fr);
 }
 
+.app-shell--sidebar.app-shell--kanban-view .content-root {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .session-sidebar-root {
   display: none;
   min-width: 0;
@@ -208,6 +212,10 @@ select {
     rgba(8, 12, 16, 0.28);
 }
 
+.app-shell--sidebar.app-shell--kanban-view .session-sidebar-root {
+  display: none;
+}
+
 .mobile-sidebar-launcher {
   display: none;
 }
@@ -216,6 +224,11 @@ select {
 .app-shell--sidebar .panels-root {
   grid-column: 2;
   grid-row: 1;
+}
+
+.app-shell--sidebar.app-shell--kanban-view .dashboard-root,
+.app-shell--sidebar.app-shell--kanban-view .panels-root {
+  grid-column: 1;
 }
 
 .session-sidebar {
@@ -1070,6 +1083,125 @@ select {
   min-width: 0;
   color: rgba(217, 226, 234, 0.5);
   font-size: 0.68rem;
+}
+
+.kanban-ungrouped {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+  margin-bottom: 0.75rem;
+  border: 1px solid rgba(217, 226, 234, 0.12);
+  border-radius: 4px;
+  background:
+    linear-gradient(135deg, rgba(255, 211, 122, 0.075), transparent 56%),
+    rgba(0, 0, 0, 0.14);
+  padding: 0.62rem;
+}
+
+.kanban-ungrouped-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.kanban-ungrouped-header h2 {
+  margin: 0;
+  font-size: clamp(0.95rem, 0.42vw + 0.82rem, 1.2rem);
+  line-height: 1.1;
+}
+
+.kanban-ungrouped-header span {
+  flex: 0 0 auto;
+  color: rgba(255, 226, 167, 0.78);
+  font-size: 0.68rem;
+}
+
+.kanban-ungrouped-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: 0.42rem;
+  min-width: 0;
+}
+
+.kanban-ungrouped-card {
+  display: grid;
+  gap: 0.26rem;
+  min-width: 0;
+  border: 1px solid rgba(255, 211, 122, 0.2);
+  border-radius: 3px;
+  background: rgba(217, 226, 234, 0.035);
+  padding: 0.48rem;
+}
+
+.kanban-ungrouped-card strong,
+.kanban-ungrouped-card code,
+.kanban-ungrouped-meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kanban-ungrouped-card strong {
+  color: #eff6fc;
+  font-size: 0.86rem;
+  line-height: 1.1;
+}
+
+.kanban-ungrouped-meta {
+  color: rgba(217, 226, 234, 0.58);
+  font-size: 0.68rem;
+  line-height: 1.2;
+}
+
+.kanban-ungrouped-card code {
+  color: #bfffc4;
+  font:
+    0.68rem "Iosevka Term",
+    Menlo,
+    "PingFang SC",
+    monospace;
+}
+
+.kanban-ungrouped-actions,
+.kanban-ungrouped-add-form {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.kanban-ungrouped-add-form {
+  flex: 1 1 auto;
+}
+
+.kanban-ungrouped-actions button,
+.kanban-ungrouped-add-form select {
+  min-height: 24px;
+  border: 1px solid rgba(217, 226, 234, 0.16);
+  border-radius: 3px;
+  background: rgba(217, 226, 234, 0.055);
+  color: rgba(239, 246, 252, 0.82);
+  font-size: 0.68rem;
+  padding: 0.14rem 0.36rem;
+}
+
+.kanban-ungrouped-actions button {
+  cursor: pointer;
+  font-weight: 760;
+}
+
+.kanban-ungrouped-add-form select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.kanban-ungrouped-empty {
+  margin: 0;
+  color: rgba(217, 226, 234, 0.58);
+  font-size: 0.76rem;
 }
 
 .kanban-add-session-form {
@@ -2119,6 +2251,10 @@ select {
   visibility: hidden;
 }
 
+.terminal-panel.has-session-rail {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
 .terminal-panel.is-active {
   opacity: 1;
   pointer-events: auto;
@@ -2214,9 +2350,10 @@ select {
 
 .session-floating-menu-session {
   display: grid;
-  flex: 1 1 12.8rem;
+  flex: 1 1 100%;
   max-width: none;
-  min-width: min(100%, 11rem);
+  min-width: 0;
+  width: 100%;
   gap: 0.16rem;
   justify-items: start;
   line-height: 1.15;
@@ -2224,14 +2361,60 @@ select {
   text-align: left;
 }
 
-.session-floating-menu-board {
-  max-width: 10rem;
-  border-color: rgba(255, 211, 122, 0.28);
-  background:
-    linear-gradient(90deg, rgba(255, 211, 122, 0.11), transparent 64%),
-    rgba(217, 226, 234, 0.055);
+.session-floating-menu-session-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  flex: 1 1 8.8rem;
+  gap: 0.2rem;
+  min-width: min(100%, 8.6rem);
+}
+
+.session-floating-menu-session-controls {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 0.16rem;
+}
+
+.session-floating-menu-session-controls button {
+  min-width: 1.55rem;
+  padding-right: 0.25rem;
+  padding-left: 0.25rem;
+}
+
+.session-floating-menu-session-controls button[aria-pressed="true"] {
+  border-color: rgba(255, 211, 122, 0.42);
+  background: rgba(255, 211, 122, 0.11);
   color: #ffe2a7;
+}
+
+.session-floating-menu-board {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  gap: 0.22rem;
+  min-width: 0;
+  margin: 0;
+  border: 1px solid rgba(255, 211, 122, 0.2);
+  border-radius: 4px;
+  background:
+    linear-gradient(135deg, rgba(255, 211, 122, 0.055), transparent 56%),
+    rgba(217, 226, 234, 0.025);
+  padding: 0.42rem;
+}
+
+.session-floating-menu-board-label {
+  max-width: 100%;
+  min-width: 0;
+  color: #ffe2a7;
+  font-size: 0.68rem;
   font-weight: 780;
+  letter-spacing: 0.02em;
+  line-height: 1.1;
+  overflow: hidden;
+  padding: 0 0.28rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .session-floating-menu-session.is-active {
@@ -2261,6 +2444,31 @@ select {
   letter-spacing: 0.01em;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.session-floating-menu-timeline {
+  display: grid;
+}
+
+.session-floating-menu-timeline-item {
+  display: grid;
+  grid-template-columns: 4.1rem minmax(0, 1fr);
+  gap: 0.35rem;
+  min-width: 0;
+  color: rgba(217, 226, 234, 0.66);
+  font-size: 0.62rem;
+  line-height: 1.25;
+}
+
+.session-floating-menu-timeline-item span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-floating-menu-timeline-item span:first-child {
+  color: rgba(217, 226, 234, 0.38);
 }
 
 .session-floating-menu-create {
@@ -2301,6 +2509,84 @@ select {
   padding: 0.75rem;
   background: inherit;
   touch-action: none;
+}
+
+.terminal-session-rail {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  min-height: 34px;
+  border-bottom: 1px solid rgba(217, 226, 234, 0.1);
+  background:
+    linear-gradient(90deg, rgba(91, 192, 255, 0.1), transparent 42%),
+    rgba(255, 255, 255, 0.035);
+  padding: 0.34rem 3.8rem 0.34rem 0.62rem;
+}
+
+.terminal-session-rail-project {
+  flex: 0 1 auto;
+  max-width: min(14rem, 26vw);
+  overflow: hidden;
+  color: #ffe2a7;
+  font-size: 0.72rem;
+  font-weight: 820;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.terminal-session-rail-sessions {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 0.24rem;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.terminal-session-rail-session,
+.terminal-session-rail-overflow {
+  flex: 0 1 auto;
+  min-width: 0;
+  border: 1px solid rgba(217, 226, 234, 0.16);
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.055);
+  color: rgba(239, 246, 252, 0.84);
+  font:
+    0.72rem/1 "Iosevka Term",
+    Menlo,
+    "PingFang SC",
+    monospace;
+  overflow: hidden;
+  padding: 0.28rem 0.46rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminal-session-rail-session {
+  cursor: pointer;
+  max-width: min(12rem, 18vw);
+}
+
+.terminal-session-rail-session:hover:not(:disabled),
+.terminal-session-rail-session:focus-visible {
+  border-color: rgba(143, 217, 255, 0.32);
+  background: rgba(91, 192, 255, 0.1);
+  color: #d8f3ff;
+}
+
+.terminal-session-rail-session.is-active {
+  border-color: rgba(191, 255, 196, 0.38);
+  background: rgba(94, 255, 130, 0.14);
+  color: #d5ffd8;
+}
+
+.terminal-session-rail-overflow {
+  flex: 0 0 auto;
+  color: rgba(217, 226, 234, 0.52);
 }
 
 .terminal-status-bar {
@@ -3469,5 +3755,106 @@ select {
 
   .terminal-status-mobile-sheet .terminal-status-panes {
     grid-column: 1 / -1;
+  }
+}
+
+.group-message-backdrop {
+  align-items: start;
+  justify-content: end;
+  padding: 3.4rem 0.85rem 0.85rem;
+}
+
+.group-message-host {
+  width: min(34rem, calc(100vw - 1.7rem));
+}
+
+.group-message-panel {
+  display: grid;
+  gap: 0.65rem;
+  width: 100%;
+  max-height: min(74dvh, 42rem);
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-panel);
+  box-shadow: 0 18px 50px rgb(0 0 0 / 0.36);
+  padding: 0.72rem;
+}
+
+.group-message-header,
+.group-message-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.group-message-compose {
+  display: grid;
+  grid-template-columns: minmax(5rem, auto) minmax(7rem, 1fr) auto;
+  gap: 0.45rem;
+}
+
+.group-message-compose textarea {
+  grid-column: 1 / -1;
+  min-height: 5rem;
+  resize: vertical;
+}
+
+.group-message-list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.group-message-item {
+  display: grid;
+  gap: 0.38rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-panel) 88%, var(--color-accent));
+  padding: 0.55rem;
+}
+
+.group-message-item p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.group-message-delivery,
+.group-message-empty,
+.group-message-panel-status {
+  color: var(--color-muted);
+  font-size: 0.82rem;
+}
+
+.group-message-reply {
+  margin: 0;
+  border-left: 2px solid var(--color-accent);
+  padding-left: 0.5rem;
+  white-space: pre-wrap;
+}
+
+.terminal-session-rail-action {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 640px) {
+  .group-message-backdrop {
+    align-items: end;
+    justify-content: center;
+    padding: 0.5rem;
+  }
+
+  .group-message-host {
+    width: calc(100vw - 1rem);
+  }
+
+  .group-message-panel {
+    max-height: calc(100dvh - 1rem);
+    border-radius: 6px;
+  }
+
+  .group-message-compose {
+    grid-template-columns: 1fr;
   }
 }

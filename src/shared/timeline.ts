@@ -3,6 +3,8 @@ export type TimelineEventType =
   | "session-renamed"
   | "session-killed"
   | "command-sent"
+  | "group-message-sent"
+  | "group-message-replied"
   | "pane-split"
   | "pane-selected"
   | "pane-killed";

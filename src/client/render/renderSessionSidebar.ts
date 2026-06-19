@@ -366,6 +366,26 @@ function renderKanbanProjectShortcuts(
   return section;
 }
 
+function getKanbanProjectSessionNames(
+  projects: KanbanProject[] | undefined,
+  existingSessionNames: Set<string>
+) {
+  const sessionNames = new Set<string>();
+
+  projects?.forEach((project) => {
+    project.agents.forEach((agent) => {
+      const sessionName =
+        agent.sessionName ?? getKanbanAgentSessionName(project.name, agent.name);
+
+      if (sessionName && existingSessionNames.has(sessionName)) {
+        sessionNames.add(sessionName);
+      }
+    });
+  });
+
+  return sessionNames;
+}
+
 export function renderSessionSidebar(
   root: HTMLElement,
   state: DashboardState,
@@ -411,6 +431,16 @@ export function renderSessionSidebar(
 
   const visibleSessions = state.sessions.filter(
     (session) => !actions.hiddenSessionNames?.has(session.name)
+  );
+  const visibleSessionNames = new Set(
+    visibleSessions.map((session) => session.name)
+  );
+  const kanbanSessionNames = getKanbanProjectSessionNames(
+    actions.kanbanProjects,
+    visibleSessionNames
+  );
+  const sidebarGroupSessions = visibleSessions.filter(
+    (session) => !kanbanSessionNames.has(session.name)
   );
 
   const launcherCount = document.createElement("span");
@@ -545,7 +575,7 @@ export function renderSessionSidebar(
     actions.kanbanProjects && actions.kanbanProjects.length > 0
       ? renderKanbanProjectShortcuts(
           actions.kanbanProjects,
-          new Set(state.sessions.map((session) => session.name)),
+          visibleSessionNames,
           actions.activeSessionName,
           actions.onOpenKanbanProject ?? (() => actions.onOpenKanban?.()),
           actions.onOpenSession
@@ -555,15 +585,15 @@ export function renderSessionSidebar(
   const list = document.createElement("div");
   list.className = "session-sidebar-list";
 
-  const pinnedSessions = visibleSessions.filter((session) =>
+  const pinnedSessions = sidebarGroupSessions.filter((session) =>
     isPinnedSession(session.name, actions.pinnedSessionNames)
   );
-  const mutedSessions = visibleSessions.filter(
+  const mutedSessions = sidebarGroupSessions.filter(
     (session) =>
       !isPinnedSession(session.name, actions.pinnedSessionNames) &&
       isMutedSession(session.name, actions.mutedSessionNames)
   );
-  const regularSessions = visibleSessions.filter(
+  const regularSessions = sidebarGroupSessions.filter(
     (session) =>
       !isPinnedSession(session.name, actions.pinnedSessionNames) &&
       !isMutedSession(session.name, actions.mutedSessionNames)

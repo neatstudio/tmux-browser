@@ -3,6 +3,7 @@ export type SessionsInvalidatedReason =
   | "session-renamed"
   | "session-killed"
   | "command-sent"
+  | "group-message-updated"
   | "pane-split"
   | "pane-selected"
   | "pane-killed";

@@ -24,6 +24,7 @@ const TERMINAL_SCROLLBACK = 5000;
 const PIXELS_PER_SCROLL_LINE = 40;
 const TOUCH_PIXELS_PER_SCROLL_LINE = 12;
 const SHIFT_ENTER_SEQUENCE = "\x1b[13;2u";
+const TERMINAL_RECONNECT_DELAY_MS = 2_000;
 
 type FrameDeps = {
   requestFrame?: (callback: FrameRequestCallback) => number;
@@ -55,6 +56,7 @@ export function createTerminalTabController(deps: {
   socket: BrowserSocket;
   onOutput: (data: string) => void;
   onClosed: () => void;
+  onDisconnect?: () => void;
 }) {
   let closedByApp = false;
   const pendingMessages: string[] = [];
@@ -115,6 +117,7 @@ export function createTerminalTabController(deps: {
   function handleSocketClose() {
     if (!closedByApp) {
       deps.onOutput("\r\n[disconnected]\r\n");
+      deps.onDisconnect?.();
     }
   }
 
@@ -367,6 +370,8 @@ export function createTerminalTab(deps: {
   });
   let socket: WebSocket | null = null;
   let controller: ReturnType<typeof createTerminalTabController> | null = null;
+  let reconnectTimer: ReturnType<typeof window.setTimeout> | null = null;
+  let destroyed = false;
   let browserScrollEnabled = false;
   let touchScrollY: number | null = null;
   let pointerScrollY: number | null = null;
@@ -544,7 +549,31 @@ export function createTerminalTab(deps: {
     });
   };
 
+  function clearReconnectTimer() {
+    if (reconnectTimer === null) {
+      return;
+    }
+
+    window.clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+
+  function scheduleReconnect() {
+    if (destroyed || reconnectTimer !== null) {
+      return;
+    }
+
+    reconnectTimer = window.setTimeout(() => {
+      reconnectTimer = null;
+
+      if (!destroyed) {
+        connect({ announce: true });
+      }
+    }, TERMINAL_RECONNECT_DELAY_MS);
+  }
+
   function connect(options: { announce?: boolean } = {}) {
+    clearReconnectTimer();
     controller?.destroy();
     socket = createTerminalSocket();
     controller = createTerminalTabController({
@@ -552,7 +581,8 @@ export function createTerminalTab(deps: {
       onOutput: (data) => {
         outputBuffer.write(data);
       },
-      onClosed: deps.onClosed
+      onClosed: deps.onClosed,
+      onDisconnect: scheduleReconnect
     });
     attach();
 
@@ -702,6 +732,18 @@ export function createTerminalTab(deps: {
   });
 
   terminal.attachCustomKeyEventHandler((event) => {
+    if (
+      event.type === "keydown" &&
+      event.ctrlKey &&
+      !event.altKey &&
+      !event.metaKey &&
+      event.key.toLowerCase() === "k"
+    ) {
+      terminal.clear();
+      controller?.clearHistory();
+      return false;
+    }
+
     if (isShiftEnterEvent(event)) {
       if (event.type === "keydown") {
         if (terminal.modes.bracketedPasteMode) {
@@ -797,6 +839,8 @@ export function createTerminalTab(deps: {
       safeFitAndResize();
     },
     destroy() {
+      destroyed = true;
+      clearReconnectTimer();
       if (pendingResizeFrame !== null) {
         window.cancelAnimationFrame(pendingResizeFrame);
         pendingResizeFrame = null;

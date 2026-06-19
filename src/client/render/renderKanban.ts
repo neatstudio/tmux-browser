@@ -74,6 +74,13 @@ function getSessionPreview(
   return sessions?.find((session) => session.name === sessionName)?.preview ?? null;
 }
 
+function getSessionSummary(
+  sessions: SessionSummary[] | undefined,
+  sessionName: string
+) {
+  return sessions?.find((session) => session.name === sessionName) ?? null;
+}
+
 function escapeSvgText(value: string) {
   return value
     .replace(/&/g, "&amp;")
@@ -199,6 +206,116 @@ function renderKillConfirm(
   confirm.append(title, hint, previewBox, actions);
 
   return confirm;
+}
+
+function renderUngroupedSessions(state: KanbanState) {
+  const section = document.createElement("section");
+  section.className = "kanban-ungrouped";
+
+  const header = document.createElement("div");
+  header.className = "kanban-ungrouped-header";
+
+  const title = document.createElement("h2");
+  title.textContent = "Ungrouped sessions";
+
+  const count = document.createElement("span");
+  count.textContent = `${state.availableSessions.length} available`;
+
+  header.append(title, count);
+  section.append(header);
+
+  if (state.availableSessions.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "kanban-ungrouped-empty";
+    empty.textContent = "All sessions are assigned to projects.";
+    section.append(empty);
+
+    return section;
+  }
+
+  const list = document.createElement("div");
+  list.className = "kanban-ungrouped-list";
+
+  state.availableSessions.forEach((sessionName) => {
+    const summary = getSessionSummary(state.sessions, sessionName);
+    const card = document.createElement("article");
+    card.className = "kanban-ungrouped-card";
+    card.dataset.sessionName = sessionName;
+
+    const name = document.createElement("strong");
+    name.textContent = sessionName;
+
+    const meta = document.createElement("span");
+    meta.className = "kanban-ungrouped-meta";
+    meta.textContent = summary
+      ? [
+          summary.status,
+          `${summary.windows}w ${summary.paneCount}p`,
+          summary.currentCommand
+        ]
+          .filter(Boolean)
+          .join(" · ")
+      : "session details unavailable";
+
+    const path = document.createElement("code");
+    path.textContent = summary?.currentPath ?? "";
+    path.title = summary?.currentPath ?? "";
+
+    const actions = document.createElement("div");
+    actions.className = "kanban-ungrouped-actions";
+
+    const openButton = document.createElement("button");
+    openButton.type = "button";
+    openButton.className = "kanban-ungrouped-open";
+    openButton.textContent = "Open";
+    openButton.addEventListener("click", () => state.onOpenSession(sessionName));
+    actions.append(openButton);
+
+    if (state.projects.length > 0) {
+      const addForm = document.createElement("form");
+      addForm.className = "kanban-ungrouped-add-form";
+
+      const select = document.createElement("select");
+      select.className = "kanban-ungrouped-project-select";
+      select.setAttribute("aria-label", `Add ${sessionName} to project`);
+
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = "Add to...";
+      select.append(placeholder);
+
+      state.projects.forEach((project) => {
+        const option = document.createElement("option");
+        option.value = project.name;
+        option.textContent = project.name;
+        select.append(option);
+      });
+
+      const addButton = document.createElement("button");
+      addButton.type = "submit";
+      addButton.textContent = "Add";
+
+      addForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+
+        if (!select.value) {
+          return;
+        }
+
+        state.onAddSession(select.value, sessionName);
+      });
+
+      addForm.append(select, addButton);
+      actions.append(addForm);
+    }
+
+    card.append(name, meta, path, actions);
+    list.append(card);
+  });
+
+  section.append(list);
+
+  return section;
 }
 
 export function renderKanban(root: HTMLElement, state: KanbanState) {
@@ -350,6 +467,8 @@ export function renderKanban(root: HTMLElement, state: KanbanState) {
 
     const list = document.createElement("div");
     list.className = "kanban-project-list";
+
+    section.append(renderUngroupedSessions(state));
 
   state.projects.forEach((project) => {
     const card = document.createElement("article");

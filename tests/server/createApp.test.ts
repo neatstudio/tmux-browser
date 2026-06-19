@@ -1417,4 +1417,341 @@ describe("createApp", () => {
       agents: []
     });
   });
+
+  it("sends kanban group messages to resolved tmux sessions and stores delivery state", async () => {
+    const sendInput = vi.fn().mockResolvedValue(undefined);
+    const preferences = {
+      getPreferences: vi.fn(() => ({
+        pinnedSessionNames: [],
+        mutedSessionNames: ["tmux-ui"],
+        sessionSettings: {},
+        kanbanProjects: [
+          {
+            name: "xxvisa",
+            path: "/srv/xxvisa",
+            server: null,
+            agents: [
+              { kind: "pm", name: "pm", command: null },
+              { kind: "review", name: "review", command: null },
+              { kind: "codex", name: "codex", command: null }
+            ]
+          }
+        ]
+      })),
+      setPinnedSession: vi.fn(),
+      setMutedSession: vi.fn(),
+      setSessionSettings: vi.fn(),
+      upsertKanbanProject: vi.fn(),
+      deleteKanbanProject: vi.fn(),
+      addKanbanSession: vi.fn(),
+      removeKanbanSession: vi.fn(),
+      syncKanbanSessions: vi.fn(),
+      renameSession: vi.fn()
+    };
+    const app = createApp({
+      preferences,
+      tmuxService: {
+        listSessions: vi.fn().mockResolvedValue([
+          { name: "xxvisa-pm", currentCommand: "codex" },
+          { name: "xxvisa-review", currentCommand: "claude" },
+          { name: "xxvisa-codex", currentCommand: "codex" }
+        ]),
+        getSessionStatus: vi.fn(),
+        createSession: vi.fn(),
+        createProjectSessions: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        sendInput,
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    const response = await request(app)
+      .post("/api/kanban/projects/xxvisa/messages")
+      .send({
+        fromSession: "xxvisa-pm",
+        kind: "task",
+        target: { type: "others" },
+        body: "Please review checkout."
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body.message).toMatchObject({
+      projectName: "xxvisa",
+      fromSession: "xxvisa-pm",
+      toSessions: ["xxvisa-review", "xxvisa-codex"],
+      kind: "task",
+      status: "pending",
+      body: "Please review checkout.",
+      deliveries: [
+        { sessionName: "xxvisa-review", status: "sent", mode: "agent-input" },
+        { sessionName: "xxvisa-codex", status: "sent", mode: "agent-input" }
+      ]
+    });
+    expect(sendInput).toHaveBeenCalledTimes(2);
+    expect(sendInput.mock.calls[0][0]).toBe("xxvisa-review");
+    expect(sendInput.mock.calls[0][1]).toContain("[tmux-ui:task]");
+    expect(sendInput.mock.calls[0][1]).toContain("to: xxvisa-review");
+    expect(sendInput.mock.calls[0][1]).toMatch(/\r$/);
+
+    const listResponse = await request(app).get(
+      "/api/kanban/projects/xxvisa/messages"
+    );
+
+    expect(listResponse.status).toBe(200);
+    expect(listResponse.body.messages).toHaveLength(1);
+    expect(listResponse.body.messages[0].id).toBe(response.body.message.id);
+  });
+
+  it("prints group messages safely for plain shell targets instead of executing the message body", async () => {
+    const sendInput = vi.fn().mockResolvedValue(undefined);
+    const preferences = {
+      getPreferences: vi.fn(() => ({
+        pinnedSessionNames: [],
+        mutedSessionNames: ["tmux-ui"],
+        sessionSettings: {},
+        kanbanProjects: [
+          {
+            name: "local",
+            path: "/srv/local",
+            server: null,
+            agents: [
+              { kind: "pm", name: "pm", command: null },
+              {
+                kind: "session",
+                name: "local-shell",
+                command: null,
+                sessionName: "local-shell"
+              }
+            ]
+          }
+        ]
+      })),
+      setPinnedSession: vi.fn(),
+      setMutedSession: vi.fn(),
+      setSessionSettings: vi.fn(),
+      upsertKanbanProject: vi.fn(),
+      deleteKanbanProject: vi.fn(),
+      addKanbanSession: vi.fn(),
+      removeKanbanSession: vi.fn(),
+      syncKanbanSessions: vi.fn(),
+      renameSession: vi.fn()
+    };
+    const app = createApp({
+      preferences,
+      tmuxService: {
+        listSessions: vi.fn().mockResolvedValue([
+          { name: "local-pm", currentCommand: "codex" },
+          { name: "local-shell", currentCommand: "zsh" }
+        ]),
+        getSessionStatus: vi.fn(),
+        createSession: vi.fn(),
+        createProjectSessions: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        sendInput,
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    const response = await request(app)
+      .post("/api/kanban/projects/local/messages")
+      .send({
+        fromSession: "local-pm",
+        kind: "task",
+        target: { type: "session", sessionName: "local-shell" },
+        body: "echo should-not-run"
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body.message.deliveries).toEqual([
+      { sessionName: "local-shell", status: "sent", mode: "shell-print" }
+    ]);
+    expect(sendInput).toHaveBeenCalledWith(
+      "local-shell",
+      expect.stringMatching(/^printf '%b\\n' /)
+    );
+    expect(sendInput.mock.calls[0][1]).toContain("[tmux-ui:task]");
+    expect(sendInput.mock.calls[0][1]).not.toContain("\necho should-not-run\n");
+  });
+
+  it("keeps successful kanban group deliveries when one target send fails", async () => {
+    const sendInput = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("tmux target missing"));
+    const preferences = {
+      getPreferences: vi.fn(() => ({
+        pinnedSessionNames: [],
+        mutedSessionNames: ["tmux-ui"],
+        sessionSettings: {},
+        kanbanProjects: [
+          {
+            name: "xxvisa",
+            path: "/srv/xxvisa",
+            server: null,
+            agents: [
+              { kind: "pm", name: "pm", command: null },
+              { kind: "review", name: "review", command: null },
+              { kind: "codex", name: "codex", command: null }
+            ]
+          }
+        ]
+      })),
+      setPinnedSession: vi.fn(),
+      setMutedSession: vi.fn(),
+      setSessionSettings: vi.fn(),
+      upsertKanbanProject: vi.fn(),
+      deleteKanbanProject: vi.fn(),
+      addKanbanSession: vi.fn(),
+      removeKanbanSession: vi.fn(),
+      syncKanbanSessions: vi.fn(),
+      renameSession: vi.fn()
+    };
+    const app = createApp({
+      preferences,
+      tmuxService: {
+        listSessions: vi.fn().mockResolvedValue([
+          { name: "xxvisa-pm", currentCommand: "codex" },
+          { name: "xxvisa-review", currentCommand: "claude" },
+          { name: "xxvisa-codex", currentCommand: "codex" }
+        ]),
+        getSessionStatus: vi.fn(),
+        createSession: vi.fn(),
+        createProjectSessions: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        sendInput,
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    const response = await request(app)
+      .post("/api/kanban/projects/xxvisa/messages")
+      .send({
+        fromSession: "xxvisa-pm",
+        kind: "task",
+        target: { type: "others" },
+        body: "Please review checkout."
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body.message.status).toBe("partial");
+    expect(response.body.message.deliveries).toEqual([
+      { sessionName: "xxvisa-review", status: "sent", mode: "agent-input" },
+      {
+        sessionName: "xxvisa-codex",
+        status: "failed",
+        mode: "agent-input",
+        error: "tmux target missing"
+      }
+    ]);
+  });
+
+  it("scans pending kanban group message targets for structured replies", async () => {
+    const sendInput = vi.fn().mockResolvedValue(undefined);
+    const captureRecentOutput = vi.fn().mockResolvedValue(`
+[tmux-ui:reply]
+id: gm-20260620-0001
+from: xxvisa-review
+status: done
+body:
+Reviewed and approved.
+[/tmux-ui:reply]
+`);
+    const preferences = {
+      getPreferences: vi.fn(() => ({
+        pinnedSessionNames: [],
+        mutedSessionNames: ["tmux-ui"],
+        sessionSettings: {},
+        kanbanProjects: [
+          {
+            name: "xxvisa",
+            path: "/srv/xxvisa",
+            server: null,
+            agents: [
+              { kind: "pm", name: "pm", command: null },
+              { kind: "review", name: "review", command: null }
+            ]
+          }
+        ]
+      })),
+      setPinnedSession: vi.fn(),
+      setMutedSession: vi.fn(),
+      setSessionSettings: vi.fn(),
+      upsertKanbanProject: vi.fn(),
+      deleteKanbanProject: vi.fn(),
+      addKanbanSession: vi.fn(),
+      removeKanbanSession: vi.fn(),
+      syncKanbanSessions: vi.fn(),
+      renameSession: vi.fn()
+    };
+    const app = createApp({
+      preferences,
+      tmuxService: {
+        listSessions: vi.fn().mockResolvedValue([
+          { name: "xxvisa-pm", currentCommand: "codex" },
+          { name: "xxvisa-review", currentCommand: "claude" }
+        ]),
+        getSessionStatus: vi.fn(),
+        createSession: vi.fn(),
+        createProjectSessions: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        sendInput,
+        captureRecentOutput,
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    const created = await request(app)
+      .post("/api/kanban/projects/xxvisa/messages")
+      .send({
+        fromSession: "xxvisa-pm",
+        kind: "task",
+        target: { type: "session", sessionName: "xxvisa-review" },
+        body: "Please review checkout."
+      });
+    const messageId = created.body.message.id;
+    captureRecentOutput.mockResolvedValue(`
+[tmux-ui:reply]
+id: ${messageId}
+from: xxvisa-review
+status: done
+body:
+Reviewed and approved.
+[/tmux-ui:reply]
+`);
+
+    const response = await request(app).post(
+      `/api/kanban/projects/xxvisa/messages/${messageId}/scan`
+    );
+
+    expect(response.status).toBe(200);
+    expect(captureRecentOutput).toHaveBeenCalledWith("xxvisa-review", 300);
+    expect(response.body.message).toMatchObject({
+      id: messageId,
+      status: "replied",
+      replies: [
+        {
+          messageId,
+          fromSession: "xxvisa-review",
+          status: "done",
+          body: "Reviewed and approved."
+        }
+      ]
+    });
+  });
 });

@@ -10,8 +10,10 @@ import {
 } from "./render/renderKanban";
 import { createAnimationFrameScheduler } from "./render/renderScheduler";
 import { renderSessionSidebar } from "./render/renderSessionSidebar";
+import { renderGroupMessagePanel } from "./render/groupMessagePanel";
 import { renderSessionConfigModal } from "./render/sessionConfigModal";
 import { renderSessionFloatingMenu } from "./render/sessionFloatingMenu";
+import { renderSessionGroupRail } from "./render/sessionGroupRail";
 import { renderSessionStatusBar } from "./render/sessionStatusBar";
 import { renderTabs, updateActiveTabItem } from "./render/renderTabs";
 import { createDashboardStore } from "./state/dashboardStore";
@@ -48,6 +50,7 @@ import { isPageVisible } from "./pageVisibility";
 import {
   getDefaultKanbanSelectedSessionNames
 } from "../shared/kanbanTemplates";
+import type { GroupMessage } from "../shared/groupMessages";
 import "./styles.css";
 
 declare const __TMUX_UI_CLIENT_VERSION__: string;
@@ -120,6 +123,13 @@ let draftSendTargetName = "";
 let draftSendCommand = "";
 let activeKanbanProjectName: string | null =
   new URLSearchParams(window.location.search).get("project");
+let activeGroupMessagePanel: {
+  projectName: string;
+  sessionName: string;
+  messages: GroupMessage[];
+  loading: boolean;
+  error: string | null;
+} | null = null;
 let currentActionCount = 0;
 const tabState = createTabState({
   initialActiveTabId: appView === "kanban" ? null : undefined
@@ -686,6 +696,7 @@ function ensureTerminal(tab: BrowserTab) {
     store.getState().sessions.find((session) => session.name === tab.sessionName),
     createSessionStatusActions(tab, loadingTerminal)
   );
+  renderSessionTopRail(panel, tab);
   renderSessionMenu(panel, tab);
   panel.style.background = getTheme(
     sessionSettings.get(tab.sessionName).themeId
@@ -739,8 +750,24 @@ function ensureTerminal(tab: BrowserTab) {
         .sessions.find((session) => session.name === tab.sessionName),
       createSessionStatusActions(tab, mountedTerminal)
     );
+    renderSessionTopRail(panel, tab);
     renderSessionMenu(panel, tab);
   });
+}
+
+function renderSessionTopRail(panel: HTMLElement, tab: BrowserTab) {
+  renderSessionGroupRail(
+    panel,
+    tab.sessionName,
+    getKanbanStatusProject(tab.sessionName),
+    {
+      onOpenSession: (sessionName) => {
+        getOrOpenTab(sessionName);
+        scheduleRender();
+      },
+      onOpenGroupTask: () => openGroupMessagePanel(tab.sessionName)
+    }
+  );
 }
 
 function renderSessionMenu(panel: HTMLElement, tab: BrowserTab) {
@@ -752,6 +779,9 @@ function renderSessionMenu(panel: HTMLElement, tab: BrowserTab) {
     homeDirectory: dashboardState.serverStatus?.homeDirectory ?? null,
     kanbanProject: getKanbanStatusProject(tab.sessionName),
     boards: getKanbanStatusProjects(),
+    pinnedSessionNames: getPinnedSessionNames(),
+    mutedSessionNames: new Set(mutedSessions.getMutedSessionNames()),
+    timelineEvents: dashboardState.timelineEvents ?? [],
     actionCount: currentActionCount,
     actionCenterOpen: isActionCenterOpen,
     isPinned: getPinnedSessionNames().has(tab.sessionName),
@@ -769,9 +799,21 @@ function renderSessionMenu(panel: HTMLElement, tab: BrowserTab) {
     },
     onRename: () => promptRenameSession(tab.sessionName),
     onSendCommand: () => openSendCommandPanel(tab.sessionName),
+    onOpenGroupTask: () => openGroupMessagePanel(tab.sessionName),
+    onOpenGroupMessages: () => openGroupMessagePanel(tab.sessionName),
+    onReconnect: () => mountedTerminal.reconnect(),
+    onPreviewImage: () => openImagePreviewPanel(tab.sessionName),
+    onChooseImage: () => mountedTerminal.chooseImage(),
+    onCaptureImage: () => mountedTerminal.captureImage(),
+    onKill: () => killSession(tab.sessionName, { confirm: true }),
     onTogglePinned: () => togglePinnedSession(tab.sessionName),
     onToggleMuted: () => toggleMutedSession(tab.sessionName),
     onToggleActionCenter: toggleActionCenter,
+    onRefreshMuted: () => {
+      void store
+        .refreshMuted(mutedSessions.getMutedSessionNames())
+        .then(() => scheduleRender());
+    },
     onRefresh: () => {
       void store
         .refresh({
@@ -809,6 +851,7 @@ function syncTerminalStatusBars() {
       sessionsByName.get(tab.sessionName),
       createSessionStatusActions(tab, mounted)
     );
+    renderSessionTopRail(mounted.panel, tab);
     renderSessionMenu(mounted.panel, tab);
   });
 }
@@ -1335,6 +1378,100 @@ function closeSendCommandPanel() {
   scheduleRender();
 }
 
+function openGroupMessagePanel(sessionName: string) {
+  const project = getKanbanStatusProject(sessionName);
+
+  if (!project) {
+    return;
+  }
+
+  activeGroupMessagePanel = {
+    projectName: project.name,
+    sessionName,
+    messages: [],
+    loading: true,
+    error: null
+  };
+  scheduleRender();
+  void refreshGroupMessages(project.name);
+}
+
+function closeGroupMessagePanel() {
+  activeGroupMessagePanel = null;
+  scheduleRender();
+}
+
+async function refreshGroupMessages(projectName: string) {
+  if (!activeGroupMessagePanel || activeGroupMessagePanel.projectName !== projectName) {
+    return;
+  }
+
+  activeGroupMessagePanel = {
+    ...activeGroupMessagePanel,
+    loading: true,
+    error: null
+  };
+  scheduleRender();
+
+  try {
+    const messages = await api.listGroupMessages(projectName);
+
+    if (activeGroupMessagePanel?.projectName === projectName) {
+      activeGroupMessagePanel = {
+        ...activeGroupMessagePanel,
+        messages,
+        loading: false,
+        error: null
+      };
+      scheduleRender();
+    }
+  } catch (error) {
+    if (activeGroupMessagePanel?.projectName === projectName) {
+      activeGroupMessagePanel = {
+        ...activeGroupMessagePanel,
+        loading: false,
+        error: error instanceof Error ? error.message : "Failed to load messages"
+      };
+      scheduleRender();
+    }
+  }
+}
+
+function sendGroupMessage(
+  projectName: string,
+  request: Parameters<typeof api.sendGroupMessage>[1]
+) {
+  void api
+    .sendGroupMessage(projectName, request)
+    .then(() => refreshGroupMessages(projectName))
+    .catch((error) => {
+      if (activeGroupMessagePanel?.projectName === projectName) {
+        activeGroupMessagePanel = {
+          ...activeGroupMessagePanel,
+          loading: false,
+          error: error instanceof Error ? error.message : "Failed to send message"
+        };
+        scheduleRender();
+      }
+    });
+}
+
+function scanGroupMessage(projectName: string, messageId: string) {
+  void api
+    .scanGroupMessage(projectName, messageId)
+    .then(() => refreshGroupMessages(projectName))
+    .catch((error) => {
+      if (activeGroupMessagePanel?.projectName === projectName) {
+        activeGroupMessagePanel = {
+          ...activeGroupMessagePanel,
+          loading: false,
+          error: error instanceof Error ? error.message : "Failed to scan replies"
+        };
+        scheduleRender();
+      }
+    });
+}
+
 function renderSendCommandPanel() {
   panelsRoot.querySelector(".send-command-backdrop")?.remove();
 
@@ -1425,6 +1562,54 @@ function renderSendCommandPanel() {
   backdrop.append(panel);
   panelsRoot.append(backdrop);
   input.focus();
+}
+
+function renderGroupMessageOverlay() {
+  panelsRoot.querySelector(".group-message-backdrop")?.remove();
+
+  if (!activeGroupMessagePanel) {
+    return;
+  }
+
+  const project = getKanbanStatusProjects().find(
+    (candidate) => candidate.name === activeGroupMessagePanel?.projectName
+  ) ?? getKanbanStatusProject(activeGroupMessagePanel.sessionName);
+
+  if (!project) {
+    closeGroupMessagePanel();
+    return;
+  }
+
+  const backdrop = document.createElement("div");
+  backdrop.className = "send-command-backdrop group-message-backdrop";
+  backdrop.addEventListener("click", (event) => {
+    if (event.target === backdrop) {
+      closeGroupMessagePanel();
+    }
+  });
+
+  const host = document.createElement("div");
+  host.className = "group-message-host";
+
+  if (activeGroupMessagePanel.loading || activeGroupMessagePanel.error) {
+    const status = document.createElement("div");
+    status.className = "group-message-panel-status";
+    status.textContent = activeGroupMessagePanel.error
+      ?? "Loading group messages...";
+    host.append(status);
+  }
+
+  renderGroupMessagePanel(host, {
+    project,
+    currentSessionName: activeGroupMessagePanel.sessionName,
+    messages: activeGroupMessagePanel.messages,
+    onSubmit: (request) => sendGroupMessage(project.name, request),
+    onScan: (messageId) => scanGroupMessage(project.name, messageId),
+    onClose: closeGroupMessagePanel
+  });
+
+  backdrop.append(host);
+  panelsRoot.append(backdrop);
 }
 
 function renderSwitchSessionPanel() {
@@ -1600,6 +1785,7 @@ function refreshDashboard(options: { includeServerStatus?: boolean } = {}) {
 function createSessionStatusActions(tab: BrowserTab, mounted: MountedTerminal) {
   return {
     kanbanProject: getKanbanStatusProject(tab.sessionName),
+    showKanbanSwitches: isMobileViewport(),
     onRefresh: () => {
       const isDashboardActive = tabState.getActiveTabId() === null;
 
@@ -1664,6 +1850,9 @@ function render() {
     sessions: store.getState().sessions
   });
   currentActionCount = actionCenterItems.length;
+  app
+    .querySelector(".app-shell")
+    ?.classList.toggle("app-shell--kanban-view", appView === "kanban");
   const tabListSignature = tabs
     .map((tab) => `${tab.id}:${tab.title}:${tab.pinned ? "pinned" : "free"}`)
     .join("|");
@@ -1862,6 +2051,7 @@ function render() {
   panelsRoot.querySelector(".session-config-backdrop")?.remove();
   renderImagePreviewPanel();
   renderSendCommandPanel();
+  renderGroupMessageOverlay();
   renderSwitchSessionPanel();
   renderActionCenterPanel(app, {
     open: isActionCenterOpen,

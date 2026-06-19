@@ -289,6 +289,68 @@ describe("renderSessionSidebar", () => {
     expect(onOpenSession).toHaveBeenCalledWith("xxvisa-review");
   });
 
+  it("does not repeat kanban sessions in pinned or regular sidebar groups", () => {
+    const root = document.createElement("div");
+
+    renderSessionSidebar(
+      root,
+      {
+        sessions: [
+          { ...BASE_SESSION, name: "build" },
+          { ...BASE_SESSION, name: "scratch" }
+        ],
+        serverStatus: null,
+        loading: false,
+        error: null
+      },
+      {
+        activeSessionName: null,
+        activeView: "dashboard",
+        collapsed: false,
+        draftSessionName: "",
+        browserTabs: [],
+        pinnedSessionNames: new Set(["build"]),
+        kanbanProjects: [
+          {
+            name: "local",
+            path: "~/server/wwwroot/app/local",
+            server: null,
+            agents: [
+              {
+                kind: "pm",
+                name: "pm",
+                command: null,
+                sessionName: "build"
+              }
+            ]
+          }
+        ],
+        onCreateSession: vi.fn(),
+        onDraftChange: vi.fn(),
+        onOpenDashboard: vi.fn(),
+        onOpenKanban: vi.fn(),
+        onOpenKanbanProject: vi.fn(),
+        onOpenSession: vi.fn(),
+        onTogglePinned: vi.fn(),
+        onRefresh: vi.fn(),
+        onToggleCollapsed: vi.fn()
+      }
+    );
+
+    expect(
+      [
+        ...root.querySelectorAll<HTMLButtonElement>("[data-session-name='build']")
+      ].map((button) => button.dataset.action)
+    ).toEqual(["open-kanban-session"]);
+    expect(
+      root.querySelector(".session-sidebar-group.is-pinned")
+    ).toBeNull();
+    expect(
+      [...root.querySelectorAll<HTMLButtonElement>(".session-sidebar-item")]
+        .map((button) => button.dataset.sessionName)
+    ).toEqual(["scratch"]);
+  });
+
   it("shows pending actions as a compact header badge", () => {
     const root = document.createElement("div");
     const onToggleActionCenter = vi.fn();

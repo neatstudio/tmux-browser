@@ -690,6 +690,53 @@ describe("createTerminalTab", () => {
     mounted.destroy();
   });
 
+  it("clears the terminal and tmux history with Ctrl+K", () => {
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    };
+
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        constructor() {
+          return socket;
+        }
+      }
+    );
+
+    const mounted = createTerminalTab({
+      container: document.createElement("div"),
+      tabId: "tab-1",
+      sessionName: "build",
+      onClosed: vi.fn()
+    });
+    const terminal = terminalTestState.terminals[0]?.instance;
+    socket.send.mockClear();
+
+    const handled = terminal?.customKeyEventHandler?.(
+      new KeyboardEvent("keydown", {
+        key: "k",
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true
+      })
+    );
+
+    expect(handled).toBe(false);
+    expect(terminal?.clear).toHaveBeenCalledOnce();
+    expect(socket.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: "clear-history" })
+    );
+    expect(socket.send).not.toHaveBeenCalledWith(
+      JSON.stringify({ type: "input", data: "\x0b" })
+    );
+
+    mounted.destroy();
+  });
+
   it("sends raw terminal control sequences through the mounted terminal API", () => {
     const socket = {
       send: vi.fn(),
@@ -1342,6 +1389,88 @@ describe("createTerminalTab", () => {
     requestAnimationFrame.mockRestore();
 
     expect(sockets[1]?.close).toHaveBeenCalledOnce();
+  });
+
+  it("automatically reconnects after an unexpected terminal websocket close", () => {
+    vi.useFakeTimers();
+    let scheduledCallback: FrameRequestCallback | null = null;
+    const sockets: Array<{
+      send: ReturnType<typeof vi.fn>;
+      close: ReturnType<typeof vi.fn>;
+      addEventListener: ReturnType<typeof vi.fn>;
+      removeEventListener: ReturnType<typeof vi.fn>;
+      listeners: Map<string, (event?: Event) => void>;
+    }> = [];
+
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation(
+      (callback: FrameRequestCallback) => {
+        scheduledCallback = callback;
+
+        return 1;
+      }
+    );
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        send = vi.fn();
+        close = vi.fn();
+        listeners = new Map<string, (event?: Event) => void>();
+        addEventListener = vi.fn(
+          (type: string, listener: (event?: Event) => void) => {
+            this.listeners.set(type, listener);
+          }
+        );
+        removeEventListener = vi.fn(
+          (type: string, listener: (event?: Event) => void) => {
+            if (this.listeners.get(type) === listener) {
+              this.listeners.delete(type);
+            }
+          }
+        );
+
+        constructor() {
+          sockets.push(this);
+        }
+      }
+    );
+
+    const mounted = createTerminalTab({
+      container: document.createElement("div"),
+      tabId: "tab-1",
+      sessionName: "build",
+      onClosed: vi.fn()
+    });
+
+    expect(sockets).toHaveLength(1);
+
+    sockets[0]?.listeners.get("close")?.(new Event("close"));
+
+    expect(sockets).toHaveLength(1);
+
+    vi.advanceTimersByTime(2_000);
+    scheduledCallback?.(performance.now());
+
+    expect(sockets).toHaveLength(2);
+    expect(sockets[1]?.send).toHaveBeenCalledWith(
+      JSON.stringify({
+        type: "attach",
+        tabId: "tab-1",
+        sessionName: "build",
+        cols: 120,
+        rows: 40
+      })
+    );
+    expect(terminalTestState.terminals[0]?.instance.write).toHaveBeenCalledWith(
+      expect.stringContaining("[disconnected]"),
+      expect.any(Function)
+    );
+    expect(terminalTestState.terminals[0]?.instance.write).toHaveBeenCalledWith(
+      expect.stringContaining("[reconnecting]"),
+      expect.any(Function)
+    );
+
+    mounted.destroy();
+    vi.useRealTimers();
   });
 
   it("loads the WebGL renderer addon when it is available", () => {

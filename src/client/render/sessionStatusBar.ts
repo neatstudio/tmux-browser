@@ -13,6 +13,7 @@ export type KanbanStatusProject = {
 
 export type SessionStatusBarActions = {
   kanbanProject?: KanbanStatusProject | null;
+  showKanbanSwitches?: boolean;
   onClear?: () => void;
   onRedraw?: () => void;
   onReconnect?: () => void;
@@ -271,19 +272,10 @@ function renderLeftStatusActions(
     createActionButton("split-vertical", "Stack", () => actions.onSplitVertical?.(), !actions.onSplitVertical, "Split pane vertically", afterClick),
     renderPaneSwitches(session, actions, afterClick)
   ]);
-  const toolsGroup = createActionGroup("tools", [
-    createActionButton("reconnect", "Recon", () => actions.onReconnect?.(), !actions.onReconnect, "Reconnect terminal websocket", afterClick),
-    createActionButton("config", "Cfg", () => actions.onConfig?.(), !actions.onConfig, "Config session", afterClick),
-    createActionButton("rename", "Ren", () => actions.onRename?.(), !actions.onRename, "Rename session", afterClick),
-    createActionButton("preview-image", "Img", () => actions.onPreviewImage?.(), !actions.onPreviewImage, "Preview image file", afterClick),
-    createActionButton("choose-image", "Photo", () => actions.onChooseImage?.(), !actions.onChooseImage, "Choose image and insert saved path", afterClick),
-    createActionButton("capture-image", "Cam", () => actions.onCaptureImage?.(), !actions.onCaptureImage, "Take photo and insert saved path", afterClick)
-  ]);
 
   panesGroup.classList.add("is-left");
-  toolsGroup.classList.add("is-left");
 
-  return [panesGroup, toolsGroup];
+  return [panesGroup];
 }
 
 function renderRightStatusActions(
@@ -292,7 +284,9 @@ function renderRightStatusActions(
   actions: SessionStatusBarActions,
   afterClick?: () => void
 ): HTMLElement[] {
-  const kanbanSessionsGroup = renderKanbanSessionSwitches(session, actions, afterClick);
+  const kanbanSessionsGroup = actions.showKanbanSwitches === false
+    ? null
+    : renderKanbanSessionSwitches(session, actions, afterClick);
 
   return [
     createActionGroup("view", [
@@ -305,15 +299,6 @@ function renderRightStatusActions(
       createActionButton("send", "Send", () => actions.onSendCommand?.(), !actions.onSendCommand, "Send command", afterClick),
       createSwitchSessionButton(actions, afterClick)
     ]),
-    createActionGroup("recovery", [
-      createActionButton("clear", "Clear", () => actions.onClear?.(), !actions.onClear, "Clear terminal", afterClick),
-      createActionButton("redraw", "Draw", () => actions.onRedraw?.(), !actions.onRedraw, "Redraw terminal", afterClick),
-      createActionButton("refresh", "Sync", () => {
-        actions.onRefresh?.();
-        renderSessionStatusBar(root, session, actions);
-      }, false, "Refresh tmux status", afterClick),
-      createActionButton("kill", "Kill", () => actions.onKill?.(), !actions.onKill, "Kill session", afterClick)
-    ])
   ];
 }
 

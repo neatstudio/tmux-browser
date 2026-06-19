@@ -233,6 +233,103 @@ describe("createSessionApi", () => {
     });
   });
 
+  it("loads, sends, and scans kanban group messages", async () => {
+    const message = {
+      id: "gm-20260620-0001",
+      projectName: "xxvisa",
+      fromSession: "xxvisa-pm",
+      toSessions: ["xxvisa-review"],
+      kind: "task",
+      status: "pending",
+      body: "Please review checkout.",
+      createdAt: "2026-06-20T00:00:00.000Z",
+      updatedAt: "2026-06-20T00:00:00.000Z",
+      expiresAt: null,
+      deliveries: [{ sessionName: "xxvisa-review", status: "sent" }],
+      replies: [],
+      warnings: []
+    };
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ messages: [message] })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ ok: true, message })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            ok: true,
+            message: {
+              ...message,
+              status: "replied",
+              replies: [
+                {
+                  messageId: message.id,
+                  fromSession: "xxvisa-review",
+                  status: "done",
+                  body: "Reviewed.",
+                  capturedAt: "2026-06-20T00:01:00.000Z"
+                }
+              ]
+            }
+          })
+      });
+    vi.stubGlobal("fetch", fetch);
+    const api = createSessionApi();
+
+    await expect(api.listGroupMessages("xxvisa")).resolves.toEqual([message]);
+    await expect(
+      api.sendGroupMessage("xxvisa", {
+        fromSession: "xxvisa-pm",
+        kind: "task",
+        target: { type: "session", sessionName: "xxvisa-review" },
+        body: "Please review checkout."
+      })
+    ).resolves.toEqual(message);
+    await expect(api.scanGroupMessage("xxvisa", message.id)).resolves.toMatchObject({
+      id: message.id,
+      status: "replied",
+      replies: [
+        {
+          fromSession: "xxvisa-review",
+          status: "done",
+          body: "Reviewed."
+        }
+      ]
+    });
+
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      "/api/kanban/projects/xxvisa/messages"
+    );
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      "/api/kanban/projects/xxvisa/messages",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          fromSession: "xxvisa-pm",
+          kind: "task",
+          target: { type: "session", sessionName: "xxvisa-review" },
+          body: "Please review checkout."
+        })
+      }
+    );
+    expect(fetch).toHaveBeenNthCalledWith(
+      3,
+      "/api/kanban/projects/xxvisa/messages/gm-20260620-0001/scan",
+      { method: "POST" }
+    );
+  });
+
   it("removes, kills, and deletes kanban projects", async () => {
     const fetch = vi
       .fn()

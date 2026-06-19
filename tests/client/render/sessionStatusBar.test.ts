@@ -169,41 +169,41 @@ describe("sessionStatusBar", () => {
     expect(root.querySelector("[data-action='send-pwd']")).toBeNull();
     expect(root.querySelector("[data-action='send-git-status']")).toBeNull();
 
-    root.querySelector<HTMLButtonElement>("[data-action='clear']")?.click();
-    root.querySelector<HTMLButtonElement>("[data-action='redraw']")?.click();
-    root.querySelector<HTMLButtonElement>("[data-action='reconnect']")?.click();
-    root.querySelector<HTMLButtonElement>("[data-action='refresh']")?.click();
-    root.querySelector<HTMLButtonElement>("[data-action='config']")?.click();
-    root.querySelector<HTMLButtonElement>("[data-action='rename']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='send']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='switch-session']")?.click();
-    root.querySelector<HTMLButtonElement>("[data-action='preview-image']")?.click();
-    root.querySelector<HTMLButtonElement>("[data-action='choose-image']")?.click();
-    root.querySelector<HTMLButtonElement>("[data-action='capture-image']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='split-horizontal']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='split-vertical']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='scroll-history-back']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='scroll-history-forward']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='browser-scroll']")?.click();
-    root.querySelector<HTMLButtonElement>("[data-action='kill']")?.click();
 
-    expect(onClear).toHaveBeenCalledOnce();
-    expect(onRedraw).toHaveBeenCalledOnce();
-    expect(onReconnect).toHaveBeenCalledOnce();
-    expect(onRefresh).toHaveBeenCalledOnce();
-    expect(onConfig).toHaveBeenCalledOnce();
-    expect(onRename).toHaveBeenCalledOnce();
+    expect(root.querySelector("[data-action='clear']")).toBeNull();
+    expect(root.querySelector("[data-action='redraw']")).toBeNull();
+    expect(root.querySelector("[data-action='refresh']")).toBeNull();
+    expect(root.querySelector("[data-action='kill']")).toBeNull();
+    expect(root.querySelector("[data-action='reconnect']")).toBeNull();
+    expect(root.querySelector("[data-action='config']")).toBeNull();
+    expect(root.querySelector("[data-action='rename']")).toBeNull();
+    expect(root.querySelector("[data-action='preview-image']")).toBeNull();
+    expect(root.querySelector("[data-action='choose-image']")).toBeNull();
+    expect(root.querySelector("[data-action='capture-image']")).toBeNull();
+    expect(onClear).not.toHaveBeenCalled();
+    expect(onRedraw).not.toHaveBeenCalled();
+    expect(onReconnect).not.toHaveBeenCalled();
+    expect(onRefresh).not.toHaveBeenCalled();
+    expect(onConfig).not.toHaveBeenCalled();
+    expect(onRename).not.toHaveBeenCalled();
     expect(onSendCommand).toHaveBeenCalledOnce();
     expect(onSwitchSession).toHaveBeenCalledOnce();
-    expect(onPreviewImage).toHaveBeenCalledOnce();
-    expect(onChooseImage).toHaveBeenCalledOnce();
-    expect(onCaptureImage).toHaveBeenCalledOnce();
+    expect(onPreviewImage).not.toHaveBeenCalled();
+    expect(onChooseImage).not.toHaveBeenCalled();
+    expect(onCaptureImage).not.toHaveBeenCalled();
     expect(onSplitHorizontal).toHaveBeenCalledOnce();
     expect(onSplitVertical).toHaveBeenCalledOnce();
     expect(onToggleBrowserScroll).toHaveBeenCalledOnce();
     expect(onScrollHistoryBack).toHaveBeenCalledOnce();
     expect(onScrollHistoryForward).toHaveBeenCalledOnce();
-    expect(onKill).toHaveBeenCalledOnce();
+    expect(onKill).not.toHaveBeenCalled();
   });
 
   it("keeps switch session wording on the status bar action", () => {
@@ -286,9 +286,23 @@ describe("sessionStatusBar", () => {
   it("toggles a compact mobile action sheet from the status bar", () => {
     const root = document.createElement("div");
     const onClear = vi.fn();
+    const onReconnect = vi.fn();
+    const onConfig = vi.fn();
+    const onRename = vi.fn();
+    const onPreviewImage = vi.fn();
+    const onChooseImage = vi.fn();
+    const onCaptureImage = vi.fn();
+    const onSendCommand = vi.fn();
 
     renderSessionStatusBar(root, SESSION, {
-      onClear
+      onClear,
+      onReconnect,
+      onConfig,
+      onRename,
+      onPreviewImage,
+      onChooseImage,
+      onCaptureImage,
+      onSendCommand
     });
 
     const toggle = root.querySelector<HTMLButtonElement>(
@@ -304,14 +318,21 @@ describe("sessionStatusBar", () => {
 
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
     expect(root.querySelector(".terminal-status-mobile-sheet")).not.toBeNull();
+    expect(root.querySelector(".terminal-status-mobile-sheet [data-action='send']")).not.toBeNull();
+    expect(root.querySelector(".terminal-status-mobile-sheet [data-action='switch-session']")).not.toBeNull();
+    expect(root.querySelector(".terminal-status-mobile-sheet [data-action='clear']")).toBeNull();
+    expect(root.querySelector(".terminal-status-mobile-sheet [data-action='reconnect']")).toBeNull();
+    expect(root.querySelector(".terminal-status-mobile-sheet [data-action='config']")).toBeNull();
+    expect(root.querySelector(".terminal-status-mobile-sheet [data-action='preview-image']")).toBeNull();
 
     root
       .querySelector<HTMLButtonElement>(
-        ".terminal-status-mobile-sheet [data-action='clear']"
+        ".terminal-status-mobile-sheet [data-action='send']"
       )
       ?.click();
 
-    expect(onClear).toHaveBeenCalledOnce();
+    expect(onClear).not.toHaveBeenCalled();
+    expect(onSendCommand).toHaveBeenCalledOnce();
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     expect(root.querySelector(".terminal-status-mobile-sheet")).toBeNull();
   });
@@ -415,22 +436,12 @@ describe("sessionStatusBar", () => {
     ).toEqual([
       "Split",
       "Stack",
-      "Recon",
-      "Cfg",
-      "Ren",
-      "Img",
-      "Photo",
-      "Cam",
       "Actions",
       "Page",
       "Live",
       "Hist",
       "Send",
-      "Switch",
-      "Clear",
-      "Draw",
-      "Sync",
-      "Kill"
+      "Switch"
     ]);
   });
 
@@ -476,27 +487,12 @@ describe("sessionStatusBar", () => {
         actions: ["split-horizontal", "split-vertical", "select-pane", "select-pane"]
       },
       {
-        group: "tools",
-        actions: [
-          "reconnect",
-          "config",
-          "rename",
-          "preview-image",
-          "choose-image",
-          "capture-image"
-        ]
-      },
-      {
         group: "view",
         actions: ["browser-scroll", "scroll-history-forward", "scroll-history-back"]
       },
       {
         group: "routing",
         actions: ["send", "switch-session"]
-      },
-      {
-        group: "recovery",
-        actions: ["clear", "redraw", "refresh", "kill"]
       }
     ]);
   });
@@ -534,12 +530,10 @@ describe("sessionStatusBar", () => {
       )
     ).toEqual([
       "panes",
-      "tools",
       "terminal-status-main",
       "terminal-status-mobile-toggle terminal-status-action",
       "view",
-      "routing",
-      "recovery"
+      "routing"
     ]);
   });
 
@@ -599,29 +593,21 @@ describe("sessionStatusBar", () => {
 
     renderSessionStatusBar(root, SESSION);
 
-    expect(
-      root.querySelector<HTMLButtonElement>("[data-action='reconnect']")?.disabled
-    ).toBe(true);
-    expect(
-      root.querySelector<HTMLButtonElement>("[data-action='config']")?.disabled
-    ).toBe(true);
-    expect(
-      root.querySelector<HTMLButtonElement>("[data-action='rename']")?.disabled
-    ).toBe(true);
+    expect(root.querySelector("[data-action='reconnect']")).toBeNull();
+    expect(root.querySelector("[data-action='config']")).toBeNull();
+    expect(root.querySelector("[data-action='rename']")).toBeNull();
+    expect(root.querySelector("[data-action='preview-image']")).toBeNull();
+    expect(root.querySelector("[data-action='choose-image']")).toBeNull();
+    expect(root.querySelector("[data-action='capture-image']")).toBeNull();
+    expect(root.querySelector("[data-action='clear']")).toBeNull();
+    expect(root.querySelector("[data-action='redraw']")).toBeNull();
+    expect(root.querySelector("[data-action='refresh']")).toBeNull();
+    expect(root.querySelector("[data-action='kill']")).toBeNull();
     expect(
       root.querySelector<HTMLButtonElement>("[data-action='send']")?.disabled
     ).toBe(true);
     expect(
       root.querySelector<HTMLButtonElement>("[data-action='switch-session']")?.disabled
-    ).toBe(true);
-    expect(
-      root.querySelector<HTMLButtonElement>("[data-action='preview-image']")?.disabled
-    ).toBe(true);
-    expect(
-      root.querySelector<HTMLButtonElement>("[data-action='choose-image']")?.disabled
-    ).toBe(true);
-    expect(
-      root.querySelector<HTMLButtonElement>("[data-action='capture-image']")?.disabled
     ).toBe(true);
     expect(
       root.querySelector<HTMLButtonElement>("[data-action='split-horizontal']")?.disabled
@@ -638,8 +624,21 @@ describe("sessionStatusBar", () => {
     expect(
       root.querySelector<HTMLButtonElement>("[data-action='browser-scroll']")?.disabled
     ).toBe(true);
+
+    root
+      .querySelector<HTMLButtonElement>(
+        "[data-action='toggle-mobile-status-actions']"
+      )
+      ?.click();
+
     expect(
-      root.querySelector<HTMLButtonElement>("[data-action='kill']")?.disabled
-    ).toBe(true);
+      root.querySelector(".terminal-status-mobile-sheet [data-action='reconnect']")
+    ).toBeNull();
+    expect(
+      root.querySelector(".terminal-status-mobile-sheet [data-action='config']")
+    ).toBeNull();
+    expect(
+      root.querySelector(".terminal-status-mobile-sheet [data-action='preview-image']")
+    ).toBeNull();
   });
 });

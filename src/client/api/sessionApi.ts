@@ -1,5 +1,9 @@
 import type { TerminalInputPrompt } from "../../shared/inputPromptDetector";
 import { getKanbanTemplateAgents } from "../../shared/kanbanTemplates";
+import type {
+  CreateGroupMessageRequest,
+  GroupMessage
+} from "../../shared/groupMessages";
 import type { SessionSettings } from "../../shared/sessionSettings";
 import type { TimelineEvent } from "../../shared/timeline";
 
@@ -91,6 +95,15 @@ export type SessionApi = {
     options?: { kill?: boolean }
   ) => Promise<void>;
   deleteKanbanProject: (projectName: string) => Promise<void>;
+  listGroupMessages: (projectName: string) => Promise<GroupMessage[]>;
+  sendGroupMessage: (
+    projectName: string,
+    request: CreateGroupMessageRequest
+  ) => Promise<GroupMessage>;
+  scanGroupMessage: (
+    projectName: string,
+    messageId: string
+  ) => Promise<GroupMessage>;
   setPinnedSession: (name: string, pinned: boolean) => Promise<void>;
   setMutedSession: (name: string, muted: boolean) => Promise<void>;
   setSessionSettings: (name: string, settings: SessionSettings) => Promise<void>;
@@ -247,6 +260,55 @@ export function createSessionApi(baseUrl = ""): SessionApi {
       if (!response.ok) {
         throw new Error("Failed to delete kanban project");
       }
+    },
+    async listGroupMessages(projectName) {
+      const response = await fetch(
+        `${baseUrl}/api/kanban/projects/${encodeURIComponent(projectName)}/messages`
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to load group messages");
+      }
+
+      const payload = (await response.json()) as { messages: GroupMessage[] };
+
+      return payload.messages;
+    },
+    async sendGroupMessage(projectName, request) {
+      const response = await fetch(
+        `${baseUrl}/api/kanban/projects/${encodeURIComponent(projectName)}/messages`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(request)
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to send group message");
+      }
+
+      const payload = (await response.json()) as { message: GroupMessage };
+
+      return payload.message;
+    },
+    async scanGroupMessage(projectName, messageId) {
+      const response = await fetch(
+        `${baseUrl}/api/kanban/projects/${encodeURIComponent(projectName)}/messages/${encodeURIComponent(messageId)}/scan`,
+        {
+          method: "POST"
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to scan group message replies");
+      }
+
+      const payload = (await response.json()) as { message: GroupMessage };
+
+      return payload.message;
     },
     async setPinnedSession(name: string, pinned: boolean) {
       const response = await fetch(

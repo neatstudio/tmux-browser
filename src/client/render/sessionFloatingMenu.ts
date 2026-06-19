@@ -1,12 +1,12 @@
 import type {
   SessionSummary
 } from "../api/sessionApi";
-import {
-  formatDisplayPath
-} from "./renderDashboard";
+import type { TimelineEvent } from "../../shared/timeline";
 import type {
   KanbanStatusProject
 } from "./sessionStatusBar";
+
+const FLOATING_MENU_GLOBAL_CLEANUP_EVENT = "tmux-ui-floating-menu-cleanup";
 
 export type SessionFloatingMenuState = {
   currentSessionName: string;
@@ -15,6 +15,9 @@ export type SessionFloatingMenuState = {
   homeDirectory?: string | null;
   kanbanProject?: KanbanStatusProject | null;
   boards?: KanbanStatusProject[];
+  pinnedSessionNames?: Set<string>;
+  mutedSessionNames?: Set<string>;
+  timelineEvents?: TimelineEvent[];
   actionCount?: number;
   actionCenterOpen?: boolean;
   isPinned?: boolean;
@@ -25,12 +28,20 @@ export type SessionFloatingMenuState = {
   onConfig: () => void;
   onRename: () => void;
   onSendCommand: () => void;
+  onOpenGroupTask?: () => void;
+  onOpenGroupMessages?: () => void;
+  onReconnect?: () => void;
+  onPreviewImage?: () => void;
+  onChooseImage?: () => void;
+  onCaptureImage?: () => void;
+  onKill?: () => void;
   onRefresh: () => void;
   onCreateSession: (sessionName: string) => void;
   onOpenKanbanProject?: (projectName: string) => void;
   onTogglePinned?: (sessionName: string) => void;
   onToggleMuted?: (sessionName: string) => void;
   onToggleActionCenter?: () => void;
+  onRefreshMuted?: () => void;
 };
 
 function createMenuButton(
@@ -174,12 +185,19 @@ function renderSessionShortcut(
   label: string,
   state: SessionFloatingMenuState,
   closePanel: () => void,
-  projectName?: string
+  projectName?: string,
+  options: { controls?: boolean } = {}
 ) {
   const summary = state.sessionSummaries?.find(
     (session) => session.name === sessionName
   );
   const isActive = sessionName === state.currentSessionName;
+  const item = document.createElement("span");
+  item.className = "session-floating-menu-session-item";
+  if (projectName) {
+    item.dataset.projectName = projectName;
+  }
+
   const button = createMenuButton(
     "open-session",
     "",
@@ -208,14 +226,12 @@ function renderSessionShortcut(
   name.textContent = label;
 
   if (summary) {
-    const path = formatDisplayPath(summary.currentPath, state.homeDirectory);
     const meta = document.createElement("span");
     meta.className = "session-floating-menu-session-meta";
     meta.textContent = [
       summary.status,
       `${summary.windows}w ${summary.paneCount}p`,
-      summary.currentCommand,
-      path
+      summary.currentCommand
     ]
       .filter(Boolean)
       .join(" · ");
@@ -225,7 +241,50 @@ function renderSessionShortcut(
     button.append(name);
   }
 
-  return button;
+  item.append(button);
+
+  if (options.controls) {
+    const controls = document.createElement("span");
+    controls.className = "session-floating-menu-session-controls";
+
+    if (state.onTogglePinned) {
+      const pinned = state.pinnedSessionNames?.has(sessionName) ?? false;
+      const pinButton = createMenuButton(
+        "toggle-floating-session-pinned",
+        pinned ? "★" : "☆",
+        () => {
+          closePanel();
+          state.onTogglePinned?.(sessionName);
+        },
+        `${pinned ? "Unpin" : "Pin"} ${sessionName}`
+      );
+      pinButton.dataset.targetSession = sessionName;
+      pinButton.setAttribute("aria-pressed", pinned ? "true" : "false");
+      controls.append(pinButton);
+    }
+
+    if (state.onToggleMuted) {
+      const muted = state.mutedSessionNames?.has(sessionName) ?? false;
+      const muteButton = createMenuButton(
+        "toggle-floating-session-muted",
+        "M",
+        () => {
+          closePanel();
+          state.onToggleMuted?.(sessionName);
+        },
+        `${muted ? "Unmute" : "Mute"} ${sessionName}`
+      );
+      muteButton.dataset.targetSession = sessionName;
+      muteButton.setAttribute("aria-pressed", muted ? "true" : "false");
+      controls.append(muteButton);
+    }
+
+    if (controls.childElementCount > 0) {
+      item.append(controls);
+    }
+  }
+
+  return item;
 }
 
 function getSortedBoards(state: SessionFloatingMenuState) {
@@ -261,55 +320,171 @@ function renderBoardsSection(
 
   const section = createMenuSection("Boards");
   boards.forEach((board) => {
-    const projectButton = createMenuButton(
-      "open-kanban-project",
-      `${board.name} ${board.sessions.length}`,
-      () => {
-        closePanel();
-        state.onOpenKanbanProject?.(board.name);
-      },
-      `Open Kanban project ${board.name}`
-    );
-    projectButton.className = "session-floating-menu-board";
-    projectButton.dataset.projectName = board.name;
-    section.append(projectButton);
+    const fieldset = document.createElement("fieldset");
+    fieldset.className = "session-floating-menu-board";
+    fieldset.dataset.projectName = board.name;
+
+    const label = document.createElement("legend");
+    label.className = "session-floating-menu-board-label";
+    label.dataset.projectName = board.name;
+    label.textContent = `${board.name} · ${board.sessions.length}`;
+    label.title = `Kanban project: ${board.name}`;
+    fieldset.append(label);
 
     board.sessions.forEach((session) => {
-      section.append(
+      fieldset.append(
         renderSessionShortcut(
           session.name,
           session.label,
           state,
           closePanel,
-          board.name
+          board.name,
+          { controls: true }
         )
       );
     });
+
+    section.append(fieldset);
   });
 
   return section;
 }
 
-function getGroupedSessionNames(state: SessionFloatingMenuState) {
-  const boardSessionNames = new Set(
-    getSortedBoards(state).flatMap((board) =>
+function getBoardSessionNameSet(state: SessionFloatingMenuState) {
+  return new Set(
+    (state.boards ?? []).flatMap((board) =>
       board.sessions.map((session) => session.name)
     )
   );
+}
 
-  return state.sessions.filter((sessionName) => !boardSessionNames.has(sessionName));
+function getUngroupedSessionNames(state: SessionFloatingMenuState) {
+  const boardSessionNames = getBoardSessionNameSet(state);
+
+  return state.sessions.filter((name) => !boardSessionNames.has(name));
+}
+
+function renderSessionGroup(
+  title: string,
+  sessionNames: string[],
+  state: SessionFloatingMenuState,
+  closePanel: () => void,
+  options: { muted?: boolean; fieldset?: boolean } = {}
+) {
+  if (sessionNames.length === 0) {
+    return null;
+  }
+
+  const section = createMenuSection(title);
+  const container = options.fieldset
+    ? document.createElement("fieldset")
+    : section;
+
+  if (options.muted && state.onRefreshMuted) {
+    section.append(
+      createMenuButton(
+        "refresh-muted-sessions",
+        "Refresh mute",
+        () => {
+          closePanel();
+          state.onRefreshMuted?.();
+        },
+        "Refresh muted sessions"
+      )
+    );
+  }
+
+  if (options.fieldset && container instanceof HTMLFieldSetElement) {
+    container.className = "session-floating-menu-board";
+    container.dataset.projectName = title.toLowerCase();
+
+    const label = document.createElement("legend");
+    label.className = "session-floating-menu-board-label";
+    label.dataset.projectName = title.toLowerCase();
+    label.textContent = `${title} · ${sessionNames.length}`;
+    container.append(label);
+  }
+
+  sessionNames.forEach((sessionName) => {
+    container.append(
+      renderSessionShortcut(sessionName, sessionName, state, closePanel, undefined, {
+        controls: true
+      })
+    );
+  });
+
+  if (options.fieldset) {
+    section.append(container);
+  }
+
+  return section;
+}
+
+function renderUngroupedSection(
+  state: SessionFloatingMenuState,
+  closePanel: () => void
+) {
+  return renderSessionGroup(
+    "Ungrouped",
+    getUngroupedSessionNames(state),
+    state,
+    closePanel,
+    { fieldset: true }
+  );
+}
+
+function formatTimelineTime(createdAt: string) {
+  const date = new Date(createdAt);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return `${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate()
+  ).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(
+    date.getMinutes()
+  ).padStart(2, "0")}`;
+}
+
+function renderTimelineSection(state: SessionFloatingMenuState) {
+  const events = state.timelineEvents?.slice(0, 4) ?? [];
+
+  if (events.length === 0) {
+    return null;
+  }
+
+  const section = createMenuSection("Timeline");
+  section.classList.add("session-floating-menu-timeline");
+
+  events.forEach((event) => {
+    const item = document.createElement("span");
+    item.className = "session-floating-menu-timeline-item";
+    item.title = `${event.sessionName ?? "system"} · ${event.message}`;
+
+    const time = document.createElement("span");
+    time.textContent = formatTimelineTime(event.createdAt);
+
+    const text = document.createElement("span");
+    text.textContent = `${event.sessionName ?? "system"} · ${event.message}`;
+
+    item.append(time, text);
+    section.append(item);
+  });
+
+  return section;
 }
 
 function renderPanel(
   root: HTMLElement,
   toggle: HTMLButtonElement,
-  state: SessionFloatingMenuState
+  state: SessionFloatingMenuState,
+  closePanel: () => void,
+  restore?: {
+    createSessionDraft?: string;
+    focusSelector?: string;
+  }
 ) {
-  const closePanel = () => {
-    root.querySelector(".session-floating-menu-panel")?.remove();
-    toggle.setAttribute("aria-expanded", "false");
-  };
-
   const panel = document.createElement("div");
   panel.className = "session-floating-menu-panel";
   panel.setAttribute("role", "menu");
@@ -323,7 +498,45 @@ function renderPanel(
     createMenuButton("send-command", "Send", () => {
       closePanel();
       state.onSendCommand();
-    }),
+    })
+  );
+  if (state.kanbanProject && state.onOpenGroupTask) {
+    quick.append(
+      createMenuButton("open-group-task", "Task", () => {
+        closePanel();
+        state.onOpenGroupTask?.();
+      }, "Send task/report to group sessions")
+    );
+  }
+  if (state.kanbanProject && state.onOpenGroupMessages) {
+    quick.append(
+      createMenuButton("open-group-messages", "Messages", () => {
+        closePanel();
+        state.onOpenGroupMessages?.();
+      }, "Open group message history")
+    );
+  }
+  quick.append(
+    createMenuButton("reconnect-session", "Recon", () => {
+      closePanel();
+      state.onReconnect?.();
+    }, "Reconnect terminal websocket"),
+    createMenuButton("preview-image", "Img", () => {
+      closePanel();
+      state.onPreviewImage?.();
+    }, "Preview image file"),
+    createMenuButton("choose-image", "Photo", () => {
+      closePanel();
+      state.onChooseImage?.();
+    }, "Choose image and insert saved path"),
+    createMenuButton("capture-image", "Cam", () => {
+      closePanel();
+      state.onCaptureImage?.();
+    }, "Take photo and insert saved path"),
+    createMenuButton("kill-session", "Kill", () => {
+      closePanel();
+      state.onKill?.();
+    }, "Kill session"),
     createMenuButton("refresh-sessions", "Refresh", () => {
       closePanel();
       state.onRefresh();
@@ -337,6 +550,19 @@ function renderPanel(
       state.onRename();
     })
   );
+  if (state.onRefreshMuted && (state.mutedSessionNames?.size ?? 0) > 0) {
+    quick.append(
+      createMenuButton(
+        "refresh-muted-sessions",
+        "Refresh mute",
+        () => {
+          closePanel();
+          state.onRefreshMuted?.();
+        },
+        "Refresh muted sessions"
+      )
+    );
+  }
   quick.append(renderCreateSessionForm(state, closePanel));
   panel.append(quick);
 
@@ -350,27 +576,116 @@ function renderPanel(
     panel.append(boards);
   }
 
-  const sessions = createMenuSection("Sessions");
-  getGroupedSessionNames(state).forEach((sessionName) => {
-    sessions.append(
-      renderSessionShortcut(sessionName, sessionName, state, closePanel)
-    );
-  });
-  if (sessions.childElementCount > 1) {
-    panel.append(sessions);
+  const ungrouped = renderUngroupedSection(state, closePanel);
+  if (ungrouped) {
+    panel.append(ungrouped);
+  }
+
+  const timeline = renderTimelineSection(state);
+  if (timeline) {
+    panel.append(timeline);
   }
 
   root.append(panel);
+
+  const createSessionInput = panel.querySelector<HTMLInputElement>(
+    "input[name='session-name']"
+  );
+  if (createSessionInput && restore?.createSessionDraft !== undefined) {
+    createSessionInput.value = restore.createSessionDraft;
+  }
+
+  if (restore?.focusSelector) {
+    const restored = panel.querySelector<HTMLElement>(restore.focusSelector);
+    if (restored) {
+      restored.focus();
+      return;
+    }
+  }
+
+  panel.querySelector<HTMLElement>("button, input, select, textarea")?.focus();
+}
+
+function getFocusedElementSelector(root: HTMLElement) {
+  const active = document.activeElement;
+
+  if (!(active instanceof HTMLElement) || !root.contains(active)) {
+    return null;
+  }
+
+  if (active instanceof HTMLInputElement && active.name) {
+    return `input[name='${active.name}']`;
+  }
+
+  const action = active.dataset.action;
+  if (action) {
+    const targetSession = active.dataset.targetSession;
+    const sessionName = active.dataset.sessionName;
+    const projectName = active.dataset.projectName;
+    const parts = [`[data-action='${action}']`];
+
+    if (targetSession) {
+      parts.push(`[data-target-session='${targetSession}']`);
+    }
+    if (sessionName) {
+      parts.push(`[data-session-name='${sessionName}']`);
+    }
+    if (projectName) {
+      parts.push(`[data-project-name='${projectName}']`);
+    }
+
+    return parts.join("");
+  }
+
+  return null;
+}
+
+function getMenuFocusableElements(panel: Element | null) {
+  if (!panel) {
+    return [];
+  }
+
+  return [
+    ...panel.querySelectorAll<HTMLElement>(
+      "button:not(:disabled), input:not(:disabled)"
+    )
+  ].filter((element) => element.offsetParent !== null || element.isConnected);
 }
 
 export function renderSessionFloatingMenu(
   root: HTMLElement,
   state: SessionFloatingMenuState
 ) {
+  const existingMenu = root.querySelector(".session-floating-menu") as
+    | HTMLElement
+    | null;
+  const existingPanel = existingMenu?.querySelector(".session-floating-menu-panel");
+  const createSessionDraft =
+    existingPanel?.querySelector<HTMLInputElement>("input[name='session-name']")
+      ?.value;
+  const focusSelector = existingMenu ? getFocusedElementSelector(existingMenu) : null;
+  const existingCleanup = (
+    existingMenu
+  )?.dataset.cleanupFloatingMenu;
+  const wasOpen =
+    root
+      .querySelector<HTMLButtonElement>(
+        ".session-floating-menu-toggle[aria-expanded='true']"
+      )
+      ?.getAttribute("aria-expanded") === "true";
+
+  if (existingCleanup) {
+    document.dispatchEvent(new CustomEvent(existingCleanup));
+  }
+
   root.querySelector(".session-floating-menu")?.remove();
 
   const container = document.createElement("div");
   container.className = "session-floating-menu";
+  const cleanupEvent = `tmux-ui-floating-menu-cleanup-${Math.random()
+    .toString(36)
+    .slice(2)}`;
+  container.dataset.cleanupFloatingMenu = cleanupEvent;
 
   const toggle = document.createElement("button");
   toggle.type = "button";
@@ -379,21 +694,122 @@ export function renderSessionFloatingMenu(
   toggle.textContent = "Menu";
   toggle.title = "Open session menu";
   toggle.setAttribute("aria-label", "Open session menu");
-  toggle.setAttribute("aria-expanded", "false");
+  toggle.setAttribute("aria-expanded", wasOpen ? "true" : "false");
+  let cleanupOpenListeners: (() => void) | null = null;
+
+  const closePanel = (options: { focusToggle?: boolean } = {}) => {
+    container.querySelector(".session-floating-menu-panel")?.remove();
+    toggle.setAttribute("aria-expanded", "false");
+    cleanupOpenListeners?.();
+    cleanupOpenListeners = null;
+    if (options.focusToggle) {
+      toggle.focus();
+    }
+  };
+
+  const handleDocumentPointerDown = (event: Event) => {
+    if (!container.querySelector(".session-floating-menu-panel")) {
+      return;
+    }
+
+    if (event.target instanceof Node && container.contains(event.target)) {
+      return;
+    }
+
+    closePanel({ focusToggle: true });
+  };
+
+  const handleDocumentKeyDown = (event: KeyboardEvent) => {
+    if (event.key === "Escape") {
+      closePanel({ focusToggle: true });
+      return;
+    }
+
+    if (event.key !== "Tab") {
+      return;
+    }
+
+    const panel = container.querySelector(".session-floating-menu-panel");
+    if (!panel || !(document.activeElement instanceof HTMLElement)) {
+      return;
+    }
+
+    if (!panel.contains(document.activeElement)) {
+      return;
+    }
+
+    const focusable = getMenuFocusableElements(panel);
+    const first = focusable[0];
+    const last = focusable.at(-1);
+    const activeIndex = focusable.indexOf(document.activeElement);
+
+    if (!first || !last || activeIndex === -1) {
+      return;
+    }
+
+    if (!event.shiftKey && activeIndex === focusable.length - 1) {
+      event.preventDefault();
+      first.focus();
+      return;
+    }
+
+    if (event.shiftKey && activeIndex === 0) {
+      event.preventDefault();
+      last.focus();
+    }
+  };
+
+  let cleanedUp = false;
+  const cleanup = () => {
+    if (cleanedUp) {
+      return;
+    }
+
+    cleanedUp = true;
+    cleanupOpenListeners?.();
+    cleanupOpenListeners = null;
+  };
+
+  const openPanel = (restore?: {
+    createSessionDraft?: string;
+    focusSelector?: string;
+  }) => {
+    document.dispatchEvent(new CustomEvent(FLOATING_MENU_GLOBAL_CLEANUP_EVENT));
+    cleanedUp = false;
+    document.addEventListener("pointerdown", handleDocumentPointerDown);
+    document.addEventListener("keydown", handleDocumentKeyDown);
+    document.addEventListener(cleanupEvent, cleanup);
+    document.addEventListener(FLOATING_MENU_GLOBAL_CLEANUP_EVENT, cleanup);
+    cleanupOpenListeners = () => {
+      document.removeEventListener("pointerdown", handleDocumentPointerDown);
+      document.removeEventListener("keydown", handleDocumentKeyDown);
+      document.removeEventListener(cleanupEvent, cleanup);
+      document.removeEventListener(FLOATING_MENU_GLOBAL_CLEANUP_EVENT, cleanup);
+    };
+
+    toggle.setAttribute("aria-expanded", "true");
+    renderPanel(container, toggle, state, closePanel, restore);
+  };
+
   toggle.addEventListener("click", (event) => {
     event.stopPropagation();
 
     const existing = container.querySelector(".session-floating-menu-panel");
     if (existing) {
-      existing.remove();
-      toggle.setAttribute("aria-expanded", "false");
+      closePanel({ focusToggle: true });
       return;
     }
 
-    toggle.setAttribute("aria-expanded", "true");
-    renderPanel(container, toggle, state);
+    openPanel();
   });
 
   container.append(toggle);
   root.append(container);
+
+  if (wasOpen) {
+    openPanel({
+      createSessionDraft,
+      focusSelector: focusSelector ?? undefined
+    });
+  }
 }

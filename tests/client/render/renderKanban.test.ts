@@ -245,6 +245,92 @@ describe("renderKanban", () => {
     expect(onAddSession).toHaveBeenCalledWith("xxvisa", "build");
   });
 
+  it("shows ungrouped sessions and adds them to a selected project", () => {
+    const root = document.createElement("div");
+    const onOpenSession = vi.fn();
+    const onAddSession = vi.fn();
+
+    renderKanban(root, {
+      projects: [
+        {
+          name: "xxvisa",
+          path: "/srv/xxvisa",
+          server: null,
+          agents: []
+        },
+        {
+          name: "stake",
+          path: "/srv/stake",
+          server: null,
+          agents: []
+        }
+      ],
+      sessions: [
+        {
+          name: "build",
+          windows: 1,
+          status: "detached",
+          lastActivityAt: null,
+          paneCount: 2,
+          activeWindowName: "zsh",
+          currentCommand: "npm",
+          currentPath: "/srv/build",
+          gitBranch: null,
+          gitDirty: null,
+          paneDead: false,
+          paneDeadStatus: null,
+          preview: null,
+          inputPrompt: null
+        }
+      ],
+      draft: {
+        name: "",
+        path: "~",
+        server: "",
+        selectedAgentNames: []
+      },
+      loading: false,
+      error: null,
+      availableSessions: ["build"],
+      onDraftChange: vi.fn(),
+      onCreateProject: vi.fn(),
+      onOpenSession,
+      onRemoveSession: vi.fn(),
+      onKillSession: vi.fn(),
+      onDeleteProject: vi.fn(),
+      onAddSession
+    });
+
+    const ungrouped = root.querySelector<HTMLElement>(".kanban-ungrouped")!;
+    const sessionCard = ungrouped.querySelector<HTMLElement>(
+      "[data-session-name='build']"
+    )!;
+    const select = sessionCard.querySelector<HTMLSelectElement>(
+      ".kanban-ungrouped-project-select"
+    )!;
+
+    expect(ungrouped.querySelector("h2")?.textContent).toBe("Ungrouped sessions");
+    expect(sessionCard.textContent).toContain("build");
+    expect(sessionCard.textContent).toContain("detached");
+    expect(sessionCard.textContent).toContain("1w 2p");
+    expect(sessionCard.textContent).toContain("npm");
+    expect(sessionCard.textContent).toContain("/srv/build");
+    expect([...select.options].map((option) => option.value)).toEqual([
+      "",
+      "xxvisa",
+      "stake"
+    ]);
+
+    sessionCard.querySelector<HTMLButtonElement>(".kanban-ungrouped-open")?.click();
+    select.value = "stake";
+    sessionCard
+      .querySelector<HTMLFormElement>(".kanban-ungrouped-add-form")
+      ?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+
+    expect(onOpenSession).toHaveBeenCalledWith("build");
+    expect(onAddSession).toHaveBeenCalledWith("stake", "build");
+  });
+
   it("does not kill a kanban session until the preview confirmation is accepted", () => {
     const root = document.createElement("div");
     const onKillSession = vi.fn();

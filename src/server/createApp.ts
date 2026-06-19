@@ -34,6 +34,15 @@ import {
 import {
   getDefaultKanbanSelectedSessionNames
 } from "../shared/kanbanTemplates.js";
+import { formatGroupMessage } from "./services/groupMessages/formatGroupMessage.js";
+import { parseGroupReplies } from "./services/groupMessages/parseGroupReplies.js";
+import { resolveGroupMessageTargets } from "./services/groupMessages/resolveGroupMessageTargets.js";
+import { createGroupMessageStore } from "./services/groupMessages/createGroupMessageStore.js";
+import type {
+  CreateGroupMessageRequest,
+  GroupMessageKind,
+  GroupMessageTarget
+} from "../shared/groupMessages.js";
 
 const faviconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#15181c"/><path d="M14 14h36v10H37v28H27V24H14z" fill="#b7ffb0"/></svg>`;
 const IMAGE_MIME_TYPES = new Map([
@@ -153,6 +162,142 @@ function normalizeKanbanProjectPayload(body: unknown): {
     },
     selectedAgentNames
   };
+}
+
+function normalizeGroupMessageTarget(value: unknown): GroupMessageTarget {
+  const target = value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : {};
+
+  if (target.type === "others") {
+    return { type: "others" };
+  }
+
+  if (target.type === "session" && typeof target.sessionName === "string") {
+    const sessionName = target.sessionName.trim();
+
+    if (sessionName) {
+      return { type: "session", sessionName };
+    }
+  }
+
+  if (target.type === "role" && typeof target.role === "string") {
+    const role = target.role.trim();
+
+    if (role) {
+      return { type: "role", role };
+    }
+  }
+
+  throw new HttpError("Invalid group message target", 400);
+}
+
+function normalizeGroupMessageRequest(body: unknown): CreateGroupMessageRequest {
+  const payload =
+    body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+  const fromSession =
+    typeof payload.fromSession === "string" ? payload.fromSession.trim() : "";
+  const kind = payload.kind as GroupMessageKind;
+  const messageBody = typeof payload.body === "string" ? payload.body.trim() : "";
+
+  if (!fromSession) {
+    throw new HttpError("Group message fromSession is required", 400);
+  }
+
+  if (kind !== "task" && kind !== "report") {
+    throw new HttpError("Invalid group message kind", 400);
+  }
+
+  if (!messageBody) {
+    throw new HttpError("Group message body is required", 400);
+  }
+
+  return {
+    fromSession,
+    kind,
+    target: normalizeGroupMessageTarget(payload.target),
+    body: messageBody
+  };
+}
+
+const AGENT_INPUT_COMMANDS = new Set([
+  "aider",
+  "claude",
+  "codex",
+  "cursor-agent",
+  "gemini",
+  "kiro",
+  "opencode"
+]);
+const SHELL_PRINT_COMMANDS = new Set([
+  "bash",
+  "csh",
+  "dash",
+  "fish",
+  "ksh",
+  "sh",
+  "ssh",
+  "tcsh",
+  "zsh"
+]);
+
+function normalizeForegroundCommand(command: string | null | undefined) {
+  if (!command) {
+    return null;
+  }
+
+  return command.split(/[\\/]/).pop()?.toLowerCase() ?? null;
+}
+
+function shellSingleQuote(value: string) {
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function escapePrintfBody(value: string) {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/\r\n?/g, "\n")
+    .replace(/\n/g, "\\n")
+    .replace(/\t/g, "\\t");
+}
+
+function createGroupMessageDeliveryInput(
+  formattedMessage: string,
+  currentCommand: string | null | undefined
+) {
+  const command = normalizeForegroundCommand(currentCommand);
+
+  if (command && AGENT_INPUT_COMMANDS.has(command)) {
+    return {
+      mode: "agent-input" as const,
+      input: `${formattedMessage}\r`
+    };
+  }
+
+  if (command && SHELL_PRINT_COMMANDS.has(command)) {
+    return {
+      mode: "shell-print" as const,
+      input: `printf '%b\\n' ${shellSingleQuote(escapePrintfBody(formattedMessage))}\r`
+    };
+  }
+
+  throw new Error(
+    `Unsupported target command for group message: ${currentCommand ?? "unknown"}`
+  );
+}
+
+function getGroupMessageDeliveryMode(currentCommand: string | null | undefined) {
+  const command = normalizeForegroundCommand(currentCommand);
+
+  if (command && AGENT_INPUT_COMMANDS.has(command)) {
+    return "agent-input" as const;
+  }
+
+  if (command && SHELL_PRINT_COMMANDS.has(command)) {
+    return "shell-print" as const;
+  }
+
+  return undefined;
 }
 
 function normalizeSessionNamePart(value: string) {
@@ -394,6 +539,7 @@ export function createApp(options: {
   const readAppInfo = options.getAppInfo ?? getAppInfo;
   const timelineStore = options.timelineStore ?? createTimelineStore();
   const preferences = options.preferences ?? createPreferenceStore();
+  const groupMessageStore = createGroupMessageStore();
   const imagePreviewRoots = getImagePreviewRoots(options.imagePreviewRoots);
   const uploadOptions = {
     uploadDir: options.uploadDir,
@@ -572,6 +718,178 @@ export function createApp(options: {
           sessionName
         });
         res.json({ ok: true, preferences: nextPreferences });
+      } catch (error) {
+        next(error);
+      }
+    }
+  );
+
+  app.get("/api/kanban/projects/:name/messages", (req, res, next) => {
+    try {
+      res.json({
+        messages: groupMessageStore.listProjectMessages(req.params.name)
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/kanban/projects/:name/messages", async (req, res, next) => {
+    try {
+      const project = preferences
+        .getPreferences()
+        .kanbanProjects.find((candidate) => candidate.name === req.params.name);
+
+      if (!project) {
+        throw new HttpError("Kanban project not found", 404);
+      }
+
+      const payload = normalizeGroupMessageRequest(req.body);
+      const sessions = await tmuxService.listSessions({ includePreview: false });
+      const sessionByName = new Map(
+        sessions.map((session) => [session.name, session])
+      );
+      let resolvedTargets;
+
+      try {
+        resolvedTargets = resolveGroupMessageTargets({
+          project,
+          liveSessionNames: sessions.map((session) => session.name),
+          fromSession: payload.fromSession,
+          target: payload.target
+        });
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.message === "No live target sessions found"
+        ) {
+          throw new HttpError(error.message, 400);
+        }
+
+        throw error;
+      }
+
+      let message = groupMessageStore.createMessage({
+        projectName: project.name,
+        fromSession: payload.fromSession,
+        toSessions: resolvedTargets.sessions,
+        kind: payload.kind,
+        body: payload.body,
+        warnings: resolvedTargets.warnings
+      });
+
+      for (const sessionName of resolvedTargets.sessions) {
+        try {
+          const deliveryInput = createGroupMessageDeliveryInput(
+            formatGroupMessage({
+              id: message.id,
+              projectName: project.name,
+              fromSession: payload.fromSession,
+              toSession: sessionName,
+              kind: payload.kind,
+              body: payload.body
+            }),
+            sessionByName.get(sessionName)?.currentCommand
+          );
+          await tmuxService.sendInput(sessionName, deliveryInput.input);
+          message = groupMessageStore.markDelivery(message.id, sessionName, {
+            status: "sent",
+            mode: deliveryInput.mode
+          });
+        } catch (error) {
+          message = groupMessageStore.markDelivery(message.id, sessionName, {
+            status: "failed",
+            mode: getGroupMessageDeliveryMode(
+              sessionByName.get(sessionName)?.currentCommand
+            ),
+            error: error instanceof Error ? error.message : "Delivery failed"
+          });
+        }
+      }
+
+      timelineStore.addEvent({
+        type: "group-message-sent",
+        sessionName: payload.fromSession,
+        message: `sent ${payload.kind} to ${resolvedTargets.sessions.length} group session(s)`,
+        metadata: {
+          projectName: project.name,
+          messageId: message.id,
+          targetCount: resolvedTargets.sessions.length
+        }
+      });
+      options.eventHub?.publish({
+        type: "sessions-invalidated",
+        reason: "group-message-updated",
+        sessionName: payload.fromSession
+      });
+
+      res.status(201).json({ ok: true, message });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post(
+    "/api/kanban/projects/:name/messages/:messageId/scan",
+    async (req, res, next) => {
+      try {
+        const message = groupMessageStore.getMessage(
+          req.params.name,
+          req.params.messageId
+        );
+
+        if (!message) {
+          throw new HttpError("Group message not found", 404);
+        }
+
+        const repliedSessions = new Set(
+          message.replies.map((reply) => reply.fromSession)
+        );
+        const sessionsToScan = message.deliveries
+          .filter(
+            (delivery) =>
+              delivery.status === "sent" &&
+              !repliedSessions.has(delivery.sessionName)
+          )
+          .map((delivery) => delivery.sessionName);
+        const capturedAt = new Date().toISOString();
+        const replies = [];
+
+        for (const sessionName of sessionsToScan) {
+          const output = await tmuxService.captureRecentOutput(sessionName, 300);
+          replies.push(
+            ...parseGroupReplies(output)
+              .filter((reply) => reply.messageId === message.id)
+              .map((reply) => ({
+                ...reply,
+                capturedAt
+              }))
+          );
+        }
+
+        const updatedMessage = replies.length > 0
+          ? groupMessageStore.addReplies(message.id, replies)
+          : message;
+
+        if (replies.length > 0) {
+          timelineStore.addEvent({
+            type: "group-message-replied",
+            sessionName: message.fromSession,
+            message: `captured ${replies.length} group message repl${replies.length === 1 ? "y" : "ies"}`,
+            metadata: {
+              projectName: message.projectName,
+              messageId: message.id,
+              replyCount: replies.length
+            }
+          });
+          options.eventHub?.publish({
+            type: "sessions-invalidated",
+            reason: "group-message-updated",
+            sessionName: message.fromSession
+          });
+        }
+
+        res.json({ ok: true, message: updatedMessage });
       } catch (error) {
         next(error);
       }
