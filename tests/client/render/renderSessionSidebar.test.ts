@@ -73,7 +73,7 @@ describe("renderSessionSidebar", () => {
     );
 
     expect(root.querySelector(".session-sidebar")).not.toBeNull();
-    expect(root.textContent).toContain("Dashboard");
+    expect(root.textContent).not.toContain("Dashboard");
     expect(root.textContent).toContain("Kanban");
     expect(root.textContent).toContain("api");
     expect(root.textContent).toContain("1w 2p");
@@ -87,7 +87,7 @@ describe("renderSessionSidebar", () => {
     ).not.toBeNull();
   });
 
-  it("opens dashboard and sessions through callbacks", () => {
+  it("opens kanban and sessions through callbacks", () => {
     const root = document.createElement("div");
     const onOpenDashboard = vi.fn();
     const onOpenKanban = vi.fn();
@@ -122,7 +122,9 @@ describe("renderSessionSidebar", () => {
       }
     );
 
-    root.querySelector<HTMLButtonElement>("[data-action='open-dashboard']")?.click();
+    expect(
+      root.querySelector<HTMLButtonElement>("[data-action='open-dashboard']")
+    ).toBeNull();
     root.querySelector<HTMLButtonElement>("[data-action='open-kanban']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='refresh-sidebar']")?.click();
     root.querySelector<HTMLInputElement>("input[name='sidebar-session-name']")!.value =
@@ -138,7 +140,7 @@ describe("renderSessionSidebar", () => {
       .click();
     root.querySelector<HTMLButtonElement>("[data-session-name='api']")?.click();
 
-    expect(onOpenDashboard).toHaveBeenCalledTimes(1);
+    expect(onOpenDashboard).not.toHaveBeenCalled();
     expect(onOpenKanban).toHaveBeenCalledTimes(1);
     expect(onRefresh).toHaveBeenCalledTimes(1);
     expect(onDraftChange).toHaveBeenCalledWith("logs");
@@ -191,10 +193,8 @@ describe("renderSessionSidebar", () => {
         ?.classList.contains("is-active")
     ).toBe(true);
     expect(
-      root
-        .querySelector<HTMLButtonElement>("[data-action='open-dashboard']")
-        ?.classList.contains("is-active")
-    ).toBe(false);
+      root.querySelector<HTMLButtonElement>("[data-action='open-dashboard']")
+    ).toBeNull();
   });
 
   it("shows compact kanban board shortcuts in the sidebar", () => {
@@ -789,7 +789,6 @@ describe("renderSessionSidebar", () => {
       )
     ).toEqual([
       "session-sidebar-header",
-      "session-sidebar-dashboard",
       "session-sidebar-dashboard",
       "session-sidebar-list",
       "session-sidebar-toolbar"

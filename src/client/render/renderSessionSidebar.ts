@@ -519,30 +519,10 @@ export function renderSessionSidebar(
   createForm.append(createInput, createButton);
   toolbar.append(refreshButton, createForm);
 
-  const dashboardButton = document.createElement("button");
-  dashboardButton.type = "button";
-  dashboardButton.className = `session-sidebar-dashboard${
-    actions.activeSessionName === null && actions.activeView !== "kanban"
-      ? " is-active"
-      : ""
-  }`;
-  dashboardButton.dataset.action = "open-dashboard";
-  const dashboardIcon = document.createElement("span");
-  dashboardIcon.className = "session-sidebar-icon";
-  dashboardIcon.textContent = "D";
-  dashboardIcon.setAttribute("aria-hidden", "true");
-
-  const dashboardText = document.createElement("span");
-  dashboardText.className = "session-sidebar-text";
-  dashboardText.textContent = "Dashboard";
-
-  dashboardButton.append(dashboardIcon, dashboardText);
-  dashboardButton.addEventListener("click", actions.onOpenDashboard);
-
   const kanbanButton = document.createElement("button");
   kanbanButton.type = "button";
   kanbanButton.className = `session-sidebar-dashboard${
-    actions.activeSessionName === null && actions.activeView === "kanban"
+    actions.activeSessionName === null
       ? " is-active"
       : ""
   }`;
@@ -625,7 +605,6 @@ export function renderSessionSidebar(
 
   sidebar.append(
     header,
-    dashboardButton,
     kanbanButton,
     ...(kanbanProjects ? [kanbanProjects] : []),
     list

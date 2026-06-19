@@ -11,6 +11,7 @@ import {
 import { createAnimationFrameScheduler } from "./render/renderScheduler";
 import { renderSessionSidebar } from "./render/renderSessionSidebar";
 import { renderSessionConfigModal } from "./render/sessionConfigModal";
+import { renderSessionFloatingMenu } from "./render/sessionFloatingMenu";
 import { renderSessionStatusBar } from "./render/sessionStatusBar";
 import { renderTabs, updateActiveTabItem } from "./render/renderTabs";
 import { createDashboardStore } from "./state/dashboardStore";
@@ -119,6 +120,7 @@ let draftSendTargetName = "";
 let draftSendCommand = "";
 let activeKanbanProjectName: string | null =
   new URLSearchParams(window.location.search).get("project");
+let currentActionCount = 0;
 const tabState = createTabState({
   initialActiveTabId: appView === "kanban" ? null : undefined
 });
@@ -289,7 +291,7 @@ function setAppView(view: AppView, options: { projectName?: string | null } = {}
 function openDashboardView() {
   tabState.setActiveTab(null);
   setMobileSidebarOpen(false);
-  setAppView("terminal");
+  setAppView("kanban");
   scheduleRender();
 }
 
@@ -443,6 +445,35 @@ function getKanbanStatusProject(sessionName: string) {
   }
 
   return null;
+}
+
+function getKanbanStatusProjects() {
+  const existingSessionNames = new Set(
+    store.getState().sessions.map((session) => session.name)
+  );
+
+  return store
+    .getState()
+    .kanbanProjects.map((project) => {
+      const sessions = project.agents
+        .map((agent) => {
+          const name = getKanbanConfiguredSessionName(project.name, agent);
+
+          return {
+            name,
+            label: agent.name || name
+          };
+        })
+        .filter((projectSession) => {
+          return projectSession.name && existingSessionNames.has(projectSession.name);
+        });
+
+      return {
+        name: project.name,
+        sessions
+      };
+    })
+    .filter((project) => project.sessions.length > 0);
 }
 
 function getAvailableKanbanSessionNames() {
@@ -655,6 +686,7 @@ function ensureTerminal(tab: BrowserTab) {
     store.getState().sessions.find((session) => session.name === tab.sessionName),
     createSessionStatusActions(tab, loadingTerminal)
   );
+  renderSessionMenu(panel, tab);
   panel.style.background = getTheme(
     sessionSettings.get(tab.sessionName).themeId
   ).terminalTheme.background;
@@ -707,6 +739,56 @@ function ensureTerminal(tab: BrowserTab) {
         .sessions.find((session) => session.name === tab.sessionName),
       createSessionStatusActions(tab, mountedTerminal)
     );
+    renderSessionMenu(panel, tab);
+  });
+}
+
+function renderSessionMenu(panel: HTMLElement, tab: BrowserTab) {
+  const dashboardState = store.getState();
+  renderSessionFloatingMenu(panel, {
+    currentSessionName: tab.sessionName,
+    sessions: getSessionNames(),
+    sessionSummaries: dashboardState.sessions,
+    homeDirectory: dashboardState.serverStatus?.homeDirectory ?? null,
+    kanbanProject: getKanbanStatusProject(tab.sessionName),
+    boards: getKanbanStatusProjects(),
+    actionCount: currentActionCount,
+    actionCenterOpen: isActionCenterOpen,
+    isPinned: getPinnedSessionNames().has(tab.sessionName),
+    isMuted: mutedSessions.isMuted(tab.sessionName),
+    onOpenDashboard: openDashboardView,
+    onOpenKanban: () => openKanbanView(),
+    onOpenKanbanProject: (projectName) => openKanbanView(projectName),
+    onOpenSession: (sessionName) => {
+      getOrOpenTab(sessionName);
+      scheduleRender();
+    },
+    onConfig: () => {
+      activeConfigSessionName = tab.sessionName;
+      scheduleRender();
+    },
+    onRename: () => promptRenameSession(tab.sessionName),
+    onSendCommand: () => openSendCommandPanel(tab.sessionName),
+    onTogglePinned: () => togglePinnedSession(tab.sessionName),
+    onToggleMuted: () => toggleMutedSession(tab.sessionName),
+    onToggleActionCenter: toggleActionCenter,
+    onRefresh: () => {
+      void store
+        .refresh({
+          includePreview: false,
+          includePanes: true,
+          includeServerStatus: true,
+          preferActiveSessionStatus: false
+        })
+        .then(() => scheduleRender());
+    },
+    onCreateSession: (sessionName) => {
+      void store.createSession(sessionName).then(() => {
+        draftSessionName = "";
+        getOrOpenTab(sessionName);
+        scheduleRender();
+      });
+    }
   });
 }
 
@@ -727,6 +809,7 @@ function syncTerminalStatusBars() {
       sessionsByName.get(tab.sessionName),
       createSessionStatusActions(tab, mounted)
     );
+    renderSessionMenu(mounted.panel, tab);
   });
 }
 
@@ -1580,6 +1663,7 @@ function render() {
     prompts: inputPrompts.getPrompts(),
     sessions: store.getState().sessions
   });
+  currentActionCount = actionCenterItems.length;
   const tabListSignature = tabs
     .map((tab) => `${tab.id}:${tab.title}:${tab.pinned ? "pinned" : "free"}`)
     .join("|");
@@ -1620,6 +1704,7 @@ function render() {
     if (appView === "kanban") {
       renderKanban(dashboardRoot, {
         projects: store.getState().kanbanProjects,
+        sessions: store.getState().sessions,
         targetProjectName: activeKanbanProjectName,
         draft: kanbanDraft,
         availableSessions: getAvailableKanbanSessionNames(),

@@ -181,6 +181,24 @@ describe("renderKanban", () => {
           ]
         }
       ],
+      sessions: [
+        {
+          name: "local-ssh",
+          windows: 1,
+          status: "detached",
+          lastActivityAt: null,
+          paneCount: 1,
+          activeWindowName: "zsh",
+          currentCommand: "zsh",
+          currentPath: "/srv/xxvisa",
+          gitBranch: null,
+          gitDirty: null,
+          paneDead: false,
+          paneDeadStatus: null,
+          preview: "tail -f storage/logs/app.log\njob finished",
+          inputPrompt: null
+        }
+      ],
       draft: {
         name: "",
         path: "~",
@@ -202,6 +220,10 @@ describe("renderKanban", () => {
     root.querySelector<HTMLButtonElement>(".kanban-agent-open")?.click();
     root.querySelector<HTMLButtonElement>(".kanban-agent-remove")?.click();
     root.querySelector<HTMLButtonElement>(".kanban-agent-kill")?.click();
+    const confirmPanel = root.querySelector<HTMLElement>(".kanban-kill-confirm")!;
+    confirmPanel
+      .querySelector<HTMLButtonElement>("[data-action='confirm-kanban-kill']")
+      ?.click();
     const select = root.querySelector<HTMLSelectElement>(".kanban-add-session-select")!;
     select.value = "build";
     select.dispatchEvent(new Event("change", { bubbles: true }));
@@ -211,10 +233,97 @@ describe("renderKanban", () => {
 
     expect(root.textContent).toContain("local-ssh");
     expect(root.textContent).not.toContain("xxvisa-local-ssh");
+    const previewImage = confirmPanel.querySelector<HTMLImageElement>(
+      ".kanban-kill-preview-image"
+    )!;
+    expect(previewImage.alt).toContain("tail -f storage/logs/app.log");
+    expect(previewImage.alt).toContain("job finished");
+    expect(previewImage.src).toContain("data:image/svg+xml");
     expect(onOpenSession).toHaveBeenCalledWith("local-ssh");
     expect(onRemoveSession).toHaveBeenCalledWith("xxvisa", "local-ssh");
     expect(onKillSession).toHaveBeenCalledWith("xxvisa", "local-ssh");
     expect(onAddSession).toHaveBeenCalledWith("xxvisa", "build");
+  });
+
+  it("does not kill a kanban session until the preview confirmation is accepted", () => {
+    const root = document.createElement("div");
+    const onKillSession = vi.fn();
+
+    renderKanban(root, {
+      projects: [
+        {
+          name: "xxvisa",
+          path: "/srv/xxvisa",
+          server: null,
+          agents: [
+            {
+              kind: "codex",
+              name: "codex",
+              command: null
+            }
+          ]
+        }
+      ],
+      sessions: [
+        {
+          name: "xxvisa-codex",
+          windows: 1,
+          status: "attached",
+          lastActivityAt: null,
+          paneCount: 1,
+          activeWindowName: "zsh",
+          currentCommand: "zsh",
+          currentPath: "/srv/xxvisa",
+          gitBranch: null,
+          gitDirty: null,
+          paneDead: false,
+          paneDeadStatus: null,
+          preview: "codex is still running tests",
+          inputPrompt: null
+        }
+      ],
+      draft: {
+        name: "",
+        path: "~",
+        server: "",
+        selectedAgentNames: []
+      },
+      loading: false,
+      error: null,
+      availableSessions: [],
+      onDraftChange: vi.fn(),
+      onCreateProject: vi.fn(),
+      onOpenSession: vi.fn(),
+      onRemoveSession: vi.fn(),
+      onKillSession,
+      onDeleteProject: vi.fn()
+    });
+
+    root.querySelector<HTMLButtonElement>(".kanban-agent-kill")?.click();
+
+    const confirmPanel = root.querySelector<HTMLElement>(".kanban-kill-confirm")!;
+    const previewImage = confirmPanel.querySelector<HTMLImageElement>(
+      ".kanban-kill-preview-image"
+    )!;
+    expect(onKillSession).not.toHaveBeenCalled();
+    expect(confirmPanel.textContent).toContain("xxvisa-codex");
+    expect(previewImage.alt).toContain("xxvisa-codex");
+    expect(previewImage.alt).toContain("codex is still running tests");
+    expect(previewImage.src).toContain("data:image/svg+xml");
+
+    confirmPanel
+      .querySelector<HTMLButtonElement>("[data-action='cancel-kanban-kill']")
+      ?.click();
+
+    expect(root.querySelector(".kanban-kill-confirm")).toBeNull();
+    expect(onKillSession).not.toHaveBeenCalled();
+
+    root.querySelector<HTMLButtonElement>(".kanban-agent-kill")?.click();
+    root
+      .querySelector<HTMLButtonElement>("[data-action='confirm-kanban-kill']")
+      ?.click();
+
+    expect(onKillSession).toHaveBeenCalledWith("xxvisa", "xxvisa-codex");
   });
 
   it("marks and exposes a targeted project from sidebar shortcuts", () => {

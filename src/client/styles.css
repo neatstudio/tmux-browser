@@ -1185,6 +1185,78 @@ select {
   color: #ffd0c8;
 }
 
+.kanban-kill-confirm {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 0.38rem;
+  border: 1px solid rgba(255, 91, 91, 0.24);
+  border-radius: 4px;
+  background: rgba(255, 91, 91, 0.07);
+  padding: 0.52rem;
+}
+
+.kanban-kill-confirm strong {
+  color: #ffd0d0;
+  font-size: 0.82rem;
+  line-height: 1.1;
+}
+
+.kanban-kill-confirm span {
+  color: rgba(217, 226, 234, 0.64);
+  font-size: 0.68rem;
+  line-height: 1.3;
+}
+
+.kanban-kill-preview {
+  max-height: 8.5rem;
+  overflow: auto;
+  border: 1px solid rgba(217, 226, 234, 0.12);
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.22);
+  color: rgba(239, 246, 252, 0.82);
+  font-family:
+    "Iosevka Term",
+    Menlo,
+    "PingFang SC",
+    "Hiragino Sans GB",
+    monospace;
+  font-size: 0.66rem;
+  line-height: 1.35;
+  margin: 0;
+  padding: 0.42rem;
+  white-space: pre-wrap;
+}
+
+.kanban-kill-preview-image {
+  display: block;
+  width: 100%;
+  max-height: 8rem;
+  border-radius: 2px;
+  object-fit: cover;
+}
+
+.kanban-kill-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.35rem;
+}
+
+.kanban-kill-actions button {
+  border: 1px solid rgba(217, 226, 234, 0.14);
+  border-radius: 3px;
+  background: rgba(217, 226, 234, 0.06);
+  color: rgba(239, 246, 252, 0.84);
+  cursor: pointer;
+  font-size: 0.68rem;
+  padding: 0.24rem 0.42rem;
+}
+
+.kanban-kill-actions [data-action="confirm-kanban-kill"] {
+  border-color: rgba(255, 91, 91, 0.42);
+  background: rgba(255, 91, 91, 0.14);
+  color: #ffd0d0;
+}
+
 .kanban-empty {
   margin: 0;
   border: 1px dashed rgba(217, 226, 234, 0.14);
@@ -2051,6 +2123,175 @@ select {
   opacity: 1;
   pointer-events: auto;
   visibility: visible;
+}
+
+.session-floating-menu {
+  position: absolute;
+  top: 0.55rem;
+  right: 0.65rem;
+  z-index: 44;
+  display: grid;
+  justify-items: end;
+  gap: 0.35rem;
+  pointer-events: none;
+}
+
+.session-floating-menu-toggle {
+  min-height: 28px;
+  border: 1px solid rgba(217, 226, 234, 0.18);
+  border-radius: 999px;
+  background: rgba(8, 12, 16, 0.68);
+  color: rgba(239, 246, 252, 0.86);
+  cursor: pointer;
+  font-size: 0.68rem;
+  font-weight: 760;
+  letter-spacing: 0.04em;
+  padding: 0.22rem 0.52rem;
+  pointer-events: auto;
+  text-transform: uppercase;
+  backdrop-filter: blur(12px);
+}
+
+.session-floating-menu-toggle[aria-expanded="true"] {
+  border-color: rgba(143, 217, 255, 0.38);
+  background: rgba(91, 192, 255, 0.18);
+  color: #d8f3ff;
+}
+
+.session-floating-menu-panel {
+  display: grid;
+  gap: 0.5rem;
+  width: min(28rem, calc(100vw - 1.5rem));
+  max-height: min(70dvh, 32rem);
+  overflow: auto;
+  border: 1px solid rgba(217, 226, 234, 0.16);
+  border-radius: 6px;
+  background:
+    linear-gradient(180deg, rgba(25, 33, 40, 0.96), rgba(7, 11, 15, 0.96));
+  box-shadow: 0 18px 70px rgba(0, 0, 0, 0.46);
+  padding: 0.56rem;
+  pointer-events: auto;
+  scrollbar-width: thin;
+}
+
+.session-floating-menu-section {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.28rem;
+  min-width: 0;
+}
+
+.session-floating-menu-title {
+  flex: 1 1 100%;
+  color: rgba(217, 226, 234, 0.42);
+  font-size: 0.58rem;
+  font-weight: 820;
+  letter-spacing: 0.11em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.session-floating-menu-panel button {
+  min-width: 0;
+  border: 1px solid rgba(217, 226, 234, 0.13);
+  border-radius: 3px;
+  background: rgba(217, 226, 234, 0.055);
+  color: rgba(239, 246, 252, 0.84);
+  cursor: pointer;
+  font-size: 0.68rem;
+  line-height: 1;
+  overflow: hidden;
+  padding: 0.28rem 0.42rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-floating-menu-panel button:hover {
+  border-color: rgba(143, 217, 255, 0.28);
+  background: rgba(91, 192, 255, 0.1);
+  color: #d8f3ff;
+}
+
+.session-floating-menu-session {
+  display: grid;
+  flex: 1 1 12.8rem;
+  max-width: none;
+  min-width: min(100%, 11rem);
+  gap: 0.16rem;
+  justify-items: start;
+  line-height: 1.15;
+  padding-block: 0.38rem;
+  text-align: left;
+}
+
+.session-floating-menu-board {
+  max-width: 10rem;
+  border-color: rgba(255, 211, 122, 0.28);
+  background:
+    linear-gradient(90deg, rgba(255, 211, 122, 0.11), transparent 64%),
+    rgba(217, 226, 234, 0.055);
+  color: #ffe2a7;
+  font-weight: 780;
+}
+
+.session-floating-menu-session.is-active {
+  border-color: rgba(191, 255, 196, 0.34);
+  background: rgba(94, 255, 130, 0.11);
+  color: #d5ffd8;
+}
+
+.session-floating-menu-session-name {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  color: rgba(239, 246, 252, 0.92);
+  font-size: 0.72rem;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-floating-menu-session-meta {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  color: rgba(217, 226, 234, 0.52);
+  font-size: 0.58rem;
+  font-weight: 620;
+  letter-spacing: 0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-floating-menu-create {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  flex: 1 1 100%;
+  gap: 0.24rem;
+  min-width: 0;
+  margin-top: 0.08rem;
+}
+
+.session-floating-menu-create input {
+  min-width: 0;
+  border: 1px solid rgba(217, 226, 234, 0.13);
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.18);
+  color: rgba(239, 246, 252, 0.84);
+  font-size: 0.68rem;
+  line-height: 1;
+  min-height: 28px;
+  padding: 0.22rem 0.34rem;
+}
+
+.session-floating-menu-create input::placeholder {
+  color: rgba(217, 226, 234, 0.38);
+}
+
+.session-floating-menu-create button {
+  min-width: 2.5rem;
+  min-height: 28px;
+  padding: 0.22rem 0.38rem;
 }
 
 .terminal-frame {

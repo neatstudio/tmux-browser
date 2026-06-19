@@ -9,6 +9,7 @@ import {
 
 const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
   name: string;
+  version: string;
   scripts: Record<string, string>;
 };
 const packScript = readFileSync("scripts/pack-run.mjs", "utf8");
@@ -161,6 +162,14 @@ describe("run release scripts", () => {
     expect(packScript).toContain("uninstall    Stop tmux-ui and remove the install directory");
     expect(packScript).toContain("uninstall_server()");
     expect(packScript).toContain('rm -rf "$APP_HOME"');
+  });
+
+  it("prints the current version from the run file without booting the server", () => {
+    expect(packScript).toContain('VERSION="${version}"');
+    expect(packScript).toContain("version      Print the current tmux-ui version");
+    expect(packScript).toContain('"$COMMAND" in');
+    expect(packScript).toContain("-v|--version|version)");
+    expect(packScript).toContain('echo "$VERSION"');
   });
 
   it("supports self-upgrade from the latest release run file", () => {

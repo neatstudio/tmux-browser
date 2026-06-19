@@ -14,14 +14,14 @@ export function getLayoutMode(search = window.location.search): LayoutMode {
 export function getAppView(search = window.location.search): AppView {
   const params = new URLSearchParams(search);
 
-  return params.get("view") === "kanban" ? "kanban" : "terminal";
+  return params.get("view") === "terminal" ? "terminal" : "kanban";
 }
 
 export function buildViewUrl(href: string, options: ViewUrlOptions) {
   const url = new URL(href);
 
-  if (options.view === "kanban") {
-    url.searchParams.set("view", "kanban");
+  if (options.view === "terminal") {
+    url.searchParams.set("view", "terminal");
   } else {
     url.searchParams.delete("view");
   }

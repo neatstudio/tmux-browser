@@ -72,6 +72,30 @@ describe("client layout styles", () => {
     expect(styles).toMatch(
       /\.terminal-status-action\[data-action="switch-kanban-session"\]\s*\{[^}]*max-width:\s*7\.5rem;[^}]*text-overflow:\s*ellipsis;/s
     );
+    expect(styles).toMatch(
+      /\.session-floating-menu\s*\{[^}]*position:\s*absolute;[^}]*top:\s*0\.55rem;[^}]*right:\s*0\.65rem;/s
+    );
+    expect(styles).toMatch(
+      /\.session-floating-menu-panel\s*\{[^}]*width:\s*min\(28rem,\s*calc\(100vw\s*-\s*1\.5rem\)\);[^}]*max-height:\s*min\(70dvh,\s*32rem\);/s
+    );
+    expect(styles).toMatch(
+      /\.session-floating-menu-session\s*\{[^}]*display:\s*grid;[^}]*flex:\s*1\s+1\s+12\.8rem;[^}]*text-align:\s*left;/s
+    );
+    expect(styles).toMatch(
+      /\.session-floating-menu-session-meta\s*\{[^}]*font-size:\s*0\.58rem;[^}]*text-overflow:\s*ellipsis;/s
+    );
+    expect(styles).toMatch(
+      /\.session-floating-menu-session\.is-active\s*\{[^}]*background:\s*rgba\(94,\s*255,\s*130,\s*0\.11\);[^}]*color:\s*#d5ffd8;/s
+    );
+    expect(styles).toMatch(
+      /\.session-floating-menu-board\s*\{[^}]*border-color:\s*rgba\(255,\s*211,\s*122,\s*0\.28\);[^}]*color:\s*#ffe2a7;/s
+    );
+    expect(styles).toMatch(
+      /\.session-floating-menu-create\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto;/s
+    );
+    expect(styles).toMatch(
+      /\.session-floating-menu-create\s+input\s*\{[^}]*min-width:\s*0;[^}]*font-size:\s*0\.68rem;/s
+    );
   });
 
   it("lets long tab rows scroll horizontally without showing a top scrollbar", () => {
@@ -263,6 +287,18 @@ describe("client layout styles", () => {
     );
     expect(styles).toMatch(
       /\.kanban-agent-actions\s*\{[^}]*display:\s*flex;[^}]*justify-content:\s*flex-end;/s
+    );
+    expect(styles).toMatch(
+      /\.kanban-kill-confirm\s*\{[^}]*grid-column:\s*1\s*\/\s*-1;[^}]*background:\s*rgba\(255,\s*91,\s*91,\s*0\.07\);/s
+    );
+    expect(styles).toMatch(
+      /\.kanban-kill-preview\s*\{[^}]*max-height:\s*8\.5rem;[^}]*white-space:\s*pre-wrap;/s
+    );
+    expect(styles).toMatch(
+      /\.kanban-kill-preview-image\s*\{[^}]*display:\s*block;[^}]*width:\s*100%;[^}]*object-fit:\s*cover;/s
+    );
+    expect(styles).toMatch(
+      /\.kanban-kill-actions\s+\[data-action="confirm-kanban-kill"\]\s*\{[^}]*background:\s*rgba\(255,\s*91,\s*91,\s*0\.14\);/s
     );
     expect(styles).toMatch(
       /\.kanban-project-close\s*\{[^}]*background:\s*rgba\(255,\s*91,\s*91,\s*0\.08\);/s

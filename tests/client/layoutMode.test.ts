@@ -17,10 +17,11 @@ describe("getLayoutMode", () => {
     expect(getLayoutMode("?layout=tabs")).toBe("tabs");
   });
 
-  it("opens kanban only when explicitly requested", () => {
-    expect(getAppView("")).toBe("terminal");
-    expect(getAppView("?layout=sidebar")).toBe("terminal");
+  it("uses kanban as the default non-terminal view", () => {
+    expect(getAppView("")).toBe("kanban");
+    expect(getAppView("?layout=sidebar")).toBe("kanban");
     expect(getAppView("?view=kanban")).toBe("kanban");
+    expect(getAppView("?view=terminal")).toBe("terminal");
   });
 
   it("builds view URLs without dropping sidebar layout or project target", () => {
@@ -28,12 +29,12 @@ describe("getLayoutMode", () => {
       buildViewUrl("http://localhost:3000/?layout=sidebar&view=kanban", {
         view: "terminal"
       })
-    ).toBe("/?layout=sidebar");
+    ).toBe("/?layout=sidebar&view=terminal");
     expect(
       buildViewUrl("http://localhost:3000/?layout=sidebar", {
         view: "kanban",
         projectName: "xxvisa"
       })
-    ).toBe("/?layout=sidebar&view=kanban&project=xxvisa");
+    ).toBe("/?layout=sidebar&project=xxvisa");
   });
 });

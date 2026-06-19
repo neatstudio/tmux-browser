@@ -525,6 +525,7 @@ USER_BIN_DIR="\${TMUX_UI_USER_BIN:-$HOME/.local/bin}"
 CLI_NAME="\${TMUX_UI_CLI_NAME:-tmux-ui}"
 LEGACY_APP_HOME="\${TMUX_UI_LEGACY_HOME:-$HOME/.local/share/gemm4-node}"
 COMMAND="\${1:-help}"
+VERSION="${version}"
 MARKER="${payloadMarker}"
 ORIGINAL_PATH="\${PATH:-}"
 TMUX_UI_PROFILE_UPDATED=""
@@ -856,6 +857,7 @@ Commands:
   uninstall    Stop tmux-ui and remove the install directory
   extract      Extract files only
   dir          Print install directory
+  version      Print the current tmux-ui version
 
 Environment:
   TMUX_UI_HOME      Install directory, default: $HOME/.tmux-ui
@@ -1379,6 +1381,9 @@ uninstall_server() {
 }
 
 case "$COMMAND" in
+  -v|--version|version)
+    echo "$VERSION"
+    ;;
   install)
     load_node_runtime
     require_command npm
