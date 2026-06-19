@@ -1,7 +1,18 @@
 import type { PaneSummary, SessionSummary } from "../api/sessionApi";
 import { MOBILE_SOFT_KEYS } from "../terminal/softKeys";
 
+export type KanbanStatusSession = {
+  name: string;
+  label: string;
+};
+
+export type KanbanStatusProject = {
+  name: string;
+  sessions: KanbanStatusSession[];
+};
+
 export type SessionStatusBarActions = {
+  kanbanProject?: KanbanStatusProject | null;
   onClear?: () => void;
   onRedraw?: () => void;
   onReconnect?: () => void;
@@ -13,6 +24,7 @@ export type SessionStatusBarActions = {
   onPreviewImage?: () => void;
   onChooseImage?: () => void;
   onCaptureImage?: () => void;
+  onOpenKanbanSession?: (sessionName: string) => void;
   onSplitHorizontal?: () => void;
   onSplitVertical?: () => void;
   onToggleBrowserScroll?: () => void;
@@ -71,6 +83,53 @@ function createSwitchSessionButton(
   button.classList.add("is-mobile-primary");
 
   return button;
+}
+
+function renderKanbanSessionSwitches(
+  session: SessionSummary | null | undefined,
+  actions: SessionStatusBarActions,
+  afterClick?: () => void
+) {
+  const project = actions.kanbanProject;
+
+  if (!session || !project || project.sessions.length <= 1) {
+    return null;
+  }
+
+  const label = document.createElement("span");
+  label.className = "terminal-status-kanban-label";
+  label.textContent = project.name;
+  label.title = `Kanban project: ${project.name}`;
+
+  return createActionGroup("kanban-sessions", [
+    label,
+    ...project.sessions.map((projectSession) => {
+      const isCurrent = projectSession.name === session.name;
+      const button = createActionButton(
+        "switch-kanban-session",
+        projectSession.label,
+        () => {
+          if (!isCurrent) {
+            actions.onOpenKanbanSession?.(projectSession.name);
+          }
+        },
+        !actions.onOpenKanbanSession,
+        isCurrent
+          ? `Current Kanban session: ${projectSession.name}`
+          : `Switch to Kanban session: ${projectSession.name}`,
+        afterClick
+      );
+
+      button.dataset.sessionName = projectSession.name;
+
+      if (isCurrent) {
+        button.classList.add("is-active");
+        button.setAttribute("aria-current", "true");
+      }
+
+      return button;
+    })
+  ]);
 }
 
 function formatPaneLabel(session: SessionSummary, pane: PaneSummary) {
@@ -233,12 +292,15 @@ function renderRightStatusActions(
   actions: SessionStatusBarActions,
   afterClick?: () => void
 ): HTMLElement[] {
+  const kanbanSessionsGroup = renderKanbanSessionSwitches(session, actions, afterClick);
+
   return [
     createActionGroup("view", [
       createBrowserScrollButton(actions),
       createActionButton("scroll-history-forward", "Live", () => actions.onScrollHistoryForward?.(), !actions.onScrollHistoryForward, "Page forward toward live output", afterClick),
       createActionButton("scroll-history-back", "Hist", () => actions.onScrollHistoryBack?.(), !actions.onScrollHistoryBack, "Page back in tmux history", afterClick)
     ]),
+    ...(kanbanSessionsGroup ? [kanbanSessionsGroup] : []),
     createActionGroup("routing", [
       createActionButton("send", "Send", () => actions.onSendCommand?.(), !actions.onSendCommand, "Send command", afterClick),
       createSwitchSessionButton(actions, afterClick)

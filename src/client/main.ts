@@ -4,6 +4,7 @@ import { renderActionCenterPanel } from "./render/actionCenter";
 import { renderInputPromptToast } from "./render/inputPromptToast";
 import { renderDashboard } from "./render/renderDashboard";
 import {
+  getKanbanAgentSessionName,
   renderKanban,
   type KanbanDraft
 } from "./render/renderKanban";
@@ -381,27 +382,67 @@ function getPinnedSessionNames() {
   return new Set(sidebarFavorites.getPinnedSessionNames());
 }
 
-function normalizeKanbanSessionNamePart(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
 function getKanbanSessionNames() {
   return new Set(
     store.getState().kanbanProjects.flatMap((project) =>
-      project.agents.map((agent) => {
-        const projectName = normalizeKanbanSessionNamePart(project.name);
-        const agentName = normalizeKanbanSessionNamePart(agent.name);
-
-        return agent.sessionName ??
-          (projectName && agentName ? `${projectName}-${agentName}` : "");
-      })
+      project.agents.map((agent) => getKanbanConfiguredSessionName(project.name, agent))
     )
     .filter(Boolean)
   );
+}
+
+function getKanbanConfiguredSessionName(
+  projectName: string,
+  agent: { name: string; sessionName?: string }
+) {
+  if (agent.sessionName) {
+    return agent.sessionName;
+  }
+
+  const sessionName = getKanbanAgentSessionName(projectName, agent.name);
+
+  if (sessionName.startsWith("-") || sessionName.endsWith("-")) {
+    return "";
+  }
+
+  return sessionName;
+}
+
+function getKanbanStatusProject(sessionName: string) {
+  const existingSessionNames = new Set(
+    store.getState().sessions.map((session) => session.name)
+  );
+
+  for (const project of store.getState().kanbanProjects) {
+    const projectSessions = project.agents
+      .map((agent) => {
+        const name = getKanbanConfiguredSessionName(project.name, agent);
+
+        return {
+          name,
+          label: agent.name || name
+        };
+      })
+      .filter((projectSession) => projectSession.name);
+    const currentSessionInProject = projectSessions.some(
+      (projectSession) => projectSession.name === sessionName
+    );
+
+    if (!currentSessionInProject) {
+      continue;
+    }
+
+    const availableSessions = projectSessions.filter((projectSession) =>
+      existingSessionNames.has(projectSession.name) || projectSession.name === sessionName
+    );
+
+    return {
+      name: project.name,
+      sessions: availableSessions.length > 0 ? availableSessions : projectSessions
+    };
+  }
+
+  return null;
 }
 
 function getAvailableKanbanSessionNames() {
@@ -1475,6 +1516,7 @@ function refreshDashboard(options: { includeServerStatus?: boolean } = {}) {
 
 function createSessionStatusActions(tab: BrowserTab, mounted: MountedTerminal) {
   return {
+    kanbanProject: getKanbanStatusProject(tab.sessionName),
     onRefresh: () => {
       const isDashboardActive = tabState.getActiveTabId() === null;
 
@@ -1513,6 +1555,11 @@ function createSessionStatusActions(tab: BrowserTab, mounted: MountedTerminal) {
     onRename: () => promptRenameSession(tab.sessionName),
     onSendCommand: () => openSendCommandPanel(tab.sessionName),
     onSwitchSession: () => openSwitchSessionPanel(tab.sessionName),
+    onOpenKanbanSession: (sessionName: string) => {
+      getOrOpenTab(sessionName);
+      setMobileSidebarOpen(false);
+      scheduleRender();
+    },
     onPreviewImage: () => openImagePreviewPanel(tab.sessionName),
     onChooseImage: () => mounted.chooseImage(),
     onCaptureImage: () => mounted.captureImage(),

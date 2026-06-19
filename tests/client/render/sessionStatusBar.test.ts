@@ -224,6 +224,51 @@ describe("sessionStatusBar", () => {
     expect(onSwitchSession).toHaveBeenCalledOnce();
   });
 
+  it("shows same-kanban-project sessions as one-click status bar switches", () => {
+    const root = document.createElement("div");
+    const onOpenKanbanSession = vi.fn();
+
+    renderSessionStatusBar(root, {
+      ...SESSION,
+      name: "xxvisa-pm"
+    }, {
+      kanbanProject: {
+        name: "xxvisa",
+        sessions: [
+          { name: "xxvisa-pm", label: "pm" },
+          { name: "xxvisa-review", label: "review" },
+          { name: "xxvisa-codex", label: "codex" }
+        ]
+      },
+      onOpenKanbanSession
+    });
+
+    const group = root.querySelector<HTMLElement>(
+      "[data-group='kanban-sessions']"
+    )!;
+    const label = group.querySelector<HTMLElement>(
+      ".terminal-status-kanban-label"
+    )!;
+    const buttons = [
+      ...group.querySelectorAll<HTMLButtonElement>(
+        "[data-action='switch-kanban-session']"
+      )
+    ];
+
+    expect(label.textContent).toBe("xxvisa");
+    expect(buttons.map((button) => button.textContent)).toEqual([
+      "pm",
+      "review",
+      "codex"
+    ]);
+    expect(buttons[0].getAttribute("aria-current")).toBe("true");
+    expect(buttons[0].classList.contains("is-active")).toBe(true);
+
+    buttons[1].click();
+
+    expect(onOpenKanbanSession).toHaveBeenCalledWith("xxvisa-review");
+  });
+
   it("marks switch as the primary mobile navigation action", () => {
     const root = document.createElement("div");
 

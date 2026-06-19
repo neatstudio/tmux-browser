@@ -63,6 +63,15 @@ describe("client layout styles", () => {
     expect(styles).toMatch(
       /\.terminal-status-action-group\.is-left\s*\{[^}]*border-left:\s*0;[^}]*border-right:\s*1px\s+solid\s+rgba\(217,\s*226,\s*234,\s*0\.12\);/s
     );
+    expect(styles).toMatch(
+      /\.terminal-status-action-group\[data-group="kanban-sessions"\]\s*\{[^}]*max-width:\s*min\(34vw,\s*28rem\);[^}]*overflow:\s*hidden;/s
+    );
+    expect(styles).toMatch(
+      /\.terminal-status-kanban-label\s*\{[^}]*color:\s*#ffe2a7;[^}]*text-overflow:\s*ellipsis;/s
+    );
+    expect(styles).toMatch(
+      /\.terminal-status-action\[data-action="switch-kanban-session"\]\s*\{[^}]*max-width:\s*7\.5rem;[^}]*text-overflow:\s*ellipsis;/s
+    );
   });
 
   it("lets long tab rows scroll horizontally without showing a top scrollbar", () => {
