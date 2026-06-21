@@ -489,35 +489,41 @@ function renderPanel(
   panel.className = "session-floating-menu-panel";
   panel.setAttribute("role", "menu");
 
-  const quick = createMenuSection("Quick");
-  quick.append(
-    createMenuButton("open-kanban", "Kanban", () => {
+  const actionsPane = document.createElement("div");
+  actionsPane.className = "session-floating-menu-actions-pane";
+  const sessionsPane = document.createElement("div");
+  sessionsPane.className = "session-floating-menu-sessions-pane";
+
+  const actions = createMenuSection("Actions");
+  actions.classList.add("session-floating-menu-actions");
+  actions.append(
+    createMenuButton("open-kanban", "Grp", () => {
       closePanel();
       state.onOpenKanban();
-    }),
-    createMenuButton("send-command", "Send", () => {
+    }, "Open group manager"),
+    createMenuButton("send-command", "Cmd", () => {
       closePanel();
       state.onSendCommand();
     })
   );
   if (state.kanbanProject && state.onOpenGroupTask) {
-    quick.append(
-      createMenuButton("open-group-task", "Task", () => {
+    actions.append(
+      createMenuButton("open-group-task", "Tsk", () => {
         closePanel();
         state.onOpenGroupTask?.();
       }, "Send task/report to group sessions")
     );
   }
   if (state.kanbanProject && state.onOpenGroupMessages) {
-    quick.append(
-      createMenuButton("open-group-messages", "Messages", () => {
+    actions.append(
+      createMenuButton("open-group-messages", "Msg", () => {
         closePanel();
         state.onOpenGroupMessages?.();
       }, "Open group message history")
     );
   }
-  quick.append(
-    createMenuButton("reconnect-session", "Recon", () => {
+  actions.append(
+    createMenuButton("reconnect-session", "Rec", () => {
       closePanel();
       state.onReconnect?.();
     }, "Reconnect terminal websocket"),
@@ -525,7 +531,7 @@ function renderPanel(
       closePanel();
       state.onPreviewImage?.();
     }, "Preview image file"),
-    createMenuButton("choose-image", "Photo", () => {
+    createMenuButton("choose-image", "Pic", () => {
       closePanel();
       state.onChooseImage?.();
     }, "Choose image and insert saved path"),
@@ -537,24 +543,24 @@ function renderPanel(
       closePanel();
       state.onKill?.();
     }, "Kill session"),
-    createMenuButton("refresh-sessions", "Refresh", () => {
+    createMenuButton("refresh-sessions", "Refr", () => {
       closePanel();
       state.onRefresh();
     }),
-    createMenuButton("config-session", "Config", () => {
+    createMenuButton("config-session", "Cfg", () => {
       closePanel();
       state.onConfig();
     }),
-    createMenuButton("rename-session", "Rename", () => {
+    createMenuButton("rename-session", "Ren", () => {
       closePanel();
       state.onRename();
     })
   );
   if (state.onRefreshMuted && (state.mutedSessionNames?.size ?? 0) > 0) {
-    quick.append(
+    actions.append(
       createMenuButton(
         "refresh-muted-sessions",
-        "Refresh mute",
+        "Refr",
         () => {
           closePanel();
           state.onRefreshMuted?.();
@@ -563,28 +569,31 @@ function renderPanel(
       )
     );
   }
-  quick.append(renderCreateSessionForm(state, closePanel));
-  panel.append(quick);
+  actionsPane.append(actions);
+  actionsPane.append(renderCreateSessionForm(state, closePanel));
+  panel.append(actionsPane);
 
   const current = renderCurrentSessionSection(state, closePanel);
   if (current) {
-    panel.append(current);
+    actionsPane.append(current);
   }
 
   const boards = renderBoardsSection(state, closePanel);
   if (boards) {
-    panel.append(boards);
+    sessionsPane.append(boards);
   }
 
   const ungrouped = renderUngroupedSection(state, closePanel);
   if (ungrouped) {
-    panel.append(ungrouped);
+    sessionsPane.append(ungrouped);
   }
 
   const timeline = renderTimelineSection(state);
   if (timeline) {
-    panel.append(timeline);
+    sessionsPane.append(timeline);
   }
+
+  panel.append(sessionsPane);
 
   root.append(panel);
 

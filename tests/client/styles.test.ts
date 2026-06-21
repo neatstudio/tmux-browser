@@ -85,28 +85,43 @@ describe("client layout styles", () => {
       /\.terminal-status-action\[data-action="switch-kanban-session"\]\s*\{[^}]*max-width:\s*7\.5rem;[^}]*text-overflow:\s*ellipsis;/s
     );
     expect(styles).toMatch(
-      /\.session-floating-menu\s*\{[^}]*position:\s*absolute;[^}]*top:\s*0\.55rem;[^}]*right:\s*0\.65rem;/s
+      /\.session-floating-menu\s*\{[^}]*position:\s*fixed;[^}]*top:\s*0\.55rem;[^}]*right:\s*0\.65rem;/s
     );
     expect(styles).toMatch(
-      /\.session-floating-menu-panel\s*\{[^}]*width:\s*min\(28rem,\s*calc\(100vw\s*-\s*1\.5rem\)\);[^}]*max-height:\s*min\(70dvh,\s*32rem\);/s
+      /\.session-floating-menu-panel\s*\{[^}]*grid-template-columns:\s*minmax\(10\.8rem,\s*0\.98fr\)\s+minmax\(0,\s*1\.12fr\);[^}]*width:\s*min\(40rem,\s*calc\(100vw\s*-\s*1rem\)\);[^}]*max-height:\s*min\(72dvh,\s*32rem\);/s
+    );
+    expect(styles).toMatch(
+      /\.session-floating-menu-actions-pane,\s*\.session-floating-menu-sessions-pane\s*\{[^}]*display:\s*grid;[^}]*align-content:\s*start;/s
+    );
+    expect(styles).toMatch(
+      /\.session-floating-menu-actions-pane\s*\{[^}]*border-right:\s*1px\s+solid\s+rgba\(217,\s*226,\s*234,\s*0\.1\);/s
+    );
+    expect(styles).toMatch(
+      /\.session-floating-menu-section\.session-floating-menu-actions\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\);/s
+    );
+    expect(styles).toMatch(
+      /\.session-floating-menu-section\.session-floating-menu-soft-keys\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\);/s
     );
     expect(styles).toMatch(
       /\.session-floating-menu-session\s*\{[^}]*display:\s*grid;[^}]*width:\s*100%;[^}]*text-align:\s*left;/s
     );
     expect(styles).toMatch(
-      /\.session-floating-menu-session-item\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto;[^}]*flex:\s*1\s+1\s+8\.8rem;/s
+      /\.session-floating-menu-session-item\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto;[^}]*flex:\s*0\s+1\s*7\.1rem;/s
+    );
+    expect(styles).toMatch(
+      /\.session-floating-menu-board\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(6\.7rem,\s*1fr\)\);/s
     );
     expect(styles).toMatch(
       /\.session-floating-menu-session-controls\s+button\[aria-pressed="true"\]\s*\{[^}]*background:\s*rgba\(255,\s*211,\s*122,\s*0\.11\);[^}]*color:\s*#ffe2a7;/s
     );
     expect(styles).toMatch(
-      /\.session-floating-menu-session-meta\s*\{[^}]*font-size:\s*0\.58rem;[^}]*text-overflow:\s*ellipsis;/s
+      /\.session-floating-menu-session-meta\s*\{[^}]*font-size:\s*0\.54rem;[^}]*text-overflow:\s*ellipsis;/s
     );
     expect(styles).toMatch(
       /\.session-floating-menu-session\.is-active\s*\{[^}]*background:\s*rgba\(94,\s*255,\s*130,\s*0\.11\);[^}]*color:\s*#d5ffd8;/s
     );
     expect(styles).toMatch(
-      /\.session-floating-menu-board\s*\{[^}]*display:\s*flex;[^}]*border:\s*1px\s+solid\s+rgba\(255,\s*211,\s*122,\s*0\.2\);[^}]*padding:\s*0\.42rem;/s
+      /\.session-floating-menu-board\s*\{[^}]*display:\s*grid;[^}]*border:\s*1px\s+solid\s+rgba\(255,\s*211,\s*122,\s*0\.2\);[^}]*padding:\s*0\.42rem;/s
     );
     expect(styles).toMatch(
       /\.session-floating-menu-board-label\s*\{[^}]*max-width:\s*100%;[^}]*color:\s*#ffe2a7;[^}]*padding:\s*0\s+0\.28rem;/s
@@ -116,6 +131,12 @@ describe("client layout styles", () => {
     );
     expect(styles).toMatch(
       /\.session-floating-menu-create\s+input\s*\{[^}]*min-width:\s*0;[^}]*font-size:\s*0\.68rem;/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*700px\)\s*\{[\s\S]*\.session-floating-menu-panel\s*\{[^}]*grid-template-columns:\s*1fr;[^}]*width:\s*min\(26rem,\s*calc\(100vw\s*-\s*0\.55rem\)\);[^}]*max-height:\s*min\(58dvh,\s*23rem\);/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*700px\)\s*\{[\s\S]*\.session-floating-menu-actions-pane\s*\{[^}]*border-right:\s*0;[^}]*border-bottom:\s*1px\s+solid\s+rgba\(217,\s*226,\s*234,\s*0\.1\);/s
     );
     expect(styles).toMatch(
       /\.session-floating-menu-timeline-item\s*\{[^}]*grid-template-columns:\s*4\.1rem\s+minmax\(0,\s*1fr\);[^}]*font-size:\s*0\.62rem;/s
@@ -408,6 +429,15 @@ describe("client layout styles", () => {
     );
     expect(styles).toMatch(
       /@media\s*\(max-width:\s*430px\)\s*\{[\s\S]*\.terminal-status-mobile-sheet\s*\{[^}]*right:\s*0\.35rem;[^}]*left:\s*0\.35rem;[^}]*padding:\s*0\.46rem;/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*430px\)\s*\{[\s\S]*\.session-floating-menu-section\.session-floating-menu-actions\s*\{[^}]*grid-template-columns:\s*repeat\(6,\s*minmax\(0,\s*1fr\)\);/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*430px\)\s*\{[\s\S]*\.session-floating-menu-panel\s+button\s*\{[^}]*min-height:\s*16px;[^}]*font-size:\s*0\.46rem;/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*430px\)\s*\{[\s\S]*\.session-floating-menu-board\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\);/s
     );
     expect(styles).toMatch(
       /@media\s*\(max-width:\s*430px\)\s*\{[\s\S]*\.terminal-status-mobile-sheet\s+\.terminal-status-action-group\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(4\.8rem,\s*1fr\)\);/s

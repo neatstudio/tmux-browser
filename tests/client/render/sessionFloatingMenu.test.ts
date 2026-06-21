@@ -174,6 +174,39 @@ describe("sessionFloatingMenu", () => {
 
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
     expect(panel.textContent).toContain("xxvisa");
+    const actionsPane = panel.querySelector(".session-floating-menu-actions-pane");
+    const sessionsPane = panel.querySelector(".session-floating-menu-sessions-pane");
+
+    expect(actionsPane).not.toBeNull();
+    expect(sessionsPane).not.toBeNull();
+    expect(actionsPane?.querySelector("[data-action='send-command']")).not.toBeNull();
+    expect(actionsPane?.querySelector("[data-session-name]")).toBeNull();
+    expect(sessionsPane?.querySelector("[data-session-name='xxvisa-pm']")).not.toBeNull();
+    expect(sessionsPane?.querySelector("[data-action='send-command']")).toBeNull();
+    expect(
+      [
+        ...actionsPane!.querySelectorAll<HTMLButtonElement>(
+          ".session-floating-menu-actions [data-action]"
+        )
+      ].map((button) => button.textContent?.trim())
+    ).toEqual([
+      "Grp",
+      "Cmd",
+      "Tsk",
+      "Msg",
+      "Rec",
+      "Img",
+      "Pic",
+      "Cam",
+      "Kill",
+      "Refr",
+      "Cfg",
+      "Ren",
+      "Refr"
+    ]);
+    expect(actionsPane?.textContent).not.toContain("Config");
+    expect(actionsPane?.textContent).not.toContain("Rename");
+    expect(actionsPane?.textContent).not.toContain("Refresh");
     expect(actions).not.toContain("open-dashboard");
     expect(actions).toContain("open-kanban");
     expect(actions).toContain("open-session");
