@@ -8,10 +8,10 @@ const styles = readFileSync(
 );
 
 describe("client layout styles", () => {
-  it("keeps the tab strip pinned while content scrolls underneath", () => {
-    expect(styles).toMatch(
-      /\.tabs-root\s*\{[^}]*position:\s*sticky;[^}]*top:\s*0;/s
-    );
+  it("keeps the page shell chrome-free instead of falling back to tabs", () => {
+    expect(styles).not.toContain(".app-shell--tabs");
+    expect(styles).not.toContain(".app-shell--sidebar");
+    expect(styles).not.toContain(".app-shell--kanban-view .tabs-root");
   });
 
   it("hides xterm viewport scrollbars so the terminal does not add browser scroll", () => {
@@ -46,9 +46,6 @@ describe("client layout styles", () => {
       /\.terminal-panel\s*\{[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\)\s+auto;/s
     );
     expect(styles).toMatch(
-      /\.terminal-panel\.has-session-rail\s*\{[^}]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\)\s+auto;/s
-    );
-    expect(styles).toMatch(
       /\.terminal-status-bar\s*\{[^}]*display:\s*flex;[^}]*min-height:\s*32px;/s
     );
     expect(styles).toMatch(
@@ -61,13 +58,16 @@ describe("client layout styles", () => {
       /\.terminal-status-main\s*\{[^}]*flex:\s*1\s+1\s+auto;/s
     );
     expect(styles).toMatch(
-      /\.terminal-session-rail\s*\{[^}]*display:\s*flex;[^}]*min-height:\s*34px;[^}]*padding:\s*0\.34rem\s+3\.8rem\s+0\.34rem\s+0\.62rem;/s
+      /\.terminal-panel\.has-session-rail\s*\{[^}]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\)\s+auto;/s
     );
     expect(styles).toMatch(
-      /\.terminal-session-rail-sessions\s*\{[^}]*display:\s*flex;[^}]*overflow:\s*hidden;/s
+      /\.terminal-session-rail\s*\{[^}]*display:\s*flex;[^}]*min-height:\s*34px;/s
     );
     expect(styles).toMatch(
-      /\.terminal-session-rail-session\.is-active\s*\{[^}]*background:\s*rgba\(94,\s*255,\s*130,\s*0\.14\);[^}]*color:\s*#d5ffd8;/s
+      /\.terminal-session-rail-session\.is-active\s*\{[^}]*background:\s*rgba\(94,\s*255,\s*130,\s*0\.14\);/s
+    );
+    expect(styles).toMatch(
+      /\.terminal-session-rail-session\.is-offline,\s*\.session-floating-menu-session\.is-offline\s*\{[^}]*cursor:\s*not-allowed;[^}]*opacity:\s*0\.52;/s
     );
     expect(styles).toMatch(
       /\.terminal-status-action-group\s*\{[^}]*display:\s*inline-flex;[^}]*border-left:\s*1px\s+solid\s+rgba\(217,\s*226,\s*234,\s*0\.12\);/s
@@ -75,41 +75,66 @@ describe("client layout styles", () => {
     expect(styles).toMatch(
       /\.terminal-status-action-group\.is-left\s*\{[^}]*border-left:\s*0;[^}]*border-right:\s*1px\s+solid\s+rgba\(217,\s*226,\s*234,\s*0\.12\);/s
     );
+    expect(styles).not.toContain('data-group="kanban-sessions"');
+    expect(styles).not.toContain(".terminal-status-kanban-label");
+    expect(styles).not.toContain('data-action="switch-kanban-session"');
     expect(styles).toMatch(
-      /\.terminal-status-action-group\[data-group="kanban-sessions"\]\s*\{[^}]*max-width:\s*min\(34vw,\s*28rem\);[^}]*overflow:\s*hidden;/s
+      /\.session-floating-menu\s*\{[^}]*position:\s*fixed;[^}]*top:\s*0\.55rem;[^}]*right:\s*0\.65rem;/s
     );
     expect(styles).toMatch(
-      /\.terminal-status-kanban-label\s*\{[^}]*color:\s*#ffe2a7;[^}]*text-overflow:\s*ellipsis;/s
+      /\.session-floating-menu-panel\s*\{[^}]*grid-template-columns:\s*minmax\(11rem,\s*0\.88fr\)\s+minmax\(0,\s*1\.62fr\);[^}]*width:\s*min\(84vw,\s*calc\(100vw\s*-\s*1rem\)\);[^}]*max-height:\s*min\(82dvh,\s*40rem\);/s
     );
     expect(styles).toMatch(
-      /\.terminal-status-action\[data-action="switch-kanban-session"\]\s*\{[^}]*max-width:\s*7\.5rem;[^}]*text-overflow:\s*ellipsis;/s
+      /\.app-shell\[data-ui-tier="desktop"\]\s+\.session-floating-menu-panel\s*\{[^}]*width:\s*min\(90vw,\s*calc\(100vw\s*-\s*1rem\)\);[^}]*max-height:\s*min\(88dvh,\s*48rem\);/s
     );
     expect(styles).toMatch(
-      /\.session-floating-menu\s*\{[^}]*position:\s*absolute;[^}]*top:\s*0\.55rem;[^}]*right:\s*0\.65rem;/s
+      /\.app-shell\[data-ui-tier="phone"\]\s+\.session-floating-menu-panel\s*\{[^}]*width:\s*min\(96vw,\s*calc\(100vw\s*-\s*0\.45rem\)\);[^}]*max-height:\s*min\(76dvh,\s*30rem\);/s
     );
     expect(styles).toMatch(
-      /\.session-floating-menu-panel\s*\{[^}]*width:\s*min\(28rem,\s*calc\(100vw\s*-\s*1\.5rem\)\);[^}]*max-height:\s*min\(70dvh,\s*32rem\);/s
+      /\.session-floating-menu-actions-pane,\s*\.session-floating-menu-sessions-pane\s*\{[^}]*display:\s*grid;[^}]*align-content:\s*start;/s
+    );
+    expect(styles).toMatch(
+      /\.session-floating-menu-actions-pane\s*\{[^}]*border-right:\s*1px\s+solid\s+rgba\(217,\s*226,\s*234,\s*0\.1\);/s
+    );
+    expect(styles).toMatch(
+      /\.session-floating-menu-section\.session-floating-menu-actions\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(5,\s*minmax\(0,\s*1fr\)\);/s
+    );
+    expect(styles).toMatch(
+      /\.session-floating-menu-section\.session-floating-menu-soft-keys\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\);/s
     );
     expect(styles).toMatch(
       /\.session-floating-menu-session\s*\{[^}]*display:\s*grid;[^}]*width:\s*100%;[^}]*text-align:\s*left;/s
     );
     expect(styles).toMatch(
-      /\.session-floating-menu-session-item\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto;[^}]*flex:\s*1\s+1\s+8\.8rem;/s
+      /\.session-floating-menu-panel button\.session-floating-menu-session\s*\{[^}]*display:\s*grid;/s
     );
     expect(styles).toMatch(
-      /\.session-floating-menu-session-controls\s+button\[aria-pressed="true"\]\s*\{[^}]*background:\s*rgba\(255,\s*211,\s*122,\s*0\.11\);[^}]*color:\s*#ffe2a7;/s
+      /\.session-floating-menu-session-item\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);[^}]*flex:\s*0\s+1\s*7\.1rem;/s
     );
     expect(styles).toMatch(
-      /\.session-floating-menu-session-meta\s*\{[^}]*font-size:\s*0\.58rem;[^}]*text-overflow:\s*ellipsis;/s
+      /\.session-floating-menu-board\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(6\.7rem,\s*1fr\)\);/s
+    );
+    expect(styles).not.toContain(".session-floating-menu-session-controls");
+    expect(styles).toMatch(
+      /\.session-floating-menu-session-meta\s*\{[^}]*font-size:\s*0\.54rem;[^}]*text-overflow:\s*ellipsis;/s
     );
     expect(styles).toMatch(
       /\.session-floating-menu-session\.is-active\s*\{[^}]*background:\s*rgba\(94,\s*255,\s*130,\s*0\.11\);[^}]*color:\s*#d5ffd8;/s
     );
     expect(styles).toMatch(
-      /\.session-floating-menu-board\s*\{[^}]*display:\s*flex;[^}]*border:\s*1px\s+solid\s+rgba\(255,\s*211,\s*122,\s*0\.2\);[^}]*padding:\s*0\.42rem;/s
+      /\.session-floating-menu-board\s*\{[^}]*display:\s*grid;[^}]*border:\s*1px\s+solid\s+rgba\(255,\s*211,\s*122,\s*0\.2\);[^}]*padding:\s*0\.42rem;/s
     );
     expect(styles).toMatch(
       /\.session-floating-menu-board-label\s*\{[^}]*max-width:\s*100%;[^}]*color:\s*#ffe2a7;[^}]*padding:\s*0\s+0\.28rem;/s
+    );
+    expect(styles).toMatch(
+      /\.app-shell\[data-ui-tier="desktop"\]\s+\.session-floating-menu-session-name\s*\{[^}]*font-size:\s*0\.92rem;/s
+    );
+    expect(styles).toMatch(
+      /\.app-shell\[data-ui-tier="desktop"\]\s+\.session-floating-menu-panel button\s*\{[^}]*min-height:\s*30px;[^}]*font-size:\s*0\.84rem;/s
+    );
+    expect(styles).toMatch(
+      /\.app-shell\[data-ui-tier="phone"\]\s+\.session-floating-menu-panel button\s*\{[^}]*min-height:\s*22px;[^}]*font-size:\s*0\.5rem;/s
     );
     expect(styles).toMatch(
       /\.session-floating-menu-create\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto;/s
@@ -117,27 +142,48 @@ describe("client layout styles", () => {
     expect(styles).toMatch(
       /\.session-floating-menu-create\s+input\s*\{[^}]*min-width:\s*0;[^}]*font-size:\s*0\.68rem;/s
     );
+    expect(styles).toContain(".session-floating-menu-projects {");
+    expect(styles).toContain("gap: 0.32rem;");
+    expect(styles).toContain("padding: 0.45rem;");
     expect(styles).toMatch(
-      /\.session-floating-menu-timeline-item\s*\{[^}]*grid-template-columns:\s*4\.1rem\s+minmax\(0,\s*1fr\);[^}]*font-size:\s*0\.62rem;/s
-    );
-    expect(styles.indexOf(".session-floating-menu-timeline")).toBeLessThan(
-      styles.indexOf("@media (max-width: 430px)")
-    );
-  });
-
-  it("lets long tab rows scroll horizontally without showing a top scrollbar", () => {
-    expect(styles).toMatch(
-      /\.tabs-root\s*\{[^}]*min-width:\s*0;[^}]*max-width:\s*100%;[^}]*overflow:\s*hidden;/s
+      /\.session-floating-menu-projects\s+\.kanban-create-form\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto;/s
     );
     expect(styles).toMatch(
-      /\.tab-strip\s*\{[^}]*min-width:\s*0;[^}]*max-width:\s*100%;[^}]*overflow-x:\s*auto;[^}]*scrollbar-width:\s*none;/s
+      /\.session-floating-menu-projects\s+\.kanban-create-form button\s*\{[^}]*grid-column:\s*auto;/s
+    );
+    expect(styles).toContain(".session-floating-menu-project-create {");
+    expect(styles).toContain(
+      "grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.9fr) auto;"
+    );
+    expect(styles).toContain(".session-floating-menu-project-move {");
+    expect(styles).toContain(
+      "grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;"
+    );
+    expect(styles).toContain(".session-floating-menu-session-actions {");
+    expect(styles).toContain("position: fixed;");
+    expect(styles).toContain("max-width: min(26rem, calc(100vw - 1rem));");
+    expect(styles).toContain("max-height: min(48rem, 78dvh);");
+    expect(styles).toMatch(
+      /\.session-floating-menu-session-actions\s*\{[^}]*pointer-events:\s*auto;/s
     );
     expect(styles).toMatch(
-      /\.tab-item\s+button:first-child\s*\{[^}]*max-width:\s*clamp\(6rem,\s*14vw,\s*12rem\);[^}]*text-overflow:\s*ellipsis;/s
+      /\.session-floating-menu-session-actions a,\s*\.session-floating-menu-session-actions button\s*\{[^}]*cursor:\s*pointer;[^}]*text-decoration:\s*none;/s
     );
-    expect(styles).toMatch(
-      /\.tab-strip::\-webkit-scrollbar\s*\{[^}]*display:\s*none;/s
+    expect(styles).toContain(".app-shell[data-ui-tier=\"desktop\"] .session-floating-menu-session-actions {");
+    expect(styles).toContain("max-width: min(31rem, calc(100vw - 1rem));");
+    expect(styles).toContain("max-height: min(56rem, 86dvh);");
+    expect(styles).toContain(".session-floating-menu-session-actions-separator {");
+    expect(styles).toContain("border-top: 1px solid rgba(217, 226, 234, 0.12);");
+    expect(styles).toContain(".session-floating-menu-session-actions-header {");
+    expect(styles).toContain("font-size: 0.76rem;");
+    expect(styles).toContain("letter-spacing: 0.1em;");
+    expect(styles).not.toMatch(
+      /@media\s*\(max-width:\s*700px\)\s*\{[\s\S]*\.session-floating-menu-panel\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);/s
     );
+    expect(styles).toContain("grid-template-columns: minmax(5.6rem, 0.86fr) minmax(0, 1.64fr);");
+    expect(styles).toContain("width: min(96vw, calc(100vw - 0.45rem));");
+    expect(styles).toContain("max-height: min(82dvh, 32rem);");
+    expect(styles).not.toContain(".session-floating-menu-timeline");
   });
 
   it("lets long terminal status rows scroll horizontally without resizing the terminal", () => {
@@ -149,139 +195,68 @@ describe("client layout styles", () => {
     );
   });
 
-  it("uses compact tab controls so more tabs fit in the top bar", () => {
-    expect(styles).toMatch(
-      /\.tabs-root\s*\{[^}]*padding:\s*4px\s+6px\s+0;/s
-    );
-    expect(styles).toMatch(
-      /\.tab-item\s+button\s*\{[^}]*min-height:\s*28px;[^}]*padding:\s*0\s+0\.5rem;/s
-    );
-    expect(styles).toMatch(
-      /\.tab-item\s+button:first-child\s*\{[^}]*max-width:\s*clamp\(6rem,\s*14vw,\s*12rem\);/s
-    );
-    expect(styles).toMatch(
-      /\.tab-context-menu\s*\{[^}]*position:\s*fixed;/s
-    );
-    expect(styles).toMatch(
-      /\.tab-item\.is-pinned\s+\.tab-label::before\s*\{[^}]*content:\s*"★";[^}]*color:\s*#ffd37a;/s
-    );
-  });
-
   it("uses dynamic viewport height for mobile browser chrome", () => {
     expect(styles).toMatch(
       /\.app-shell\s*\{[^}]*height:\s*100dvh;/s
     );
   });
 
-  it("supports an isolated sidebar layout without the top tab strip", () => {
+  it("makes desktop cards visibly larger than the default scale", () => {
+    expect(styles).toContain("--dashboard-card-name-size: clamp(1.32rem, 0.92vw + 1.04rem, 2.08rem);");
+    expect(styles).toContain("--dashboard-card-meta-size: clamp(1rem, 0.42vw + 0.84rem, 1.25rem);");
+    expect(styles).toContain("--dashboard-card-button-size: clamp(0.96rem, 0.28vw + 0.78rem, 1.15rem);");
+    expect(styles).toContain("--dashboard-card-button-width: clamp(3.9rem, 1.75vw + 3rem, 5.4rem);");
+  });
+
+  it("makes the desktop session list more legible", () => {
     expect(styles).toMatch(
-      /\.app-shell--sidebar\s*\{[^}]*grid-template-rows:\s*1fr;/s
+      /\.app-shell\[data-ui-tier="desktop"\]\s+\.session-table tr\s*\{[^}]*gap:\s*0\.56rem;[^}]*padding:\s*0\.72rem\s+0\.78rem;/s
     );
     expect(styles).toMatch(
-      /\.app-shell--sidebar\s+\.tabs-root\s*\{[^}]*display:\s*none;/s
+      /\.app-shell\[data-ui-tier="desktop"\]\s+\.session-name\s*\{[^}]*font-size:\s*clamp\(1\.32rem,\s*0\.92vw\s+\+\s*1\.04rem,\s*2\.08rem\);/s
     );
     expect(styles).toMatch(
-      /\.app-shell--sidebar\s+\.content-root\s*\{[^}]*grid-template-columns:\s*clamp\(13rem,\s*22vw,\s*18rem\)\s+minmax\(0,\s*1fr\);/s
+      /\.app-shell\[data-ui-tier="desktop"\]\s+\.session-meta\s*\{[^}]*font-size:\s*clamp\(1rem,\s*0\.42vw\s+\+\s*0\.84rem,\s*1\.25rem\);/s
     );
     expect(styles).toMatch(
-      /\.app-shell--sidebar\.app-shell--kanban-view\s+\.content-root\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);/s
+      /\.app-shell\[data-ui-tier="desktop"\]\s+\.session-path\s*\{[^}]*font-size:\s*clamp\(0\.92rem,\s*0\.3vw\s+\+\s*0\.78rem,\s*1\.08rem\);/s
     );
     expect(styles).toMatch(
-      /\.app-shell--sidebar\.app-shell--kanban-view\s+\.session-sidebar-root\s*\{[^}]*display:\s*none;/s
+      /\.app-shell\[data-ui-tier="desktop"\]\s+\.session-preview\s*\{[^}]*min-height:\s*4\.1rem;[^}]*font-size:\s*clamp\(0\.88rem,\s*0\.3vw\s+\+\s*0\.76rem,\s*1\.08rem\);/s
+    );
+  });
+
+  it("makes the desktop terminal rail and status bar easier to read", () => {
+    expect(styles).toMatch(
+      /\.app-shell\[data-ui-tier="desktop"\]\s+\.terminal-session-rail\s*\{[^}]*min-height:\s*44px;[^}]*padding:\s*0\.56rem\s+4\.8rem\s+0\.56rem\s+0\.88rem;/s
     );
     expect(styles).toMatch(
-      /\.session-sidebar-root\s*\{[^}]*display:\s*none;/s
+      /\.app-shell\[data-ui-tier="desktop"\]\s+\.terminal-session-rail-project\s*\{[^}]*font-size:\s*0\.94rem;/s
     );
     expect(styles).toMatch(
-      /\.app-shell--sidebar\s+\.session-sidebar-root\s*\{[^}]*display:\s*block;/s
+      /\.app-shell\[data-ui-tier="desktop"\]\s+\.terminal-session-rail-session,\s*\.app-shell\[data-ui-tier="desktop"\]\s+\.terminal-session-rail-overflow\s*\{[^}]*font-size:\s*0\.94rem;/s
     );
     expect(styles).toMatch(
-      /\.app-shell--sidebar\.is-sidebar-collapsed\s+\.content-root\s*\{[^}]*grid-template-columns:\s*3\.35rem\s+minmax\(0,\s*1fr\);/s
+      /\.app-shell\[data-ui-tier="desktop"\]\s+\.terminal-session-rail-action\s*\{[^}]*font-size:\s*0\.82rem;/s
     );
     expect(styles).toMatch(
-      /\.session-sidebar\.is-collapsed\s+\.session-sidebar-text\s*\{[^}]*display:\s*none;/s
+      /\.app-shell\[data-ui-tier="desktop"\]\s+\.terminal-status-bar\s*\{[^}]*height:\s*42px;[^}]*font-size:\s*14\.5px;/s
     );
     expect(styles).toMatch(
-      /\.session-sidebar\.is-collapsed\s+\.session-sidebar-collapse-hidden\s*\{[^}]*display:\s*none;/s
+      /\.app-shell\[data-ui-tier="desktop"\]\s+\.terminal-status-action\s*\{[^}]*min-height:\s*32px;[^}]*font-size:\s*13\.25px;/s
     );
+  });
+
+  it("keeps the legacy sidebar layout disabled", () => {
     expect(styles).toMatch(
-      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.app-shell--sidebar\s+\.session-sidebar\.is-collapsed\s+\.session-sidebar-text\s*\{[^}]*display:\s*inline-flex;/s
+      /\.session-sidebar-root,\s*\.session-sidebar,\s*\.mobile-sidebar-launcher,\s*\.mobile-sidebar-logo,\s*\.mobile-sidebar-count\s*\{[^}]*display:\s*none\s*!important;[^}]*visibility:\s*hidden\s*!important;[^}]*pointer-events:\s*none\s*!important;/s
     );
-    expect(styles).toMatch(
-      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.app-shell--sidebar\s+\.session-sidebar\.is-collapsed\s+\.session-sidebar-collapse-hidden\s*\{[^}]*display:\s*flex;/s
-    );
-    expect(styles).toMatch(
-      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.app-shell--sidebar\s+\.session-sidebar\.is-collapsed\s+\.session-sidebar-icon\s*\{[^}]*display:\s*none;/s
-    );
-    expect(styles).toMatch(
-      /\.session-sidebar-icon\s*\{[^}]*display:\s*none;/s
-    );
-    expect(styles).toMatch(
-      /\.session-sidebar\.is-collapsed\s+\.session-sidebar-icon\s*\{[^}]*display:\s*grid;/s
-    );
-    expect(styles).toMatch(
-      /\.session-sidebar-item\.is-pinned\s*\{[^}]*border-color:\s*rgba\(255,\s*211,\s*122,\s*0\.58\);[^}]*box-shadow:\s*inset\s+3px\s+0\s+0\s+#ffd37a;/s
-    );
-    expect(styles).toMatch(
-      /\.session-sidebar-group-title\s*\{[^}]*letter-spacing:\s*0\.11em;[^}]*text-transform:\s*uppercase;/s
-    );
-    expect(styles).toMatch(
-      /\.session-sidebar-group\.is-pinned\s+\.session-sidebar-group-title\s*\{[^}]*color:\s*#ffd37a;/s
-    );
-    expect(styles).toMatch(
-      /\.session-sidebar-item\.is-muted\s*\{[^}]*border-color:\s*rgba\(143,\s*217,\s*255,\s*0\.38\);[^}]*box-shadow:\s*inset\s+3px\s+0\s+0\s+#8fd9ff;[^}]*opacity:\s*0\.9;/s
-    );
-    expect(styles).toMatch(
-      /\.session-sidebar-group\.is-muted\s+\.session-sidebar-group-title\s*\{[^}]*color:\s*rgba\(217,\s*226,\s*234,\s*0\.5\);/s
-    );
-    expect(styles).toMatch(
-      /\.session-sidebar-pin\[aria-pressed="true"\]\s*\{[^}]*color:\s*#ffd37a;/s
-    );
-    expect(styles).toMatch(
-      /\.session-sidebar-mute\[aria-pressed="true"\]\s*\{[^}]*background:\s*rgba\(143,\s*217,\s*255,\s*0\.14\);[^}]*color:\s*#8fd9ff;/s
-    );
-    expect(styles).toMatch(
-      /\.session-sidebar-badge\.is-muted\s*\{[^}]*color:\s*#8fd9ff;/s
-    );
-    expect(styles).toMatch(
-      /\.session-sidebar-tool-button\[data-action="refresh-sidebar"\]\s*\{[^}]*font-size:\s*1\.05rem;/s
-    );
-    expect(styles).toMatch(
-      /\.session-sidebar\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;/s
-    );
-    expect(styles).toMatch(
-      /\.session-sidebar-kanban-projects\s*\{[^}]*max-height:\s*min\(10rem,\s*24vh\);[^}]*overflow:\s*auto;/s
-    );
-    expect(styles).toMatch(
-      /\.session-sidebar-kanban-item\s*\{[^}]*display:\s*grid;[^}]*gap:\s*0\.18rem;/s
-    );
-    expect(styles).toMatch(
-      /\.session-sidebar-kanban-sessions\s*\{[^}]*display:\s*flex;[^}]*flex-wrap:\s*wrap;/s
-    );
-    expect(styles).toMatch(
-      /\.session-sidebar-kanban-session\s*\{[^}]*font-size:\s*0\.62rem;[^}]*text-overflow:\s*ellipsis;/s
-    );
-    expect(styles).toMatch(
-      /\.session-sidebar-kanban-session\.is-active\s*\{[^}]*background:\s*rgba\(94,\s*255,\s*130,\s*0\.11\);[^}]*color:\s*#d5ffd8;/s
-    );
-    expect(styles).toMatch(
-      /\.session-sidebar-list\s*\{[^}]*flex:\s*1\s+1\s+auto;[^}]*overflow:\s*auto;/s
-    );
-    expect(styles).toMatch(
-      /\.session-sidebar-timeline\s*\{[^}]*border-top:\s*1px\s+solid\s+rgba\(217,\s*226,\s*234,\s*0\.1\);/s
-    );
-    expect(styles).toMatch(
-      /\.session-sidebar-toolbar\s*\{[^}]*margin-top:\s*0\.45rem;[^}]*border-top:\s*1px\s+solid\s+rgba\(217,\s*226,\s*234,\s*0\.1\);/s
-    );
-    expect(styles).toMatch(
-      /\.session-sidebar-header-actions\s*\{[^}]*display:\s*inline-flex;[^}]*gap:\s*0\.25rem;/s
-    );
-    expect(styles).toMatch(
-      /\.session-sidebar-action-center\s*\{[^}]*min-width:\s*1\.75rem;[^}]*min-height:\s*1\.4rem;/s
-    );
-    expect(styles).toMatch(
-      /\.session-sidebar-action-center\.is-active\s*\{[^}]*border-color:\s*rgba\(255,\s*211,\s*122,\s*0\.66\);/s
-    );
+    expect(styles).not.toContain(".is-sidebar-collapsed");
+    expect(styles).not.toContain(".is-mobile-sidebar-open");
+    expect(styles).not.toContain(".session-sidebar-header");
+    expect(styles).not.toContain(".session-sidebar-item");
+    expect(styles).not.toContain(".session-sidebar-kanban");
+    expect(styles).not.toContain(".session-sidebar-action-center");
   });
 
   it("styles the action center as a compact overlay", () => {
@@ -294,6 +269,12 @@ describe("client layout styles", () => {
     expect(styles).toMatch(
       /\.action-center-list\s*\{[^}]*overflow:\s*auto;/s
     );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.action-center-backdrop\s*\{[^}]*align-items:\s*start;[^}]*padding-top:\s*calc\(0\.7rem\s*\+\s*env\(safe-area-inset-top\)\);/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.action-center-panel\s*\{[^}]*align-self:\s*start;[^}]*width:\s*min\(26rem,\s*calc\(100vw\s*-\s*1rem\)\);[^}]*max-height:\s*min\(52dvh,\s*24rem\);/s
+    );
   });
 
   it("styles the kanban route as project and agent cards", () => {
@@ -302,6 +283,12 @@ describe("client layout styles", () => {
     );
     expect(styles).toMatch(
       /\.kanban-create-form\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\);/s
+    );
+    expect(styles).toMatch(
+      /\.kanban-create-panel\s*\{[^}]*margin-bottom:\s*0\.75rem;[^}]*border:\s*1px\s+solid\s+var\(--border-soft\);/s
+    );
+    expect(styles).toMatch(
+      /\.kanban-create-summary\s*\{[^}]*display:\s*flex;[^}]*min-height:\s*2\.1rem;[^}]*cursor:\s*pointer;/s
     );
     expect(styles).toMatch(
       /\.kanban-template\s*\{[^}]*grid-column:\s*1\s*\/\s*-1;/s
@@ -313,10 +300,19 @@ describe("client layout styles", () => {
       /\.kanban-project-list\s*\{[^}]*columns:\s*18rem;[^}]*column-gap:\s*0\.6rem;/s
     );
     expect(styles).toMatch(
+      /\.kanban-project-list\s*\{[^}]*align-items:\s*start;/s
+    );
+    expect(styles).toMatch(
       /\.kanban-project-card\s*\{[^}]*break-inside:\s*avoid;[^}]*display:\s*inline-grid;[^}]*width:\s*100%;/s
     );
     expect(styles).toMatch(
       /\.kanban-agent-card\s*\{[^}]*display:\s*grid;[^}]*border:\s*1px\s+solid\s+rgba\(217,\s*226,\s*234,\s*0\.12\);/s
+    );
+    expect(styles).toMatch(
+      /\.kanban-agent-card\.is-offline\s*\{[^}]*border-style:\s*dashed;[^}]*opacity:\s*0\.58;/s
+    );
+    expect(styles).toMatch(
+      /\.kanban-agent-list\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(min\(16rem,\s*100%\),\s*16rem\)\);[^}]*justify-content:\s*start;/s
     );
     expect(styles).toMatch(
       /\.kanban-agent-actions\s*\{[^}]*display:\s*flex;[^}]*justify-content:\s*flex-end;/s
@@ -340,7 +336,7 @@ describe("client layout styles", () => {
       /\.kanban-ungrouped\s*\{[^}]*display:\s*grid;[^}]*margin-bottom:\s*0\.75rem;/s
     );
     expect(styles).toMatch(
-      /\.kanban-ungrouped-list\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(min\(100%,\s*15rem\),\s*1fr\)\);/s
+      /\.kanban-ungrouped-list\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(min\(15rem,\s*100%\),\s*15rem\)\);[^}]*justify-content:\s*start;/s
     );
     expect(styles).toMatch(
       /\.kanban-ungrouped-add-form\s*\{[^}]*display:\s*flex;[^}]*min-width:\s*0;/s
@@ -348,76 +344,148 @@ describe("client layout styles", () => {
     expect(styles).toMatch(
       /\.kanban-add-session-form\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto;/s
     );
-  });
-
-  it("turns sidebar mode into a mobile drawer instead of squeezing the terminal", () => {
     expect(styles).toMatch(
-      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.app-shell--sidebar\s+\.content-root,\s*\.app-shell--sidebar\.is-sidebar-collapsed\s+\.content-root\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);/s
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.kanban-header\s*\{[^}]*padding:\s*0\.38rem\s+0\.48rem;/s
     );
     expect(styles).toMatch(
-      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.app-shell--sidebar\s+\.session-sidebar-root\s*\{[^}]*position:\s*fixed;[^}]*inset:\s*0;[^}]*pointer-events:\s*none;/s
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.kanban-header\s+p\s*\{[^}]*display:\s*none;/s
     );
     expect(styles).toMatch(
-      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.app-shell--sidebar\s+\.session-sidebar\s*\{[^}]*width:\s*min\(86vw,\s*20rem\);[^}]*background:\s*linear-gradient\(180deg,\s*rgba\(28,\s*36,\s*45,\s*0\.98\),\s*rgba\(8,\s*12,\s*16,\s*0\.98\)\);[^}]*transform:\s*translateX\(0\);/s
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.kanban-create-form\s*\{[^}]*gap:\s*0\.28rem;[^}]*padding:\s*0\.42rem;/s
     );
     expect(styles).toMatch(
-      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.app-shell--sidebar:not\(\.is-mobile-sidebar-open\)\s+\.session-sidebar\s*\{[^}]*transform:\s*translateX\(-100%\);/s
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.kanban-create-summary\s*\{[^}]*min-height:\s*1\.8rem;[^}]*padding:\s*0\.22rem\s+0\.38rem;/s
     );
     expect(styles).toMatch(
-      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.app-shell--sidebar\s+\.panels-root\s*\{[^}]*grid-column:\s*1;/s
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.kanban-template-list\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/s
     );
     expect(styles).toMatch(
-      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.mobile-sidebar-launcher\s*\{[^}]*display:\s*grid;[^}]*pointer-events:\s*auto;/s
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.kanban-project-card,\s*\.kanban-ungrouped\s*\{[^}]*padding:\s*0\.42rem;/s
     );
     expect(styles).toMatch(
-      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.session-sidebar-list\s*\{[^}]*overflow:\s*auto;/s
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.kanban-project-list\s*\{[^}]*display:\s*grid;[^}]*columns:\s*auto;[^}]*gap:\s*0\.42rem;/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.kanban-project-header\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto\s+auto;/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.kanban-project-actions\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*auto\s+minmax\(0,\s*1fr\);/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.kanban-add-session-form\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto;[^}]*min-width:\s*0;/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.kanban-agent-card\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto;[^}]*padding:\s*0\.28rem\s+0\.32rem;/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.kanban-agent-actions\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\);/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.kanban-ungrouped-card\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto;[^}]*padding:\s*0\.28rem\s+0\.32rem;/s
+    );
+    expect(styles).toMatch(
+      /\.group-message-targets\s*\{[^}]*display:\s*flex;[^}]*flex-wrap:\s*wrap;/s
+    );
+    expect(styles).toMatch(
+      /\.group-message-target-pill\s*\{[^}]*display:\s*inline-flex;[^}]*border:\s*1px\s+solid\s+rgba\(217,\s*226,\s*234,\s*0\.14\);/s
+    );
+    expect(styles).toMatch(
+      /\.group-message-compose-card\s*\{[^}]*display:\s*grid;[^}]*border:\s*1px\s+solid\s+rgba\(217,\s*226,\s*234,\s*0\.12\);[^}]*border-radius:\s*10px;[^}]*padding:\s*0\.65rem;/s
+    );
+    expect(styles).toMatch(
+      /\.group-message-kind-select\s*\{[^}]*min-height:\s*2rem;[^}]*border:\s*1px\s+solid\s+rgba\(217,\s*226,\s*234,\s*0\.14\);/s
+    );
+    expect(styles).toMatch(
+      /\.group-message-body\s*\{[^}]*min-height:\s*6rem;[^}]*font-size:\s*0\.78rem;[^}]*line-height:\s*1\.35;/s
+    );
+    expect(styles).toMatch(
+      /\.group-message-send\s*\{[^}]*justify-self:\s*end;[^}]*min-width:\s*4rem;[^}]*border-radius:\s*3px;/s
     );
   });
 
   it("turns the mobile terminal status controls into an expandable sheet", () => {
     expect(styles).toMatch(
-      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.terminal-status-bar\s*\{[^}]*align-items:\s*center;[^}]*overflow:\s*visible;/s
+      /@media\s*\(max-width:\s*1200px\)\s*\{[\s\S]*\.terminal-status-bar\s*\{[^}]*align-items:\s*center;[^}]*overflow:\s*visible;/s
     );
     expect(styles).toMatch(
-      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.terminal-status-mobile-toggle\s*\{[^}]*display:\s*inline-flex;/s
+      /@media\s*\(max-width:\s*1200px\)\s*\{[\s\S]*\.terminal-status-mobile-toggle\s*\{[^}]*display:\s*inline-flex;/s
     );
     expect(styles).toMatch(
-      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.terminal-status-action-group\s*\{[^}]*display:\s*none;/s
+      /@media\s*\(max-width:\s*1200px\)\s*\{[\s\S]*\.terminal-status-action-group\s*\{[^}]*display:\s*none;/s
     );
     expect(styles).toMatch(
-      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.terminal-status-mobile-sheet\s*\{[^}]*position:\s*fixed;[^}]*bottom:\s*calc\(42px\s*\+\s*env\(safe-area-inset-bottom\)\);/s
+      /@media\s*\(max-width:\s*1200px\)\s*\{[\s\S]*\.terminal-status-mobile-sheet\s*\{[^}]*position:\s*fixed;[^}]*right:\s*0\.55rem;[^}]*bottom:\s*calc\(3rem\s*\+\s*env\(safe-area-inset-bottom\)\);[^}]*left:\s*auto;[^}]*width:\s*min\(16rem,\s*calc\(100vw\s*-\s*0\.7rem\)\);/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*1200px\)\s*\{[\s\S]*\.terminal-status-mobile-sheet\s*\{[^}]*max-height:\s*min\(40dvh,\s*18rem\);[^}]*padding:\s*0\.32rem;/s
     );
     expect(styles).toMatch(
       /\.terminal-status-action-group\[data-group="soft-keys"\]\s*\{[^}]*display:\s*none;/s
     );
     expect(styles).toMatch(
-      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.terminal-status-mobile-sheet\s+\.terminal-status-action-group\[data-group="soft-keys"\]\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(5,\s*minmax\(0,\s*1fr\)\);/s
+      /@media\s*\(max-width:\s*1200px\)\s*\{[\s\S]*\.terminal-status-mobile-sheet\s+\.terminal-status-action-group\[data-group="soft-keys"\]\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(5,\s*minmax\(0,\s*1fr\)\);/s
     );
     expect(styles).toMatch(
-      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.terminal-status-mobile-sheet\s+\.terminal-status-soft-key\s*\{[^}]*min-height:\s*36px;/s
+      /@media\s*\(max-width:\s*1200px\)\s*\{[\s\S]*\.terminal-status-mobile-sheet\s+\.terminal-status-action-group\[data-group="kanban-groups"\]\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*1fr;[^}]*gap:\s*0\.12rem;/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*1200px\)\s*\{[\s\S]*\.terminal-status-mobile-sheet\s+\.terminal-status-soft-key\s*\{[^}]*min-height:\s*24px;/s
     );
   });
 
-  it("uses an adaptive narrow-phone layout for the sidebar drawer and terminal action sheet", () => {
+  it("uses an adaptive narrow-phone layout for the top-right menu and terminal action sheet", () => {
     expect(styles).toMatch(/@media\s*\(max-width:\s*430px\)\s*\{/);
-    expect(styles).toMatch(
-      /@media\s*\(max-width:\s*430px\)\s*\{[\s\S]*\.app-shell--sidebar\s+\.session-sidebar\s*\{[^}]*width:\s*calc\(100vw\s*-\s*0\.7rem\);[^}]*max-width:\s*none;/s
-    );
     expect(styles).toMatch(
       /@media\s*\(max-width:\s*430px\)\s*\{[\s\S]*\.terminal-status-bar\s*\{[^}]*min-height:\s*38px;[^}]*padding:\s*0\s+0\.35rem;/s
     );
     expect(styles).toMatch(
-      /@media\s*\(max-width:\s*430px\)\s*\{[\s\S]*\.terminal-status-mobile-sheet\s*\{[^}]*right:\s*0\.35rem;[^}]*left:\s*0\.35rem;[^}]*padding:\s*0\.46rem;/s
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.terminal-session-rail\s*\{[^}]*overflow-x:\s*auto;[^}]*padding:\s*0\.24rem\s+3\.1rem\s+0\.24rem\s+0\.42rem;/s
     );
     expect(styles).toMatch(
-      /@media\s*\(max-width:\s*430px\)\s*\{[\s\S]*\.terminal-status-mobile-sheet\s+\.terminal-status-action-group\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(4\.8rem,\s*1fr\)\);/s
+      /@media\s*\(max-width:\s*430px\)\s*\{[\s\S]*\.terminal-session-rail\s*\{[^}]*min-height:\s*28px;[^}]*padding:\s*0\.2rem\s+2\.8rem\s+0\.2rem\s+0\.34rem;/s
     );
     expect(styles).toMatch(
-      /@media\s*\(max-width:\s*430px\)\s*\{[\s\S]*\.terminal-status-mobile-sheet\s+\.terminal-status-action-group\[data-group="soft-keys"\]\s*\{[^}]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(3\.25rem,\s*1fr\)\);/s
+      /@media\s*\(max-width:\s*430px\)\s*\{[\s\S]*\.session-floating-menu-panel\s*\{[^}]*grid-template-columns:\s*minmax\(5\.6rem,\s*0\.86fr\)\s+minmax\(0,\s*1\.64fr\);/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*430px\)\s*\{[\s\S]*\.session-floating-menu-actions-pane\s*\{[^}]*border-right:\s*1px\s+solid\s+rgba\(217,\s*226,\s*234,\s*0\.1\);[^}]*padding-right:\s*0\.12rem;/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*430px\)\s*\{[\s\S]*\.session-floating-menu-panel button\s*\{[^}]*min-height:\s*22px;[^}]*font-size:\s*0\.5rem;/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*430px\)\s*\{[\s\S]*\.session-floating-menu-section\.session-floating-menu-actions\s*\{[^}]*gap:\s*0\.09rem;/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*430px\)\s*\{[\s\S]*\.session-floating-menu-board\s*\{[^}]*grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(6\.1rem,\s*1fr\)\);/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*430px\)\s*\{[\s\S]*\.terminal-status-mobile-sheet\s*\{[^}]*right:\s*0\.35rem;[^}]*left:\s*auto;[^}]*width:\s*min\(15rem,\s*calc\(100vw\s*-\s*0\.7rem\)\);[^}]*padding:\s*0\.24rem;/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*430px\)\s*\{[\s\S]*\.terminal-status-mobile-sheet\s+\.terminal-status-action-group\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(3\.2rem,\s*1fr\)\);/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*430px\)\s*\{[\s\S]*\.terminal-status-mobile-sheet\s+\.terminal-status-action-group\[data-group="soft-keys"\]\s*\{[^}]*grid-template-columns:\s*repeat\(5,\s*minmax\(0,\s*1fr\)\);/s
+    );
+    expect(styles).toMatch(
+      /\.kanban-template-item\s*\{[^}]*padding:\s*0\.46rem;/s
+    );
+    expect(styles).toMatch(
+      /\.kanban-template-item\.is-compact\s*\{[^}]*padding:\s*0\.28rem;/s
+    );
+    expect(styles).toMatch(
+      /\.kanban-template-item\.is-compact\s+\.kanban-template-info\s+strong\s*\{[^}]*font-size:\s*0\.72rem;/s
+    );
+    expect(styles).toMatch(
+      /\.kanban-create-panel-content\[data-ui-tier="phone"\]\s+\.kanban-create-form\s+label:nth-child\(n \+ 2\),\s*\.kanban-create-panel-content\[data-ui-tier="pad"\]\s+\.kanban-create-form\s+label:nth-child\(n \+ 2\)\s*\{[^}]*display:\s*none;/s
     );
   });
 
   it("styles mobile image upload controls inside the image preview panel", () => {
+    expect(styles).toMatch(
+      /\.image-preview-backdrop\s*\{[^}]*z-index:\s*60;/s
+    );
     expect(styles).toMatch(
       /\.image-preview-upload\s*\{[^}]*display:\s*grid;[^}]*gap:\s*0\.35rem;/s
     );
@@ -593,6 +661,9 @@ describe("client layout styles", () => {
     );
     expect(styles).toMatch(
       /\.image-preview-panel\.has-image\s+\.image-preview-body\s*\{[^}]*display:\s*grid;/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.image-preview-panel\.has-image\s*\{[^}]*height:\s*min\(72dvh,\s*34rem\);/s
     );
   });
 });

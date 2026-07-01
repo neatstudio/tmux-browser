@@ -134,6 +134,70 @@ function renderDeadPaneItem(
   return card;
 }
 
+function renderHookEventItem(
+  item: Extract<ActionCenterItem, { type: "hook-event" }>,
+  options: ActionCenterPanelOptions
+) {
+  const card = document.createElement("article");
+  card.className = "action-center-item is-hook-event";
+  card.dataset.actionId = item.id;
+
+  const header = document.createElement("div");
+  header.className = "action-center-item-header";
+
+  const title = document.createElement("strong");
+  title.textContent = item.title;
+
+  const status = document.createElement("span");
+  status.textContent = `${item.source} · ${item.status}`;
+
+  header.append(title, status);
+
+  const meta = document.createElement("div");
+  meta.className = "action-center-meta";
+  meta.textContent = [item.sessionName, item.eventType, item.taskId]
+    .filter(Boolean)
+    .join(" · ");
+
+  const body = document.createElement("pre");
+  body.className = "action-center-snippet";
+  body.textContent = item.body ?? "";
+
+  const actions = document.createElement("div");
+  actions.className = "action-center-actions";
+
+  const openButton = document.createElement("button");
+  openButton.type = "button";
+  openButton.dataset.action = "open-action-session";
+  openButton.textContent = "Open";
+  openButton.addEventListener("click", () => options.onOpenSession(item.sessionName));
+  actions.append(openButton);
+
+  card.append(header, meta);
+
+  if (item.body) {
+    card.append(body);
+  }
+
+  card.append(actions);
+
+  return card;
+}
+
+function renderActionCenterItem(
+  item: ActionCenterItem,
+  options: ActionCenterPanelOptions
+) {
+  switch (item.type) {
+    case "input-prompt":
+      return renderInputPromptItem(item, options);
+    case "dead-pane":
+      return renderDeadPaneItem(item, options);
+    case "hook-event":
+      return renderHookEventItem(item, options);
+  }
+}
+
 export function renderActionCenterPanel(
   root: HTMLElement,
   options: ActionCenterPanelOptions
@@ -191,11 +255,7 @@ export function renderActionCenterPanel(
     list.className = "action-center-list";
 
     options.items.forEach((item) => {
-      list.append(
-        item.type === "input-prompt"
-          ? renderInputPromptItem(item, options)
-          : renderDeadPaneItem(item, options)
-      );
+      list.append(renderActionCenterItem(item, options));
     });
 
     panel.append(list);

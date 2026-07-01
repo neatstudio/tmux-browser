@@ -6,6 +6,7 @@ export type BrowserTab = {
 };
 
 const STORAGE_KEY = "browser-tmux-dashboard.tabs";
+const ACTIVE_TAB_STORAGE_KEY = "browser-tmux-dashboard.active-tab-id";
 
 function loadTabs(): BrowserTab[] {
   const stored =
@@ -28,19 +29,39 @@ function loadTabs(): BrowserTab[] {
   }
 }
 
+function loadActiveTabId(): string | null | undefined {
+  const stored =
+    localStorage.getItem(ACTIVE_TAB_STORAGE_KEY) ??
+    sessionStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
+
+  if (stored === null) {
+    return undefined;
+  }
+
+  if (!localStorage.getItem(ACTIVE_TAB_STORAGE_KEY)) {
+    localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, stored);
+  }
+
+  return stored === "" ? null : stored;
+}
+
 export function createTabState(options: { initialActiveTabId?: string | null } = {}) {
   let tabs = loadTabs();
+  const storedActiveTabId = loadActiveTabId();
   let activeTabId: string | null =
     options.initialActiveTabId === undefined
-      ? tabs[0]?.id ?? null
+      ? storedActiveTabId !== undefined
+        ? storedActiveTabId
+        : null
       : options.initialActiveTabId;
 
   if (activeTabId !== null && !tabs.some((tab) => tab.id === activeTabId)) {
-    activeTabId = tabs[0]?.id ?? null;
+    activeTabId = null;
   }
 
   function persist() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(tabs));
+    localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, activeTabId ?? "");
   }
 
   return {
@@ -55,6 +76,7 @@ export function createTabState(options: { initialActiveTabId?: string | null } =
 
       if (existing) {
         activeTabId = existing.id;
+        persist();
         return existing;
       }
 
@@ -118,13 +140,14 @@ export function createTabState(options: { initialActiveTabId?: string | null } =
     },
     setActiveTab(tabId: string | null) {
       activeTabId = tabId;
+      persist();
     },
     pruneTabs(validSessionNames: string[]) {
       const valid = new Set(validSessionNames);
       tabs = tabs.filter((tab) => tab.pinned || valid.has(tab.sessionName));
 
       if (activeTabId && !tabs.some((tab) => tab.id === activeTabId)) {
-        activeTabId = tabs[0]?.id ?? null;
+        activeTabId = null;
       }
 
       persist();

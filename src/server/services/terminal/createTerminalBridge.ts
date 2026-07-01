@@ -112,6 +112,7 @@ export function getTmuxExtendedKeyConfigCommands(
   terminalFeatures: string
 ): string[][] {
   const commands = [
+    ["set-option", "-g", "mouse", "off"],
     ["set-option", "-s", "extended-keys", "always"],
     ["set-option", "-s", "extended-keys-format", "csi-u"]
   ];

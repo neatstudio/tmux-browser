@@ -126,6 +126,42 @@ describe("renderActionCenterPanel", () => {
     expect(root.querySelector(".action-center-panel")).not.toBeNull();
   });
 
+  it("renders hook events as session-openable action cards", () => {
+    const root = document.createElement("div");
+    const onOpenSession = vi.fn();
+
+    renderActionCenterPanel(root, {
+      open: true,
+      items: [
+        {
+          type: "hook-event",
+          id: "hook:1",
+          sessionName: "codex",
+          source: "codex",
+          eventType: "approval-required",
+          status: "waiting",
+          title: "Need approval",
+          body: "Approve file edit?",
+          taskId: "task-1"
+        }
+      ],
+      onClose: vi.fn(),
+      onOpenSession,
+      onDismissPrompt: vi.fn(),
+      onSendPrompt: vi.fn()
+    });
+
+    expect(root.textContent).toContain("Need approval");
+    expect(root.textContent).toContain("codex");
+    expect(root.textContent).toContain("waiting");
+    expect(root.textContent).toContain("Approve file edit?");
+    root
+      .querySelector<HTMLButtonElement>("[data-action='open-action-session']")
+      ?.click();
+
+    expect(onOpenSession).toHaveBeenCalledWith("codex");
+  });
+
   it("shows an empty state while open without actions", () => {
     const root = document.createElement("div");
 

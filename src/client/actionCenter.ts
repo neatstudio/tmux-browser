@@ -1,6 +1,7 @@
 import type { SessionSummary } from "./api/sessionApi";
 import type { InputPromptNotice } from "./state/inputPromptRegistry";
 import type { TerminalInputPromptAction } from "../shared/inputPromptDetector";
+import type { TimelineEvent } from "../shared/timeline";
 
 export type ActionCenterInputPromptItem = {
   type: "input-prompt";
@@ -21,13 +22,43 @@ export type ActionCenterDeadPaneItem = {
   status: number | null;
 };
 
+export type ActionCenterHookEventItem = {
+  type: "hook-event";
+  id: string;
+  sessionName: string;
+  source: string;
+  eventType: string;
+  status: string;
+  title: string;
+  body: string | null;
+  taskId: string | null;
+};
+
 export type ActionCenterItem =
   | ActionCenterInputPromptItem
-  | ActionCenterDeadPaneItem;
+  | ActionCenterDeadPaneItem
+  | ActionCenterHookEventItem;
+
+const ACTIONABLE_HOOK_STATUSES = new Set([
+  "waiting",
+  "blocked",
+  "need-input",
+  "failed"
+]);
+
+function readMetadataString(
+  metadata: TimelineEvent["metadata"] | undefined,
+  key: string
+) {
+  const value = metadata?.[key];
+
+  return typeof value === "string" ? value : null;
+}
 
 export function deriveActionCenterItems(input: {
   prompts: InputPromptNotice[];
   sessions: SessionSummary[];
+  timelineEvents?: TimelineEvent[];
 }): ActionCenterItem[] {
   const promptItems: ActionCenterItem[] = input.prompts.map((notice) => ({
     type: "input-prompt",
@@ -71,5 +102,30 @@ export function deriveActionCenterItems(input: {
     ];
   });
 
-  return [...promptItems, ...deadPaneItems];
+  const hookItems =
+    input.timelineEvents
+      ?.filter((event) => event.type === "hook-event")
+      .flatMap<ActionCenterItem>((event) => {
+        const status = readMetadataString(event.metadata, "status") ?? "info";
+
+        if (!ACTIONABLE_HOOK_STATUSES.has(status)) {
+          return [];
+        }
+
+        return [
+          {
+            type: "hook-event",
+            id: `hook:${event.id}`,
+            sessionName: event.sessionName ?? "",
+            source: readMetadataString(event.metadata, "source") ?? "custom",
+            eventType: readMetadataString(event.metadata, "eventType") ?? "event",
+            status,
+            title: event.message,
+            body: readMetadataString(event.metadata, "body"),
+            taskId: readMetadataString(event.metadata, "taskId")
+          }
+        ];
+      }) ?? [];
+
+  return [...promptItems, ...hookItems, ...deadPaneItems];
 }

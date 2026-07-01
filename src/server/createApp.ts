@@ -6,7 +6,8 @@ import { extname, isAbsolute, relative, resolve } from "node:path";
 
 import {
   createTmuxService,
-  type TmuxService
+  type TmuxService,
+  validateSessionName
 } from "./services/tmux/createTmuxService.js";
 import { createSessionRoutes } from "./routes/sessionRoutes.js";
 import {
@@ -38,13 +39,20 @@ import { formatGroupMessage } from "./services/groupMessages/formatGroupMessage.
 import { parseGroupReplies } from "./services/groupMessages/parseGroupReplies.js";
 import { resolveGroupMessageTargets } from "./services/groupMessages/resolveGroupMessageTargets.js";
 import { createGroupMessageStore } from "./services/groupMessages/createGroupMessageStore.js";
+import { classifySessionRuntime } from "./services/groupMessages/classifySessionRuntime.js";
 import type {
   CreateGroupMessageRequest,
   GroupMessageKind,
   GroupMessageTarget
 } from "../shared/groupMessages.js";
+import type {
+  HookEvent,
+  HookEventSeverity,
+  HookEventStatus
+} from "../shared/hookEvents.js";
 
 const faviconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#15181c"/><path d="M14 14h36v10H37v28H27V24H14z" fill="#b7ffb0"/></svg>`;
+const UNGROUPED_PROJECT_NAME = "ungrouped";
 const IMAGE_MIME_TYPES = new Map([
   [".apng", "image/apng"],
   [".avif", "image/avif"],
@@ -54,6 +62,23 @@ const IMAGE_MIME_TYPES = new Map([
   [".png", "image/png"],
   [".svg", "image/svg+xml"],
   [".webp", "image/webp"]
+]);
+const HOOK_TEXT_LIMIT = 4_000;
+const HOOK_TITLE_LIMIT = 160;
+const HOOK_METADATA_LIMIT = 24;
+const HOOK_STATUSES = new Set<HookEventStatus>([
+  "waiting",
+  "blocked",
+  "need-input",
+  "running",
+  "done",
+  "failed",
+  "info"
+]);
+const HOOK_SEVERITIES = new Set<HookEventSeverity>([
+  "info",
+  "warning",
+  "error"
 ]);
 
 class HttpError extends Error {
@@ -69,6 +94,16 @@ function stripPreview<T extends { preview?: string | null }>(session: T) {
   const { preview: _preview, ...lightweightSession } = session;
 
   return lightweightSession;
+}
+
+async function listLiveSessionNames(tmuxService: TmuxService) {
+  if (tmuxService.listSessionNames) {
+    return tmuxService.listSessionNames();
+  }
+
+  return (await tmuxService.listSessions({ includePreview: false })).map(
+    (session) => session.name
+  );
 }
 
 function parseSessionNameList(value: unknown) {
@@ -153,6 +188,13 @@ function normalizeKanbanProjectPayload(body: unknown): {
     throw new HttpError("Kanban project requires name and path", 400);
   }
 
+  if (name.toLowerCase() === UNGROUPED_PROJECT_NAME) {
+    throw new HttpError(
+      "ungrouped is reserved for the virtual kanban group",
+      400
+    );
+  }
+
   return {
     project: {
       name,
@@ -162,6 +204,180 @@ function normalizeKanbanProjectPayload(body: unknown): {
     },
     selectedAgentNames
   };
+}
+
+function readString(
+  value: unknown,
+  options: { fallback?: string; maxLength?: number } = {}
+) {
+  const fallback = options.fallback ?? "";
+  const maxLength = options.maxLength ?? HOOK_TEXT_LIMIT;
+
+  if (typeof value !== "string") {
+    return fallback;
+  }
+
+  const normalized = value.trim();
+
+  if (!normalized) {
+    return fallback;
+  }
+
+  return normalized.slice(0, maxLength);
+}
+
+function readNullableString(value: unknown, maxLength = HOOK_TEXT_LIMIT) {
+  const normalized = readString(value, { maxLength });
+
+  return normalized || null;
+}
+
+function normalizeHookStatus(value: unknown): HookEventStatus {
+  const normalized = readString(value, { fallback: "info", maxLength: 40 });
+
+  return HOOK_STATUSES.has(normalized as HookEventStatus)
+    ? (normalized as HookEventStatus)
+    : "info";
+}
+
+function normalizeHookSeverity(value: unknown): HookEventSeverity {
+  const normalized = readString(value, { fallback: "info", maxLength: 40 });
+
+  return HOOK_SEVERITIES.has(normalized as HookEventSeverity)
+    ? (normalized as HookEventSeverity)
+    : "info";
+}
+
+function normalizeHookMetadata(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const metadata: Record<string, string | number | boolean | null> = {};
+
+  for (const [key, entry] of Object.entries(value).slice(0, HOOK_METADATA_LIMIT)) {
+    const normalizedKey = key.trim().slice(0, 80);
+
+    if (!normalizedKey) {
+      continue;
+    }
+
+    if (
+      typeof entry === "string" ||
+      typeof entry === "number" ||
+      typeof entry === "boolean" ||
+      entry === null
+    ) {
+      metadata[normalizedKey] =
+        typeof entry === "string" ? entry.slice(0, HOOK_TEXT_LIMIT) : entry;
+    }
+  }
+
+  return Object.keys(metadata).length > 0 ? metadata : undefined;
+}
+
+function normalizeHookEventPayload(body: unknown): HookEvent {
+  const payload =
+    body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+  const source = readString(payload.source, {
+    fallback: "custom",
+    maxLength: 40
+  });
+  const sessionName = readString(payload.sessionName, { maxLength: 128 });
+
+  try {
+    validateSessionName(sessionName);
+  } catch {
+    throw new HttpError("Invalid hook session name", 400);
+  }
+
+  const eventType = readString(payload.eventType, {
+    fallback: "event",
+    maxLength: 80
+  });
+  const status = normalizeHookStatus(payload.status);
+  const title = readString(payload.title, {
+    fallback: `${source} ${eventType}`,
+    maxLength: HOOK_TITLE_LIMIT
+  });
+
+  return {
+    source,
+    sessionName,
+    eventType,
+    status,
+    title,
+    body: readNullableString(payload.body),
+    cwd: readNullableString(payload.cwd),
+    taskId: readNullableString(payload.taskId, 160),
+    severity: normalizeHookSeverity(payload.severity),
+    metadata: normalizeHookMetadata(payload.metadata)
+  };
+}
+
+function getHookBearerToken(req: express.Request) {
+  const authorization = req.get("authorization") ?? "";
+  const match = /^Bearer\s+(.+)$/i.exec(authorization);
+
+  return match?.[1] ?? req.get("x-tmux-ui-hook-token") ?? "";
+}
+
+function normalizeRemoteAddress(value: string | undefined) {
+  if (!value) {
+    return "";
+  }
+
+  const firstAddress = value.split(",")[0]?.trim() ?? "";
+
+  if (firstAddress.startsWith("::ffff:")) {
+    return firstAddress.slice("::ffff:".length);
+  }
+
+  return firstAddress;
+}
+
+function isTailscaleAddress(address: string) {
+  const parts = address.split(".").map((part) => Number(part));
+
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part))) {
+    return false;
+  }
+
+  const [first, second] = parts;
+
+  return first === 100 && second !== undefined && second >= 64 && second <= 127;
+}
+
+function isLocalHookAddress(address: string) {
+  return address === "127.0.0.1" || address === "::1" || address === "localhost";
+}
+
+function getHookRemoteAddress(req: express.Request) {
+  return normalizeRemoteAddress(
+    req.get("x-forwarded-for") ??
+      req.socket.remoteAddress ??
+      req.ip
+  );
+}
+
+function isTrustedHookSource(req: express.Request) {
+  const address = getHookRemoteAddress(req);
+
+  return isLocalHookAddress(address) || isTailscaleAddress(address);
+}
+
+function assertHookAuthorized(req: express.Request, hookToken: string) {
+  if (isTrustedHookSource(req)) {
+    return;
+  }
+
+  if (!hookToken) {
+    throw new HttpError("Hook token is not configured", 503);
+  }
+
+  if (getHookBearerToken(req) !== hookToken) {
+    throw new HttpError("Invalid hook token", 401);
+  }
 }
 
 function normalizeGroupMessageTarget(value: unknown): GroupMessageTarget {
@@ -220,35 +436,6 @@ function normalizeGroupMessageRequest(body: unknown): CreateGroupMessageRequest 
   };
 }
 
-const AGENT_INPUT_COMMANDS = new Set([
-  "aider",
-  "claude",
-  "codex",
-  "cursor-agent",
-  "gemini",
-  "kiro",
-  "opencode"
-]);
-const SHELL_PRINT_COMMANDS = new Set([
-  "bash",
-  "csh",
-  "dash",
-  "fish",
-  "ksh",
-  "sh",
-  "ssh",
-  "tcsh",
-  "zsh"
-]);
-
-function normalizeForegroundCommand(command: string | null | undefined) {
-  if (!command) {
-    return null;
-  }
-
-  return command.split(/[\\/]/).pop()?.toLowerCase() ?? null;
-}
-
 function shellSingleQuote(value: string) {
   return `'${value.replace(/'/g, "'\\''")}'`;
 }
@@ -265,16 +452,16 @@ function createGroupMessageDeliveryInput(
   formattedMessage: string,
   currentCommand: string | null | undefined
 ) {
-  const command = normalizeForegroundCommand(currentCommand);
+  const runtime = classifySessionRuntime(currentCommand);
 
-  if (command && AGENT_INPUT_COMMANDS.has(command)) {
+  if (runtime.kind === "agent") {
     return {
       mode: "agent-input" as const,
       input: `${formattedMessage}\r`
     };
   }
 
-  if (command && SHELL_PRINT_COMMANDS.has(command)) {
+  if (runtime.kind === "shell") {
     return {
       mode: "shell-print" as const,
       input: `printf '%b\\n' ${shellSingleQuote(escapePrintfBody(formattedMessage))}\r`
@@ -287,13 +474,13 @@ function createGroupMessageDeliveryInput(
 }
 
 function getGroupMessageDeliveryMode(currentCommand: string | null | undefined) {
-  const command = normalizeForegroundCommand(currentCommand);
+  const runtime = classifySessionRuntime(currentCommand);
 
-  if (command && AGENT_INPUT_COMMANDS.has(command)) {
+  if (runtime.kind === "agent") {
     return "agent-input" as const;
   }
 
-  if (command && SHELL_PRINT_COMMANDS.has(command)) {
+  if (runtime.kind === "shell") {
     return "shell-print" as const;
   }
 
@@ -317,6 +504,42 @@ function getKanbanAgentSessionName(projectName: string, agentName: string) {
   }
 
   return `${normalizedProjectName}-${normalizedAgentName}`;
+}
+
+function getKanbanAgentActualSessionName(projectName: string, agent: KanbanProject["agents"][number]) {
+  return agent.sessionName ?? getKanbanAgentSessionName(projectName, agent.name);
+}
+
+function getKanbanSessionNames(projects: KanbanProject[]) {
+  return new Set(
+    projects.flatMap((project) =>
+      project.agents.map((agent) =>
+        getKanbanAgentActualSessionName(project.name, agent)
+      )
+    )
+  );
+}
+
+function createUngroupedProject(
+  sessions: Array<{ name: string }>,
+  projects: KanbanProject[]
+): KanbanProject {
+  const groupedSessionNames = getKanbanSessionNames(projects);
+
+  return {
+    name: UNGROUPED_PROJECT_NAME,
+    path: "~",
+    server: null,
+    agents: sessions
+      .map((session) => session.name)
+      .filter((sessionName) => !groupedSessionNames.has(sessionName))
+      .map((sessionName) => ({
+        kind: "session",
+        name: sessionName,
+        command: null,
+        sessionName
+      }))
+  };
 }
 
 function resolvePreviewImagePath(imagePath: string, basePath: string | undefined) {
@@ -533,6 +756,7 @@ export function createApp(options: {
   timelineStore?: TimelineStore;
   eventHub?: AppEventHub;
   preferences?: PreferenceStore;
+  hookToken?: string;
 } = {}) {
   const tmuxService = options.tmuxService ?? createTmuxService();
   const readServerStatus = options.getServerStatus ?? getServerStatus;
@@ -547,6 +771,7 @@ export function createApp(options: {
     maxTotalBytes: options.uploadMaxTotalBytes
   };
   const fetchRemoteImageBody = options.fetchRemoteImage ?? fetchRemoteImage;
+  const hookToken = options.hookToken ?? process.env.TMUX_UI_HOOK_TOKEN ?? "";
   const app = express();
   const clientDistDir = resolve(process.cwd(), "dist/client");
 
@@ -581,6 +806,44 @@ export function createApp(options: {
       typeof req.query.limit === "string" ? Number(req.query.limit) : undefined;
 
     res.json({ events: timelineStore.listEvents({ limit }) });
+  });
+
+  app.post("/api/hooks/events", (req, res, next) => {
+    try {
+      assertHookAuthorized(req, hookToken);
+      const hookEvent = normalizeHookEventPayload(req.body);
+      const timelineEvent = timelineStore.addEvent({
+        type: "hook-event",
+        sessionName: hookEvent.sessionName,
+        message: hookEvent.title,
+        metadata: {
+          source: hookEvent.source,
+          eventType: hookEvent.eventType,
+          status: hookEvent.status,
+          severity: hookEvent.severity,
+          taskId: hookEvent.taskId,
+          cwd: hookEvent.cwd,
+          body: hookEvent.body,
+          ...(hookEvent.metadata ?? {})
+        }
+      });
+      const appEvent = options.eventHub?.publish({
+        type: "hook-event",
+        ...hookEvent
+      });
+
+      res.status(202).json({
+        ok: true,
+        event: {
+          type: "hook-event",
+          ...hookEvent,
+          id: appEvent?.id ?? timelineEvent.id,
+          createdAt: appEvent?.createdAt ?? timelineEvent.createdAt
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
   });
 
   app.get("/api/preferences", (_req, res) => {
@@ -619,10 +882,8 @@ export function createApp(options: {
 
   app.get("/api/kanban/projects", async (_req, res, next) => {
     try {
-      const sessions = await tmuxService.listSessions({ includePreview: false });
-      const nextPreferences = await preferences.syncKanbanSessions(
-        sessions.map((session) => session.name)
-      );
+      const liveSessionNames = await listLiveSessionNames(tmuxService);
+      const nextPreferences = await preferences.syncKanbanSessions(liveSessionNames);
 
       res.json({ projects: nextPreferences.kanbanProjects });
     } catch (error) {
@@ -727,9 +988,11 @@ export function createApp(options: {
 
   app.get("/api/kanban/projects/:name/messages", (req, res, next) => {
     try {
-      const projectExists = preferences
-        .getPreferences()
-        .kanbanProjects.some((project) => project.name === req.params.name);
+      const projectExists =
+        req.params.name === UNGROUPED_PROJECT_NAME ||
+        preferences
+          .getPreferences()
+          .kanbanProjects.some((project) => project.name === req.params.name);
 
       if (!projectExists) {
         throw new HttpError("Kanban project not found", 404);
@@ -745,16 +1008,18 @@ export function createApp(options: {
 
   app.post("/api/kanban/projects/:name/messages", async (req, res, next) => {
     try {
-      const project = preferences
-        .getPreferences()
-        .kanbanProjects.find((candidate) => candidate.name === req.params.name);
+      const payload = normalizeGroupMessageRequest(req.body);
+      const sessions = await tmuxService.listSessions({ includePreview: false });
+      const configuredProjects = preferences.getPreferences().kanbanProjects;
+      const project =
+        req.params.name === UNGROUPED_PROJECT_NAME
+          ? createUngroupedProject(sessions, configuredProjects)
+          : configuredProjects.find((candidate) => candidate.name === req.params.name);
 
       if (!project) {
         throw new HttpError("Kanban project not found", 404);
       }
 
-      const payload = normalizeGroupMessageRequest(req.body);
-      const sessions = await tmuxService.listSessions({ includePreview: false });
       const sessionByName = new Map(
         sessions.map((session) => [session.name, session])
       );

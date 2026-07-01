@@ -7,7 +7,8 @@ export type TimelineEventType =
   | "group-message-replied"
   | "pane-split"
   | "pane-selected"
-  | "pane-killed";
+  | "pane-killed"
+  | "hook-event";
 
 export type TimelineEvent = {
   id: string;

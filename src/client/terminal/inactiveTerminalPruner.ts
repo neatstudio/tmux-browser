@@ -1,4 +1,4 @@
-type TimerHandle = ReturnType<typeof window.setTimeout>;
+type TimerHandle = number;
 
 export function createInactiveTerminalPruner(deps: {
   delayMs: number;

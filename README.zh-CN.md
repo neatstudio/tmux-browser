@@ -237,6 +237,46 @@ ssh server-a
 
 本机项目会直接在项目路径下创建 agent session，并按配置启动命令。远程项目会先在本机创建同名 wrapper session；这个 wrapper session 会 SSH 到远程服务器，并 attach 或创建远程同名 tmux session。这样浏览器仍然能从本机 tmux-ui 打开稳定 session，同时远程 agent 也有固定名称用于 resume。
 
+## Agent Hook 事件
+
+tmux-ui 支持接收 Codex、Claude 或其他 agent hook 主动上报的事件。相比扫描终端画面，hook 更适合上报等待确认、任务阻塞、命令失败等明确状态。
+
+来自 `127.0.0.1`、`::1` 或 Tailscale `100.64.0.0/10` 的 hook 请求可以免 token。其他来源需要 token；如果你希望所有环境都显式保护，仍建议设置 token：
+
+```bash
+export TMUX_UI_HOOK_TOKEN='change-me'
+tmux-ui restart
+```
+
+安装 Codex/Claude hook：
+
+```bash
+tmux-ui hooks-install
+```
+
+卸载 tmux-ui 安装的 hook：
+
+```bash
+tmux-ui hooks-uninstall
+```
+
+`hooks-install` 会合并写入 `~/.codex/hooks.json` 的 `PermissionRequest` 和 `~/.claude/settings.json` 的 `Notification(permission_prompt|idle_prompt)`，不会覆盖已有 hook。
+
+如果要手动在其他工具 hook 中调用：
+
+```bash
+echo "Approve file edit?" | \
+  TMUX_UI_HOOK_SOURCE=codex \
+  TMUX_UI_HOOK_EVENT_TYPE=approval-required \
+  TMUX_UI_HOOK_STATUS=waiting \
+  TMUX_UI_HOOK_TITLE='Need confirmation' \
+  ~/.tmux-ui/bin/tmux-ui-hook
+```
+
+脚本会优先从当前 tmux 环境推断 session 名，也可以显式传入 `TMUX_UI_SESSION_NAME=<session>`。服务端会写入 timeline，并通过全局 websocket 推送到 Action Center；`waiting`、`blocked`、`need-input`、`failed` 会作为重要 action 显示。
+
+如果服务没有监听 `127.0.0.1:3000`，在 hook 环境里额外设置 `TMUX_UI_HOOK_URL=http://100.x.y.z:3000/api/hooks/events`。
+
 ## tmux 恢复
 
 tmux-ui 可以选择性安装并管理 `tmux-resurrect` 和 `tmux-continuum`，用于在服务器重启或异常退出后恢复 tmux session。它不会放进默认 `install`，因为这个操作会修改 `~/.tmux.conf`、在 `~/.tmux/plugins` 下安装 TPM 插件，并且安装插件时需要访问 GitHub。

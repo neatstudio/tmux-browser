@@ -12,18 +12,23 @@ const terminalTestState = vi.hoisted(() => {
       open: ReturnType<typeof vi.fn>;
       onData: ReturnType<typeof vi.fn>;
       attachCustomKeyEventHandler: ReturnType<typeof vi.fn>;
+      focus: ReturnType<typeof vi.fn>;
       scrollLines: ReturnType<typeof vi.fn>;
       write: ReturnType<typeof vi.fn>;
       paste: ReturnType<typeof vi.fn>;
       clear: ReturnType<typeof vi.fn>;
       refresh: ReturnType<typeof vi.fn>;
       clearTextureAtlas: ReturnType<typeof vi.fn>;
+      clearSelection: ReturnType<typeof vi.fn>;
+      getSelectionPosition: ReturnType<typeof vi.fn>;
+      onSelectionChange: ReturnType<typeof vi.fn>;
       dispose: ReturnType<typeof vi.fn>;
       modes: {
         bracketedPasteMode: boolean;
       };
       buffer: {
         active: {
+          viewportY: number;
           baseY: number;
           length: number;
           getLine: ReturnType<typeof vi.fn>;
@@ -72,19 +77,46 @@ vi.mock("@xterm/xterm", () => ({
         throw new Error("webgl load failed");
       }
     });
-    open = vi.fn();
+    open = vi.fn((container: HTMLElement) => {
+      const xterm = document.createElement("div");
+      xterm.className = "xterm";
+      Object.defineProperty(xterm, "getBoundingClientRect", {
+        value: () => ({
+          left: 0,
+          top: 0,
+          width: 800,
+          height: 240,
+          right: 800,
+          bottom: 240,
+          x: 0,
+          y: 0,
+          toJSON: () => ({})
+        }),
+        configurable: true
+      });
+      container.append(xterm);
+    });
     onData = vi.fn();
     attachCustomKeyEventHandler = vi.fn(
       (handler: (event: KeyboardEvent) => boolean) => {
         this.customKeyEventHandler = handler;
       }
     );
+    focus = vi.fn();
     scrollLines = vi.fn();
     write = vi.fn();
     paste = vi.fn();
     clear = vi.fn();
     refresh = vi.fn();
     clearTextureAtlas = vi.fn();
+    clearSelection = vi.fn();
+    getSelectionPosition = vi.fn();
+    onSelectionChange = vi.fn((handler: () => void) => {
+      this.selectionChangeHandler = handler;
+      return {
+        dispose: vi.fn()
+      };
+    });
     dispose = vi.fn();
     modes = {
       bracketedPasteMode: false
@@ -92,6 +124,7 @@ vi.mock("@xterm/xterm", () => ({
     visibleLines = ["", "", ""];
     buffer = {
       active: {
+        viewportY: 0,
         baseY: 0,
         length: 3,
         getLine: vi.fn((index: number) => {
@@ -108,6 +141,7 @@ vi.mock("@xterm/xterm", () => ({
       }
     };
     customKeyEventHandler?: (event: KeyboardEvent) => boolean;
+    selectionChangeHandler?: () => void;
 
     constructor(options: Record<string, unknown>) {
       this.options = options;
@@ -177,6 +211,7 @@ import {
   createTerminalTabController
 } from "../../../src/client/terminal/createTerminalTab";
 import { createTabState } from "../../../src/client/state/tabState";
+import type { PaneSummary } from "../../../src/client/api/sessionApi";
 
 function createTouchGestureEvent(type: string, clientY: number) {
   const event = new Event(type, {
@@ -214,6 +249,29 @@ function createPointerGestureEvent(type: string, clientY: number) {
   });
 
   return event;
+}
+
+function createTerminalPane(overrides: Partial<PaneSummary>): PaneSummary {
+  return {
+    sessionName: "build",
+    paneId: "%1",
+    windowIndex: 0,
+    windowName: "main",
+    windowActive: true,
+    paneIndex: 0,
+    paneActive: false,
+    currentCommand: "zsh",
+    runtimeKind: "shell",
+    currentPath: "/tmp/project",
+    paneDead: false,
+    paneDeadStatus: null,
+    panePid: 100,
+    paneLeft: 0,
+    paneTop: 0,
+    paneWidth: 40,
+    paneHeight: 24,
+    ...overrides
+  };
 }
 
 describe("createTerminalTabController", () => {
@@ -1769,6 +1827,114 @@ describe("createTerminalTab", () => {
     mounted.destroy();
   });
 
+  it("sends a plain Ctrl-C byte instead of a CSI-u sequence", () => {
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    };
+
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        constructor() {
+          return socket;
+        }
+      }
+    );
+
+    createTerminalTab({
+      container: document.createElement("div"),
+      tabId: "tab-1",
+      sessionName: "build",
+      onClosed: vi.fn()
+    });
+    socket.send.mockClear();
+
+    const handled = terminalTestState.terminals[0]?.instance.customKeyEventHandler?.({
+      type: "keydown",
+      key: "c",
+      ctrlKey: true
+    } as KeyboardEvent);
+
+    expect(handled).toBe(false);
+    expect(socket.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: "input", data: "\x03" })
+    );
+  });
+
+  it("does not intercept IME composition key events", () => {
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    };
+
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        constructor() {
+          return socket;
+        }
+      }
+    );
+
+    const mounted = createTerminalTab({
+      container: document.createElement("div"),
+      tabId: "tab-1",
+      sessionName: "build",
+      onClosed: vi.fn()
+    });
+    socket.send.mockClear();
+
+    const handled = terminalTestState.terminals[0]?.instance.customKeyEventHandler?.({
+      type: "keydown",
+      key: "Enter",
+      shiftKey: true,
+      isComposing: true
+    } as KeyboardEvent);
+
+    expect(handled).toBe(true);
+    expect(socket.send).not.toHaveBeenCalled();
+
+    mounted.destroy();
+  });
+
+  it("exposes an imperative focus method for restoring mobile keyboard input", () => {
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    };
+
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        constructor() {
+          return socket;
+        }
+      }
+    );
+
+    const mounted = createTerminalTab({
+      container: document.createElement("div"),
+      tabId: "tab-1",
+      sessionName: "build",
+      onClosed: vi.fn()
+    });
+    const terminal = terminalTestState.terminals[0]?.instance;
+    terminal?.focus.mockClear();
+
+    mounted.focus();
+
+    expect(terminal?.focus).toHaveBeenCalledOnce();
+
+    mounted.destroy();
+  });
+
   it("routes plain wheel gestures to tmux history before xterm can treat them as input", () => {
     const socket = {
       send: vi.fn(),
@@ -1934,6 +2100,77 @@ describe("createTerminalTab", () => {
     mounted.destroy();
   });
 
+  it("focuses the terminal after a mobile tap", () => {
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    };
+
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        constructor() {
+          return socket;
+        }
+      }
+    );
+
+    const container = document.createElement("div");
+    const mounted = createTerminalTab({
+      container,
+      tabId: "tab-1",
+      sessionName: "build",
+      onClosed: vi.fn()
+    });
+    const terminal = terminalTestState.terminals[0]?.instance;
+    terminal?.focus.mockClear();
+
+    container.dispatchEvent(createTouchGestureEvent("touchstart", 160));
+    container.dispatchEvent(createTouchGestureEvent("touchend", 160));
+
+    expect(terminal?.focus).toHaveBeenCalledOnce();
+
+    mounted.destroy();
+  });
+
+  it("does not focus the terminal after a mobile history scroll gesture", () => {
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    };
+
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        constructor() {
+          return socket;
+        }
+      }
+    );
+
+    const container = document.createElement("div");
+    const mounted = createTerminalTab({
+      container,
+      tabId: "tab-1",
+      sessionName: "build",
+      onClosed: vi.fn()
+    });
+    const terminal = terminalTestState.terminals[0]?.instance;
+    terminal?.focus.mockClear();
+
+    container.dispatchEvent(createTouchGestureEvent("touchstart", 160));
+    container.dispatchEvent(createTouchGestureEvent("touchmove", 220));
+    container.dispatchEvent(createTouchGestureEvent("touchend", 220));
+
+    expect(terminal?.focus).not.toHaveBeenCalled();
+
+    mounted.destroy();
+  });
+
   it("lets browser scroll handle touch gestures in browser scroll mode", () => {
     const socket = {
       send: vi.fn(),
@@ -2017,6 +2254,682 @@ describe("createTerminalTab", () => {
     expect(socket.send).toHaveBeenCalledWith(
       JSON.stringify({ type: "scroll", lines: -5 })
     );
+
+    mounted.destroy();
+  });
+
+  it("focuses the terminal after a mouse click on the pane", () => {
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    };
+
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        constructor() {
+          return socket;
+        }
+      }
+    );
+
+    const container = document.createElement("div");
+    const mounted = createTerminalTab({
+      container,
+      tabId: "tab-1",
+      sessionName: "build",
+      onClosed: vi.fn()
+    });
+    const terminal = terminalTestState.terminals[0]?.instance;
+    terminal?.focus.mockClear();
+
+    const mouseDown = new MouseEvent("mousedown", {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+      clientX: 120,
+      clientY: 160
+    });
+    const mouseUp = new MouseEvent("mouseup", {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+      clientX: 121,
+      clientY: 160
+    });
+
+    container.dispatchEvent(mouseDown);
+    container.dispatchEvent(mouseUp);
+
+    expect(terminal?.focus).toHaveBeenCalledOnce();
+
+    mounted.destroy();
+  });
+
+  it("notifies the caller after a mouse click so the tmux pane can be selected", () => {
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    };
+
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        constructor() {
+          return socket;
+        }
+      }
+    );
+
+    const container = document.createElement("div");
+    Object.defineProperty(container, "getBoundingClientRect", {
+      value: vi.fn(() => ({
+        left: 100,
+        top: 20,
+        width: 800,
+        height: 400
+      })),
+      configurable: true
+    });
+    const onPaneClick = vi.fn();
+    const mounted = createTerminalTab({
+      container,
+      tabId: "tab-1",
+      sessionName: "build",
+      onClosed: vi.fn(),
+      onPaneClick
+    });
+
+    container.dispatchEvent(
+      new MouseEvent("mousedown", {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientX: 620,
+        clientY: 140
+      })
+    );
+    container.dispatchEvent(
+      new MouseEvent("mouseup", {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientX: 620,
+        clientY: 140
+      })
+    );
+
+    expect(onPaneClick).toHaveBeenCalledWith({
+      clientX: 620,
+      clientY: 140,
+      rect: {
+        left: 100,
+        top: 20,
+        width: 800,
+        height: 400
+      },
+      cols: 120,
+      rows: 40
+    });
+
+    mounted.destroy();
+  });
+
+  it("does not refocus the terminal while dragging to select text", () => {
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    };
+
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        constructor() {
+          return socket;
+        }
+      }
+    );
+
+    const container = document.createElement("div");
+    const mounted = createTerminalTab({
+      container,
+      tabId: "tab-1",
+      sessionName: "build",
+      onClosed: vi.fn()
+    });
+    const terminal = terminalTestState.terminals[0]?.instance;
+    terminal?.focus.mockClear();
+
+    const mouseDown = new MouseEvent("mousedown", {
+      bubbles: true,
+      cancelable: true,
+      clientX: 100,
+      clientY: 100,
+      detail: 1
+    });
+    const mouseMove = new MouseEvent("mousemove", {
+      bubbles: true,
+      cancelable: true,
+      clientX: 140,
+      clientY: 100
+    });
+    const mouseUp = new MouseEvent("mouseup", {
+      bubbles: true,
+      cancelable: true,
+      clientX: 140,
+      clientY: 100
+    });
+
+    container.dispatchEvent(mouseDown);
+    container.dispatchEvent(mouseMove);
+    container.dispatchEvent(mouseUp);
+
+    expect(terminal?.focus).not.toHaveBeenCalled();
+
+    mounted.destroy();
+  });
+
+  it("does not notify pane selection while dragging to select text", () => {
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    };
+
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        constructor() {
+          return socket;
+        }
+      }
+    );
+
+    const onPaneClick = vi.fn();
+    const container = document.createElement("div");
+    const mounted = createTerminalTab({
+      container,
+      tabId: "tab-1",
+      sessionName: "build",
+      onClosed: vi.fn(),
+      onPaneClick
+    });
+
+    container.dispatchEvent(
+      new MouseEvent("mousedown", {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientX: 100,
+        clientY: 100
+      })
+    );
+    container.dispatchEvent(
+      new MouseEvent("mousemove", {
+        bubbles: true,
+        cancelable: true,
+        clientX: 140,
+        clientY: 100
+      })
+    );
+    container.dispatchEvent(
+      new MouseEvent("mouseup", {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientX: 140,
+        clientY: 100
+      })
+    );
+
+    expect(onPaneClick).not.toHaveBeenCalled();
+
+    mounted.destroy();
+  });
+
+  it("copies multiline text from the starting pane without including neighboring panes", () => {
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    };
+
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        constructor() {
+          return socket;
+        }
+      }
+    );
+
+    const container = document.createElement("div");
+    Object.defineProperty(container, "getBoundingClientRect", {
+      value: () => ({
+        left: 0,
+        top: 0,
+        width: 800,
+        height: 240,
+        right: 800,
+        bottom: 240,
+        x: 0,
+        y: 0,
+        toJSON: () => ({})
+      }),
+      configurable: true
+    });
+    const clipboardText = vi.fn();
+    const mounted = createTerminalTab({
+      container,
+      tabId: "tab-1",
+      sessionName: "build",
+      onClosed: vi.fn(),
+      getPaneSummaries: () => [
+        createTerminalPane({
+          paneId: "%1",
+          paneIndex: 0,
+          paneActive: false,
+          paneLeft: 0,
+          paneWidth: 40
+        }),
+        createTerminalPane({
+          paneId: "%2",
+          paneIndex: 1,
+          paneActive: true,
+          paneLeft: 40,
+          paneWidth: 40
+        })
+      ]
+    });
+
+    const terminal = terminalTestState.terminals[0]?.instance;
+    const leftText = "L".repeat(40);
+    const rightRows = [
+      "0123456789abcdefghijklmnopqrstuvwxyz....",
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789....",
+      "right-pane-last-row-content.............."
+    ];
+    terminal!.buffer.active.baseY = 99;
+    terminal!.buffer.active.viewportY = 10;
+    terminal!.buffer.active.length = 13;
+    terminal!.cols = 80;
+    terminal!.rows = 24;
+    terminal!.buffer.active.getLine.mockImplementation((index: number) => {
+      const line = `${leftText}${rightRows[index - 10] ?? ""}`;
+
+      return {
+        translateToString: vi.fn(
+          (_trimRight?: boolean, startColumn?: number, endColumn?: number) =>
+            line.slice(startColumn ?? 0, endColumn ?? line.length)
+        )
+      };
+    });
+
+    container.dispatchEvent(
+      new MouseEvent("mousedown", {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientX: 460,
+        clientY: 5
+      })
+    );
+    document.dispatchEvent(
+      new MouseEvent("mousemove", {
+        bubbles: true,
+        cancelable: true,
+        buttons: 1,
+        clientX: 500,
+        clientY: 15
+      })
+    );
+    document.dispatchEvent(
+      new MouseEvent("mousemove", {
+        bubbles: true,
+        cancelable: true,
+        buttons: 1,
+        clientX: 580,
+        clientY: 15
+      })
+    );
+
+    const selectionOverlay = container.querySelector(
+      ".terminal-pane-selection-overlay"
+    );
+
+    expect(selectionOverlay).not.toBeNull();
+    expect(selectionOverlay?.parentElement?.classList.contains("xterm")).toBe(
+      true
+    );
+    expect(selectionOverlay?.querySelectorAll(".terminal-pane-selection-line"))
+      .toHaveLength(2);
+
+    document.dispatchEvent(
+      new MouseEvent("mouseup", {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientX: 580,
+        clientY: 15
+      })
+    );
+
+    const copyEvent = new Event("copy", {
+      bubbles: true,
+      cancelable: true
+    });
+    Object.defineProperty(copyEvent, "clipboardData", {
+      value: {
+        setData: clipboardText
+      },
+      configurable: true
+    });
+
+    container.dispatchEvent(copyEvent);
+
+    expect(clipboardText).toHaveBeenCalledWith(
+      "text/plain",
+      [
+        rightRows[0].slice(6),
+        rightRows[1].slice(0, 18)
+      ].join("\n")
+    );
+    expect(copyEvent.defaultPrevented).toBe(true);
+    expect(terminal?.clearSelection).not.toHaveBeenCalled();
+
+    mounted.destroy();
+  });
+
+  it("clears a multi-line selection that starts and ends in one pane but covers another pane", () => {
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    };
+
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        constructor() {
+          return socket;
+        }
+      }
+    );
+
+    const mounted = createTerminalTab({
+      container: document.createElement("div"),
+      tabId: "tab-1",
+      sessionName: "build",
+      onClosed: vi.fn(),
+      getPaneSummaries: () => [
+        {
+          sessionName: "build",
+          paneId: "%1",
+          windowIndex: 0,
+          windowName: "main",
+          windowActive: true,
+          paneIndex: 0,
+          paneActive: false,
+          currentCommand: "zsh",
+          runtimeKind: "shell",
+          currentPath: "/tmp/project",
+          paneDead: false,
+          paneDeadStatus: null,
+          panePid: 100,
+          paneLeft: 0,
+          paneTop: 0,
+          paneWidth: 40,
+          paneHeight: 24
+        },
+        {
+          sessionName: "build",
+          paneId: "%2",
+          windowIndex: 0,
+          windowName: "main",
+          windowActive: true,
+          paneIndex: 1,
+          paneActive: true,
+          currentCommand: "zsh",
+          runtimeKind: "shell",
+          currentPath: "/tmp/project",
+          paneDead: false,
+          paneDeadStatus: null,
+          panePid: 101,
+          paneLeft: 40,
+          paneTop: 0,
+          paneWidth: 40,
+          paneHeight: 24
+        }
+      ]
+    });
+
+    const terminal = terminalTestState.terminals[0]?.instance;
+    terminal!.buffer.active.viewportY = 0;
+    terminal?.getSelectionPosition.mockReturnValue({
+      start: { x: 50, y: 5 },
+      end: { x: 60, y: 7 }
+    });
+
+    terminal?.selectionChangeHandler?.();
+
+    expect(terminal?.clearSelection).toHaveBeenCalledOnce();
+
+    mounted.destroy();
+  });
+
+  it("does not intercept browser copy when there is only one pane", () => {
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    };
+
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        constructor() {
+          return socket;
+        }
+      }
+    );
+
+    const container = document.createElement("div");
+    Object.defineProperty(container, "getBoundingClientRect", {
+      value: () => ({
+        left: 0,
+        top: 0,
+        width: 800,
+        height: 240,
+        right: 800,
+        bottom: 240,
+        x: 0,
+        y: 0,
+        toJSON: () => ({})
+      }),
+      configurable: true
+    });
+    const clipboardText = vi.fn();
+    const mounted = createTerminalTab({
+      container,
+      tabId: "tab-1",
+      sessionName: "build",
+      onClosed: vi.fn(),
+      getPaneSummaries: () => [
+        createTerminalPane({
+          paneId: "%1",
+          paneIndex: 0,
+          paneActive: true,
+          paneLeft: 0,
+          paneWidth: 80
+        })
+      ]
+    });
+
+    const terminal = terminalTestState.terminals[0]?.instance;
+    terminal!.cols = 80;
+    terminal!.rows = 24;
+
+    container.dispatchEvent(
+      new MouseEvent("mousedown", {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientX: 120,
+        clientY: 5
+      })
+    );
+    document.dispatchEvent(
+      new MouseEvent("mousemove", {
+        bubbles: true,
+        cancelable: true,
+        buttons: 1,
+        clientX: 280,
+        clientY: 15
+      })
+    );
+
+    const copyEvent = new Event("copy", {
+      bubbles: true,
+      cancelable: true
+    });
+    Object.defineProperty(copyEvent, "clipboardData", {
+      value: {
+        setData: clipboardText
+      },
+      configurable: true
+    });
+
+    container.dispatchEvent(copyEvent);
+
+    expect(clipboardText).not.toHaveBeenCalled();
+    expect(copyEvent.defaultPrevented).toBe(false);
+    expect(container.querySelector(".terminal-pane-selection-overlay")).toBeNull();
+
+    mounted.destroy();
+  });
+
+  it("does not clear an existing selection when the drag leaves the starting pane", () => {
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    };
+
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        constructor() {
+          return socket;
+        }
+      }
+    );
+
+    const mounted = createTerminalTab({
+      container: document.createElement("div"),
+      tabId: "tab-1",
+      sessionName: "build",
+      onClosed: vi.fn(),
+      getPaneSummaries: () => [
+        {
+          sessionName: "build",
+          paneId: "%1",
+          windowIndex: 0,
+          windowName: "main",
+          windowActive: true,
+          paneIndex: 0,
+          paneActive: true,
+          currentCommand: "zsh",
+          runtimeKind: "shell",
+          currentPath: "/tmp/project",
+          paneDead: false,
+          paneDeadStatus: null,
+          panePid: 100,
+          paneLeft: 0,
+          paneTop: 0,
+          paneWidth: 40,
+          paneHeight: 24
+        },
+        {
+          sessionName: "build",
+          paneId: "%2",
+          windowIndex: 0,
+          windowName: "main",
+          windowActive: true,
+          paneIndex: 1,
+          paneActive: false,
+          currentCommand: "zsh",
+          runtimeKind: "shell",
+          currentPath: "/tmp/project",
+          paneDead: false,
+          paneDeadStatus: null,
+          panePid: 101,
+          paneLeft: 40,
+          paneTop: 0,
+          paneWidth: 40,
+          paneHeight: 24
+        }
+      ]
+    });
+
+    const terminal = terminalTestState.terminals[0]?.instance;
+    terminal?.clearSelection.mockClear();
+
+    const container = document.createElement("div");
+    Object.defineProperty(container, "getBoundingClientRect", {
+      value: () => ({
+        left: 0,
+        top: 0,
+        width: 800,
+        height: 240,
+        right: 800,
+        bottom: 240,
+        x: 0,
+        y: 0,
+        toJSON: () => ({})
+      }),
+      configurable: true
+    });
+
+    terminal?.getSelectionPosition.mockReturnValue({
+      start: { x: 10, y: 5 },
+      end: { x: 30, y: 5 }
+    });
+    terminal!.buffer.active.viewportY = 0;
+
+    terminal?.selectionChangeHandler?.();
+    expect(terminal?.clearSelection).not.toHaveBeenCalled();
+
+    container.dispatchEvent(
+      new MouseEvent("mousedown", {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientX: 610,
+        clientY: 100
+      })
+    );
+    document.dispatchEvent(
+      new MouseEvent("mousemove", {
+        bubbles: true,
+        cancelable: true,
+        buttons: 1,
+        clientX: 200,
+        clientY: 100
+      })
+    );
+
+    expect(terminal?.clearSelection).not.toHaveBeenCalled();
 
     mounted.destroy();
   });

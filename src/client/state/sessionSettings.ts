@@ -59,12 +59,13 @@ function normalizeSettingsRecord(
 
 export function createSessionSettingsStore(
   storage: Storage = window.localStorage,
-  api?: SessionSettingsApi
+  api?: SessionSettingsApi,
+  defaultSettings: SessionSettings = DEFAULT_SESSION_SETTINGS
 ) {
   let settingsBySession = readSettings(storage);
 
   function get(sessionName: string): SessionSettings {
-    return settingsBySession[sessionName] ?? DEFAULT_SESSION_SETTINGS;
+    return settingsBySession[sessionName] ?? defaultSettings;
   }
 
   function persist() {

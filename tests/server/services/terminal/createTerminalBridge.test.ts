@@ -37,6 +37,7 @@ describe("createTerminalBridge", () => {
         "xterm*:clipboard:ccolour:cstyle:focus:title\nscreen*:title"
       )
     ).toEqual([
+      ["set-option", "-g", "mouse", "off"],
       ["set-option", "-s", "extended-keys", "always"],
       ["set-option", "-s", "extended-keys-format", "csi-u"],
       ["set-option", "-gq", "-as", "terminal-features", ",xterm*:extkeys"]
@@ -47,6 +48,7 @@ describe("createTerminalBridge", () => {
         "xterm*:clipboard:extkeys:focus:title\nscreen*:title"
       )
     ).toEqual([
+      ["set-option", "-g", "mouse", "off"],
       ["set-option", "-s", "extended-keys", "always"],
       ["set-option", "-s", "extended-keys-format", "csi-u"]
     ]);

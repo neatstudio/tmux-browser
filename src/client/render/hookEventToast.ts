@@ -1,0 +1,91 @@
+import type { ActionCenterHookEventItem } from "../actionCenter";
+
+export type HookEventToastActions = {
+  onDismiss: (id: string) => void;
+  onOpenSession: (id: string) => void;
+  onOpenActions: (id: string) => void;
+  onSendEnter: (id: string) => void;
+};
+
+export function renderHookEventToast(
+  root: HTMLElement,
+  events: ActionCenterHookEventItem[],
+  handlers: HookEventToastActions
+) {
+  root.querySelector(".hook-event-toast")?.remove();
+
+  const event = events[0];
+
+  if (!event) {
+    return;
+  }
+
+  const toast = document.createElement("section");
+  toast.className = "hook-event-toast";
+  toast.setAttribute("role", "dialog");
+  toast.setAttribute("aria-live", "assertive");
+  toast.setAttribute("aria-label", "Agent action needed");
+
+  const header = document.createElement("div");
+  header.className = "hook-event-toast-header";
+
+  const titleWrap = document.createElement("div");
+  titleWrap.className = "hook-event-toast-title";
+
+  const title = document.createElement("strong");
+  title.textContent = event.title;
+
+  const meta = document.createElement("span");
+  meta.textContent = [
+    event.sessionName || "unknown",
+    event.status,
+    event.source
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  titleWrap.append(title, meta);
+
+  const closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.className = "hook-event-toast-close";
+  closeButton.dataset.action = "hook-toast-close";
+  closeButton.textContent = "×";
+  closeButton.setAttribute("aria-label", "Dismiss hook event");
+  closeButton.addEventListener("click", () => handlers.onDismiss(event.id));
+
+  header.append(titleWrap, closeButton);
+  toast.append(header);
+
+  if (event.body) {
+    const body = document.createElement("pre");
+    body.className = "hook-event-toast-body";
+    body.textContent = event.body;
+    toast.append(body);
+  }
+
+  const actions = document.createElement("div");
+  actions.className = "hook-event-toast-actions";
+
+  const enterButton = document.createElement("button");
+  enterButton.type = "button";
+  enterButton.dataset.action = "hook-toast-enter";
+  enterButton.textContent = "Enter";
+  enterButton.addEventListener("click", () => handlers.onSendEnter(event.id));
+
+  const openButton = document.createElement("button");
+  openButton.type = "button";
+  openButton.dataset.action = "hook-toast-open";
+  openButton.textContent = "Open";
+  openButton.addEventListener("click", () => handlers.onOpenSession(event.id));
+
+  const actionsButton = document.createElement("button");
+  actionsButton.type = "button";
+  actionsButton.dataset.action = "hook-toast-actions";
+  actionsButton.textContent = "Actions";
+  actionsButton.addEventListener("click", () => handlers.onOpenActions(event.id));
+
+  actions.append(enterButton, openButton, actionsButton);
+  toast.append(actions);
+  root.append(toast);
+}

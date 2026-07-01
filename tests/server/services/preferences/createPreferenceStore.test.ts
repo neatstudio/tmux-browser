@@ -77,6 +77,51 @@ describe("createPreferenceStore", () => {
     }
   });
 
+  it("renames kanban session bindings when a session is renamed", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "tmux-ui-preferences-"));
+    const filePath = join(dir, "preferences.json");
+
+    try {
+      const store = createPreferenceStore({ filePath });
+
+      await store.upsertKanbanProject({
+        name: "xxvisa",
+        path: "~/server/wwwroot/app/xxvisa-v2",
+        server: null,
+        agents: [
+          {
+            kind: "session",
+            name: "build",
+            command: null,
+            sessionName: "build"
+          },
+          { kind: "pm", name: "pm", command: null }
+        ]
+      });
+
+      await store.renameSession("build", "build-test");
+
+      expect(store.getPreferences().kanbanProjects).toEqual([
+        {
+          name: "xxvisa",
+          path: "~/server/wwwroot/app/xxvisa-v2",
+          server: null,
+          agents: [
+            {
+              kind: "session",
+              name: "build",
+              command: null,
+              sessionName: "build-test"
+            },
+            { kind: "pm", name: "pm", command: null }
+          ]
+        }
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("persists muted sessions and session settings for cross-client sync", async () => {
     const dir = mkdtempSync(join(tmpdir(), "tmux-ui-preferences-"));
     const filePath = join(dir, "preferences.json");

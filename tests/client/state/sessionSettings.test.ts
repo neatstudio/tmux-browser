@@ -35,7 +35,48 @@ describe("createSessionSettingsStore", () => {
   it("returns default settings for sessions without overrides", () => {
     const store = createSessionSettingsStore(createMemoryStorage());
 
-    expect(store.get("build")).toEqual(DEFAULT_SESSION_SETTINGS);
+    expect(store.get("build")).toEqual({
+      ...DEFAULT_SESSION_SETTINGS,
+      fontSize: 13,
+      lineHeight: 1
+    });
+  });
+
+  it("uses injected default settings for sessions without overrides", () => {
+    const store = createSessionSettingsStore(createMemoryStorage(), undefined, {
+      ...DEFAULT_SESSION_SETTINGS,
+      fontSize: 11,
+      lineHeight: 1
+    });
+
+    expect(store.get("mobile")).toEqual({
+      ...DEFAULT_SESSION_SETTINGS,
+      fontSize: 11,
+      lineHeight: 1
+    });
+  });
+
+  it("keeps persisted session settings ahead of injected defaults", () => {
+    const storage = createMemoryStorage();
+    const store = createSessionSettingsStore(storage, undefined, {
+      ...DEFAULT_SESSION_SETTINGS,
+      fontSize: 11,
+      lineHeight: 1
+    });
+
+    store.setFontSize("build", 16);
+    store.setLineHeight("build", 1.35);
+
+    const restored = createSessionSettingsStore(storage, undefined, {
+      ...DEFAULT_SESSION_SETTINGS,
+      fontSize: 13,
+      lineHeight: 1
+    });
+
+    expect(restored.get("build").fontSize).toBe(16);
+    expect(restored.get("build").lineHeight).toBe(1.35);
+    expect(restored.get("scratch").fontSize).toBe(13);
+    expect(restored.get("scratch").lineHeight).toBe(1);
   });
 
   it("includes CJK fallback fonts in the default terminal font stack", () => {

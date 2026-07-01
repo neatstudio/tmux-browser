@@ -8,6 +8,7 @@ import type {
 } from "../api/sessionApi";
 import type { TimelineEvent } from "../../shared/timeline";
 import type { BrowserTab } from "./tabState";
+import type { SessionListCache } from "./sessionListCache";
 
 export type DashboardState = {
   sessions: SessionSummary[];
@@ -52,6 +53,7 @@ type DashboardStoreDeps = {
   getMutedSessionNames?: () => string[];
   isActiveSessionBusy?: () => boolean;
   preferActiveSessionStatus?: boolean;
+  sessionListCache?: SessionListCache;
 };
 
 type RefreshOptions = {
@@ -63,7 +65,7 @@ type RefreshOptions = {
 
 export function createDashboardStore(deps: DashboardStoreDeps) {
   let state: DashboardState = {
-    sessions: [],
+    sessions: deps.sessionListCache?.read() ?? [],
     serverStatus: null,
     kanbanProjects: [],
     timelineEvents: [],
@@ -130,6 +132,32 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
     listeners.forEach((listener) => listener(state));
   }
 
+  function persistSessionList(sessions: SessionSummary[]) {
+    deps.sessionListCache?.write(sessions);
+  }
+
+  function mergeLightweightSessionList(nextSessions: SessionSummary[]) {
+    const previousByName = new Map(
+      state.sessions.map((session) => [session.name, session])
+    );
+
+    return nextSessions.map((session) => {
+      const previous = previousByName.get(session.name);
+
+      if (!previous) {
+        return session;
+      }
+
+      return {
+        ...previous,
+        ...session,
+        preview: session.preview ?? previous.preview ?? null,
+        inputPrompt: session.inputPrompt ?? previous.inputPrompt ?? null,
+        panes: session.panes ?? previous.panes
+      };
+    });
+  }
+
   async function refreshServerStatus() {
     try {
       const serverStatus = await deps.api.getServerStatus();
@@ -189,6 +217,29 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
       loading: false,
       error: null
     });
+    persistSessionList(sessions);
+  }
+
+  async function refreshSessionList() {
+    try {
+      const loadSessions = deps.api.listSessions ?? deps.api.listDashboardSessions;
+      const sessions = mergeLightweightSessionList(await loadSessions());
+      deps.pruneTabs?.(sessions.map((session) => session.name));
+      persistSessionList(sessions);
+
+      commit({
+        ...state,
+        sessions,
+        loading: false,
+        error: null
+      });
+    } catch (error) {
+      commit({
+        ...state,
+        loading: false,
+        error: error instanceof Error ? error.message : "Failed to refresh sessions"
+      });
+    }
   }
 
   async function refresh(options: RefreshOptions = {}) {
@@ -222,6 +273,7 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
           ? Promise.resolve(state.serverStatus)
           : deps.api.getServerStatus()
       ]);
+      persistSessionList(sessions);
       deps.pruneTabs?.(sessions.map((session) => session.name));
 
       commit({
@@ -283,13 +335,18 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
               (existingSession) => existingSession.name === session.name
             )
         );
+        const mergedSessions = mergeLightweightSessionList([
+          ...nextSessions,
+          ...missingSessions
+        ]);
 
         commit({
           ...state,
-          sessions: [...nextSessions, ...missingSessions],
+          sessions: mergedSessions,
           loading: false,
           error: null
         });
+        persistSessionList(mergedSessions);
       } catch (error) {
         commit({
           ...state,
@@ -299,6 +356,18 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
       }
     },
     refreshKanbanProjects,
+    refreshSessionList,
+    async syncSessionAndKanbanState() {
+      await Promise.all([
+        refresh({
+          includePreview: false,
+          includePanes: true,
+          includeServerStatus: true,
+          preferActiveSessionStatus: false
+        }),
+        refreshKanbanProjects()
+      ]);
+    },
     subscribe(listener: (state: DashboardState) => void) {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -308,17 +377,17 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
     async createSession(name: string) {
       await deps.api.createSession(name);
       await refreshTimeline();
-      await refresh();
+      await refreshSessionList();
     },
     async renameSession(fromName: string, toName: string) {
       await deps.api.renameSession(fromName, toName);
       await refreshTimeline();
-      await refresh();
+      await Promise.all([refreshSessionList(), refreshKanbanProjects()]);
     },
     async killSession(name: string) {
       await deps.api.killSession(name);
       await refreshTimeline();
-      await refresh();
+      await refreshSessionList();
     },
     async sendCommand(name: string, command: string) {
       await deps.api.sendCommand(name, command);
@@ -332,6 +401,11 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
     async selectPane(name: string, paneId: string) {
       await deps.api.selectPane(name, paneId);
       await refreshTimeline();
+      await refresh({
+        includePreview: false,
+        includePanes: true,
+        includeServerStatus: false
+      });
     },
     async killPane(name: string, paneId: string) {
       await deps.api.killPane(name, paneId);
@@ -341,22 +415,42 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
     async createKanbanProject(project: CreateKanbanProjectRequest) {
       await deps.api.createKanbanProject(project);
       await refreshKanbanProjects();
-      await refresh({
-        includePreview: false,
-        includePanes: true,
-        includeServerStatus: false,
-        preferActiveSessionStatus: false
-      });
     },
     async addKanbanSession(projectName: string, sessionName: string) {
       await deps.api.addKanbanSession(projectName, sessionName);
       await refreshKanbanProjects();
-      await refresh({
-        includePreview: false,
-        includePanes: true,
-        includeServerStatus: false,
-        preferActiveSessionStatus: false
-      });
+    },
+    async moveKanbanSession(
+      fromProjectName: string | null,
+      toProjectName: string,
+      sessionName: string
+    ) {
+      const trimmedSessionName = sessionName.trim();
+      const trimmedToProjectName = toProjectName.trim();
+      const trimmedFromProjectName = fromProjectName?.trim() || null;
+
+      if (!trimmedSessionName || !trimmedToProjectName) {
+        return;
+      }
+
+      if (trimmedToProjectName === "ungrouped") {
+        if (trimmedFromProjectName) {
+          await deps.api.removeKanbanSession(trimmedFromProjectName, trimmedSessionName, {
+            kill: false
+          });
+          await refreshKanbanProjects();
+        }
+        return;
+      }
+
+      if (trimmedFromProjectName && trimmedFromProjectName !== trimmedToProjectName) {
+        await deps.api.removeKanbanSession(trimmedFromProjectName, trimmedSessionName, {
+          kill: false
+        });
+      }
+
+      await deps.api.addKanbanSession(trimmedToProjectName, trimmedSessionName);
+      await refreshKanbanProjects();
     },
     async removeKanbanSession(
       projectName: string,
@@ -365,22 +459,13 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
     ) {
       await deps.api.removeKanbanSession(projectName, agentName, options);
       await refreshKanbanProjects();
-      await refresh({
-        includePreview: false,
-        includePanes: true,
-        includeServerStatus: false,
-        preferActiveSessionStatus: false
-      });
+      if (options.kill) {
+        await refreshSessionList();
+      }
     },
     async deleteKanbanProject(projectName: string) {
       await deps.api.deleteKanbanProject(projectName);
       await refreshKanbanProjects();
-      await refresh({
-        includePreview: false,
-        includePanes: true,
-        includeServerStatus: false,
-        preferActiveSessionStatus: false
-      });
     },
     startPolling() {
       if (

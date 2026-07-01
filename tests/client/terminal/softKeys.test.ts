@@ -16,13 +16,29 @@ describe("mobile terminal soft keys", () => {
       "ctrl-a": "\x01",
       "ctrl-e": "\x05",
       "alt-b": "\x1bb",
-      "alt-f": "\x1bf",
-      up: "\x1b[A",
-      down: "\x1b[B",
-      left: "\x1b[D",
-      right: "\x1b[C",
-      "page-up": "\x1b[5~",
-      "page-down": "\x1b[6~"
+      "alt-f": "\x1bf"
     });
+    expect(MOBILE_SOFT_KEYS.map((key) => key.id)).not.toEqual(
+      expect.arrayContaining([
+        "up",
+        "down",
+        "left",
+        "right",
+        "page-up",
+        "page-down"
+      ])
+    );
+    expect(MOBILE_SOFT_KEYS.map((key) => key.label)).toEqual([
+      "Esc",
+      "Tab",
+      "^C",
+      "^D",
+      "^L",
+      "^R",
+      "^A",
+      "^E",
+      "M-B",
+      "M-F"
+    ]);
   });
 });

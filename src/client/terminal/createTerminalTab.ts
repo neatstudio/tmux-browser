@@ -5,6 +5,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 
+import type { PaneSummary } from "../api/sessionApi";
 import type { TerminalTheme } from "../theme/themeState";
 import type {
   AttachMessage,
@@ -19,10 +20,17 @@ import {
   uploadImageForSession,
   uploadImageUrlForSession
 } from "../imageUpload";
+import {
+  createTerminalPaneSelectionGuard,
+  extractPaneSelectionText,
+  findPaneAtTerminalPoint,
+  isSelectionWithinOnePane
+} from "./paneSelection";
 
 const TERMINAL_SCROLLBACK = 5000;
 const PIXELS_PER_SCROLL_LINE = 40;
 const TOUCH_PIXELS_PER_SCROLL_LINE = 12;
+const MOUSE_CLICK_MOVE_TOLERANCE_PX = 5;
 const SHIFT_ENTER_SEQUENCE = "\x1b[13;2u";
 const TERMINAL_RECONNECT_DELAY_MS = 2_000;
 
@@ -36,6 +44,20 @@ type Disposable = {
 };
 
 type RenderedOutputListener = (rawData: string, visibleText: string) => void;
+type PaneClickListener = (event: {
+  clientX: number;
+  clientY: number;
+  rect: Pick<DOMRect, "left" | "top" | "width" | "height">;
+  cols: number;
+  rows: number;
+}) => void;
+
+type PaneTextSelection = {
+  pane: PaneSummary;
+  start: { cellX: number; cellY: number };
+  end: { cellX: number; cellY: number };
+  moved: boolean;
+};
 
 type BrowserSocket = {
   send: (payload: string) => void;
@@ -262,6 +284,47 @@ function isShiftEnterEvent(event: KeyboardEvent) {
   );
 }
 
+function getTerminalCellFromMouseEvent(
+  event: Pick<MouseEvent, "clientX" | "clientY">,
+  rect: Pick<DOMRect, "left" | "top" | "width" | "height">,
+  cols: number,
+  rows: number
+) {
+  const cellX = Math.max(
+    0,
+    Math.min(cols, Math.floor(((event.clientX - rect.left) / rect.width) * cols))
+  );
+  const cellY = Math.max(
+    0,
+    Math.min(rows - 1, Math.floor(((event.clientY - rect.top) / rect.height) * rows))
+  );
+
+  return { cellX, cellY };
+}
+
+function getPaneAtMouseEvent(
+  panes: PaneSummary[],
+  event: Pick<MouseEvent, "clientX" | "clientY">,
+  rect: Pick<DOMRect, "left" | "top" | "width" | "height">,
+  cols: number,
+  rows: number
+) {
+  const paneId = findPaneAtTerminalPoint({
+    panes,
+    clientX: event.clientX,
+    clientY: event.clientY,
+    rect,
+    cols,
+    rows
+  });
+
+  return panes.find((pane) => pane.paneId === paneId) ?? null;
+}
+
+function getTerminalViewportY(terminal: Terminal) {
+  return Math.max(0, terminal.buffer.active.viewportY ?? terminal.buffer.active.baseY);
+}
+
 function createWebglRenderer(
   terminal: Terminal,
   container: HTMLElement
@@ -348,6 +411,8 @@ export function createTerminalTab(deps: {
   terminalTheme?: TerminalTheme;
   onClosed: () => void;
   onOutput?: RenderedOutputListener;
+  onPaneClick?: PaneClickListener;
+  getPaneSummaries?: () => PaneSummary[];
 }) {
   const terminal = new Terminal({
     cursorBlink: true,
@@ -370,13 +435,21 @@ export function createTerminalTab(deps: {
   });
   let socket: WebSocket | null = null;
   let controller: ReturnType<typeof createTerminalTabController> | null = null;
-  let reconnectTimer: ReturnType<typeof window.setTimeout> | null = null;
+  let reconnectTimer: number | null = null;
   let destroyed = false;
   let browserScrollEnabled = false;
   let touchScrollY: number | null = null;
+  let touchFocusY: number | null = null;
   let pointerScrollY: number | null = null;
   let activePointerId: number | null = null;
+  let pendingMouseFocusPoint: { x: number; y: number } | null = null;
+  let pendingMouseFocusMoved = false;
+  let paneTextSelection: PaneTextSelection | null = null;
+  let paneSelectionOverlay: HTMLElement | null = null;
   let pendingResizeFrame: number | null = null;
+  const paneSelectionGuard = createTerminalPaneSelectionGuard(
+    () => deps.getPaneSummaries?.() ?? []
+  );
   const scrollStatusElement = deps.rendererStatusElement ?? deps.container;
   let hasWarnedAboutFitFailure = false;
 
@@ -422,6 +495,69 @@ export function createTerminalTab(deps: {
     scrollStatusElement.dataset.scrollMode = browserScrollEnabled
       ? "browser"
       : "tmux";
+  }
+
+  function clearPaneSelectionOverlay() {
+    paneSelectionOverlay?.remove();
+    paneSelectionOverlay = null;
+  }
+
+  function getTerminalViewportElement() {
+    return deps.container.querySelector<HTMLElement>(".xterm") ?? deps.container;
+  }
+
+  function getTerminalViewportRect() {
+    return getTerminalViewportElement().getBoundingClientRect();
+  }
+
+  function renderPaneSelectionOverlay() {
+    clearPaneSelectionOverlay();
+
+    if (!paneTextSelection?.moved) {
+      return;
+    }
+
+    const terminalElement = getTerminalViewportElement();
+    const rect = terminalElement.getBoundingClientRect();
+    const cellWidth = rect.width / terminal.cols;
+    const cellHeight = rect.height / terminal.rows;
+    const pane = paneTextSelection.pane;
+    const start = paneTextSelection.start;
+    const end = paneTextSelection.end;
+    const first =
+      start.cellY < end.cellY ||
+      (start.cellY === end.cellY && start.cellX <= end.cellX)
+        ? start
+        : end;
+    const last = first === start ? end : start;
+    const firstRow = Math.max(pane.paneTop, first.cellY);
+    const lastRow = Math.min(pane.paneTop + pane.paneHeight - 1, last.cellY);
+    const overlay = document.createElement("div");
+    overlay.className = "terminal-pane-selection-overlay";
+
+    for (let row = firstRow; row <= lastRow; row += 1) {
+      const fromColumn =
+        row === first.cellY ? Math.max(pane.paneLeft, first.cellX) : pane.paneLeft;
+      const toColumn =
+        row === last.cellY
+          ? Math.min(pane.paneLeft + pane.paneWidth, last.cellX)
+          : pane.paneLeft + pane.paneWidth;
+
+      if (toColumn <= fromColumn) {
+        continue;
+      }
+
+      const line = document.createElement("div");
+      line.className = "terminal-pane-selection-line";
+      line.style.left = `${fromColumn * cellWidth}px`;
+      line.style.top = `${row * cellHeight}px`;
+      line.style.width = `${(toColumn - fromColumn) * cellWidth}px`;
+      line.style.height = `${cellHeight}px`;
+      overlay.append(line);
+    }
+
+    terminalElement.append(overlay);
+    paneSelectionOverlay = overlay;
   }
 
   async function uploadAndInsertImage(file: File) {
@@ -489,6 +625,34 @@ export function createTerminalTab(deps: {
     event.preventDefault();
     event.stopImmediatePropagation();
     void uploadAndInsertImage(file);
+  };
+
+  const handleCopy = (event: ClipboardEvent) => {
+    if (!paneTextSelection?.moved) {
+      return;
+    }
+
+    const clipboardData = event.clipboardData;
+
+    if (!clipboardData) {
+      return;
+    }
+
+    const text = extractPaneSelectionText({
+      pane: paneTextSelection.pane,
+      start: paneTextSelection.start,
+      end: paneTextSelection.end,
+      bufferBaseY: getTerminalViewportY(terminal),
+      getLineText: (row, startColumn, endColumn) =>
+        terminal.buffer.active
+          .getLine(row)
+          ?.translateToString(false, startColumn, endColumn) ?? "",
+      trimRight: true
+    });
+
+    clipboardData.setData("text/plain", text);
+    event.preventDefault();
+    event.stopImmediatePropagation();
   };
 
   const handleDrop = (event: DragEvent) => {
@@ -615,16 +779,19 @@ export function createTerminalTab(deps: {
   });
   const imageDropTarget = deps.rendererStatusElement ?? deps.container;
   imageDropTarget.addEventListener("paste", handlePaste, true);
+  imageDropTarget.addEventListener("copy", handleCopy, true);
   imageDropTarget.addEventListener("drop", handleDrop, true);
   imageDropTarget.addEventListener("dragover", handleDragOver, true);
 
   const handleTouchStart = (event: TouchEvent) => {
     if (browserScrollEnabled || event.touches.length !== 1) {
       touchScrollY = null;
+      touchFocusY = null;
       return;
     }
 
     touchScrollY = event.touches[0]?.clientY ?? null;
+    touchFocusY = touchScrollY;
   };
 
   const handleTouchMove = (event: TouchEvent) => {
@@ -650,13 +817,19 @@ export function createTerminalTab(deps: {
     }
 
     touchScrollY = nextY;
+    touchFocusY = null;
     event.preventDefault();
     event.stopImmediatePropagation();
     controller?.scroll(lines);
   };
 
   const handleTouchEnd = () => {
+    if (!browserScrollEnabled && touchFocusY !== null) {
+      terminal.focus();
+    }
+
     touchScrollY = null;
+    touchFocusY = null;
   };
 
   deps.container.addEventListener("touchstart", handleTouchStart, {
@@ -730,8 +903,183 @@ export function createTerminalTab(deps: {
   deps.container.addEventListener("pointercancel", handlePointerEnd, {
     capture: true
   });
+  const clearPendingMouseFocus = () => {
+    pendingMouseFocusPoint = null;
+    pendingMouseFocusMoved = false;
+  };
+
+  const isPointerDownButton = (event: MouseEvent) => event.buttons === 1 || event.button === 0;
+
+  const shouldUsePaneTextSelection = () =>
+    (deps.getPaneSummaries?.() ?? []).filter((pane) => pane.windowActive)
+      .length > 1;
+
+  const handleMouseDown = (event: MouseEvent) => {
+    if (browserScrollEnabled || event.button !== 0) {
+      clearPendingMouseFocus();
+      paneTextSelection = null;
+      return;
+    }
+
+    const rect = getTerminalViewportRect();
+    const panes = deps.getPaneSummaries?.() ?? [];
+    const pane = getPaneAtMouseEvent(panes, event, rect, terminal.cols, terminal.rows);
+    const cell = getTerminalCellFromMouseEvent(event, rect, terminal.cols, terminal.rows);
+
+    if (pane && shouldUsePaneTextSelection()) {
+      paneTextSelection = {
+        pane,
+        start: cell,
+        end: cell,
+        moved: false
+      };
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    } else {
+      paneTextSelection = null;
+    }
+
+    paneSelectionGuard.beginSelection({
+      clientX: event.clientX,
+      clientY: event.clientY,
+      rect,
+      cols: terminal.cols,
+      rows: terminal.rows
+    });
+    pendingMouseFocusPoint = {
+      x: event.clientX,
+      y: event.clientY
+    };
+    pendingMouseFocusMoved = false;
+  };
+
+  const handleMouseMove = (event: MouseEvent) => {
+    if (!pendingMouseFocusPoint) {
+      return;
+    }
+
+    const rect = deps.container.getBoundingClientRect();
+    const cell = getTerminalCellFromMouseEvent(event, rect, terminal.cols, terminal.rows);
+
+    if (paneTextSelection) {
+      paneTextSelection.end = cell;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      renderPaneSelectionOverlay();
+    }
+
+    const deltaX = event.clientX - pendingMouseFocusPoint.x;
+    const deltaY = event.clientY - pendingMouseFocusPoint.y;
+
+    if (Math.hypot(deltaX, deltaY) > MOUSE_CLICK_MOVE_TOLERANCE_PX) {
+      pendingMouseFocusMoved = true;
+      if (paneTextSelection) {
+        paneTextSelection.moved = true;
+      }
+    }
+  };
+
+  const handleDocumentMouseMove = (event: MouseEvent) => {
+    if (!pendingMouseFocusPoint || !isPointerDownButton(event)) {
+      return;
+    }
+
+    if (paneTextSelection) {
+      paneTextSelection.end = getTerminalCellFromMouseEvent(
+        event,
+        getTerminalViewportRect(),
+        terminal.cols,
+        terminal.rows
+      );
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      renderPaneSelectionOverlay();
+    }
+
+    const deltaX = event.clientX - pendingMouseFocusPoint.x;
+    const deltaY = event.clientY - pendingMouseFocusPoint.y;
+
+    if (Math.hypot(deltaX, deltaY) > MOUSE_CLICK_MOVE_TOLERANCE_PX) {
+      pendingMouseFocusMoved = true;
+      if (paneTextSelection) {
+        paneTextSelection.moved = true;
+      }
+    }
+  };
+
+  const handleMouseUp = (event: MouseEvent) => {
+    const point = pendingMouseFocusPoint;
+    const moved = pendingMouseFocusMoved;
+
+    if (paneTextSelection?.moved) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+    clearPendingMouseFocus();
+    paneSelectionGuard.endSelection();
+
+    if (!point || moved || browserScrollEnabled || event.button !== 0) {
+      return;
+    }
+
+    terminal.focus();
+    deps.onPaneClick?.({
+      clientX: event.clientX,
+      clientY: event.clientY,
+      rect: deps.container.getBoundingClientRect(),
+      cols: terminal.cols,
+      rows: terminal.rows
+    });
+  };
+
+  deps.container.addEventListener("mousedown", handleMouseDown, {
+    capture: true
+  });
+  deps.container.addEventListener("mousemove", handleMouseMove, {
+    capture: true
+  });
+  deps.container.addEventListener("mouseup", handleMouseUp, {
+    capture: true
+  });
+  document.addEventListener("mousemove", handleDocumentMouseMove, {
+    capture: true,
+    passive: false
+  });
+  const selectionChangeDisposable = terminal.onSelectionChange?.(() => {
+    const panes = deps.getPaneSummaries?.() ?? [];
+    const selectionPosition = terminal.getSelectionPosition();
+
+    if (
+      panes.length === 0 ||
+      isSelectionWithinOnePane(panes, selectionPosition, {
+        viewportY: getTerminalViewportY(terminal),
+        cols: terminal.cols
+      })
+    ) {
+      return;
+    }
+
+    if (!paneTextSelection) {
+      terminal.clearSelection();
+    }
+  });
 
   terminal.attachCustomKeyEventHandler((event) => {
+    if (event.isComposing) {
+      return true;
+    }
+
+    if (
+      event.type === "keydown" &&
+      event.ctrlKey &&
+      !event.altKey &&
+      !event.metaKey &&
+      event.key.toLowerCase() === "c"
+    ) {
+      controller?.sendInput("\x03");
+      return false;
+    }
+
     if (
       event.type === "keydown" &&
       event.ctrlKey &&
@@ -804,6 +1152,9 @@ export function createTerminalTab(deps: {
     reconnect() {
       connect({ announce: true });
     },
+    focus() {
+      terminal.focus();
+    },
     chooseImage() {
       imageLibraryInput.click();
     },
@@ -843,12 +1194,14 @@ export function createTerminalTab(deps: {
       clearReconnectTimer();
       if (pendingResizeFrame !== null) {
         window.cancelAnimationFrame(pendingResizeFrame);
-        pendingResizeFrame = null;
-      }
+      pendingResizeFrame = null;
+    }
 
+      clearPaneSelectionOverlay();
       resizeObserver?.disconnect();
       deps.container.removeEventListener("wheel", handleWheel, true);
       imageDropTarget.removeEventListener("paste", handlePaste, true);
+      imageDropTarget.removeEventListener("copy", handleCopy, true);
       imageDropTarget.removeEventListener("drop", handleDrop, true);
       imageDropTarget.removeEventListener("dragover", handleDragOver, true);
       imageLibraryInput.remove();
@@ -861,6 +1214,11 @@ export function createTerminalTab(deps: {
       deps.container.removeEventListener("pointermove", handlePointerMove, true);
       deps.container.removeEventListener("pointerup", handlePointerEnd, true);
       deps.container.removeEventListener("pointercancel", handlePointerEnd, true);
+      deps.container.removeEventListener("mousedown", handleMouseDown, true);
+      deps.container.removeEventListener("mousemove", handleMouseMove, true);
+      deps.container.removeEventListener("mouseup", handleMouseUp, true);
+      document.removeEventListener("mousemove", handleDocumentMouseMove, true);
+      selectionChangeDisposable?.dispose?.();
       window.removeEventListener("resize", handleWindowResize);
       controller?.destroy();
       controller = null;

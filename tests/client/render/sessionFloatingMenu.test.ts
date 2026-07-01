@@ -7,7 +7,64 @@ import {
 } from "../../../src/client/render/sessionFloatingMenu";
 
 describe("sessionFloatingMenu", () => {
-  it("opens a compact top-right menu with sidebar-style session shortcuts", () => {
+  it("marks saved non-live board sessions offline and does not open them", () => {
+    const root = document.createElement("div");
+    const onOpenSession = vi.fn();
+
+    renderSessionFloatingMenu(root, {
+      currentSessionName: "cc1-remote",
+      sessions: ["cc1-remote"],
+      sessionSummaries: [
+        {
+          name: "cc1-remote",
+          windows: 1,
+          status: "detached",
+          lastActivityAt: null,
+          paneCount: 1,
+          activeWindowName: "zsh",
+          currentCommand: "zsh",
+          currentPath: "~",
+          gitBranch: null,
+          gitDirty: null,
+          paneDead: false,
+          paneDeadStatus: null,
+          preview: null,
+          inputPrompt: null
+        }
+      ],
+      boards: [
+        {
+          name: "cc",
+          sessions: [
+            { name: "cc1-local", label: "cc1-local", live: false },
+            { name: "cc1-remote", label: "cc1-remote", live: true }
+          ]
+        }
+      ],
+      onOpenDashboard: vi.fn(),
+      onOpenKanban: vi.fn(),
+      onOpenSession,
+      onConfig: vi.fn(),
+      onRename: vi.fn(),
+      onSendCommand: vi.fn(),
+      onRefresh: vi.fn(),
+      onCreateSession: vi.fn()
+    });
+
+    root.querySelector<HTMLButtonElement>(".session-floating-menu-toggle")?.click();
+    const offline = root.querySelector<HTMLButtonElement>(
+      "[data-session-name='cc1-local']"
+    )!;
+
+    expect(offline.disabled).toBe(true);
+    expect(offline.classList.contains("is-offline")).toBe(true);
+
+    offline.click();
+
+    expect(onOpenSession).not.toHaveBeenCalled();
+  });
+
+  it("opens a compact top-right menu without sidebar-only controls", () => {
     const root = document.createElement("div");
     const onOpenDashboard = vi.fn();
     const onOpenKanban = vi.fn();
@@ -29,6 +86,7 @@ describe("sessionFloatingMenu", () => {
     const onRefreshMuted = vi.fn();
     const onOpenGroupTask = vi.fn();
     const onOpenGroupMessages = vi.fn();
+    const onSendSoftKey = vi.fn();
 
     renderSessionFloatingMenu(root, {
       currentSessionName: "xxvisa-pm",
@@ -146,6 +204,7 @@ describe("sessionFloatingMenu", () => {
       onRefreshMuted,
       onOpenGroupTask,
       onOpenGroupMessages,
+      onSendSoftKey,
       timelineEvents: [
         {
           id: "event-1",
@@ -160,8 +219,15 @@ describe("sessionFloatingMenu", () => {
     const toggle = root.querySelector<HTMLButtonElement>(
       "[data-action='toggle-session-floating-menu']"
     )!;
+    const topLevelActions = root.querySelector<HTMLButtonElement>(
+      ".session-floating-menu > [data-action='toggle-mobile-status-actions']"
+    );
 
     expect(toggle).not.toBeNull();
+    expect(topLevelActions).toBeNull();
+    expect(
+      root.querySelectorAll(".session-floating-menu > button")
+    ).toHaveLength(1);
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     expect(root.querySelector(".session-floating-menu-panel")).toBeNull();
 
@@ -174,12 +240,63 @@ describe("sessionFloatingMenu", () => {
 
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
     expect(panel.textContent).toContain("xxvisa");
+    const actionsPane = panel.querySelector(".session-floating-menu-actions-pane");
+    const sessionsPane = panel.querySelector(".session-floating-menu-sessions-pane");
+
+    expect(actionsPane).not.toBeNull();
+    expect(sessionsPane).not.toBeNull();
+    expect(actionsPane?.querySelector("[data-action='send-command']")).not.toBeNull();
+    expect(actionsPane?.querySelector("[data-action='soft-key-ctrl-c']")).not.toBeNull();
+    expect(actionsPane?.querySelector("[data-action='soft-key-tab']")).not.toBeNull();
+    expect(actionsPane?.querySelector("[data-action='soft-key-up']")).toBeNull();
+    expect(actionsPane?.querySelector("[data-action='soft-key-down']")).toBeNull();
+    expect(actionsPane?.querySelector("[data-action='soft-key-left']")).toBeNull();
+    expect(actionsPane?.querySelector("[data-action='soft-key-right']")).toBeNull();
+    expect(actionsPane?.querySelector("[data-session-name]")).toBeNull();
+    expect(sessionsPane?.querySelector("[data-session-name='xxvisa-pm']")).not.toBeNull();
+    expect(sessionsPane?.querySelector("[data-action='soft-key-ctrl-c']")).toBeNull();
+    expect(sessionsPane?.querySelector("[data-action='send-command']")).toBeNull();
+    expect(
+      [
+        ...actionsPane!.querySelectorAll<HTMLButtonElement>(
+          ".session-floating-menu-actions [data-action]"
+        )
+      ].map((button) => button.textContent?.trim())
+    ).toEqual([
+      "Groups",
+      "Grp",
+      "New group",
+      "Cmd",
+      "Tsk",
+      "Msg",
+      "Rec",
+      "Img",
+      "Pic",
+      "Cam",
+      "Kill",
+      "Sync",
+      "Cfg",
+      "Ren"
+    ]);
+    expect(actionsPane?.textContent).not.toContain("Config");
+    expect(actionsPane?.textContent).not.toContain("Rename");
+    expect(actionsPane?.textContent).not.toContain("Refresh");
+    expect(actionsPane?.textContent).toContain("^C");
+    expect(actionsPane?.textContent).toContain("M-B");
+    expect(actionsPane?.textContent).not.toContain("Ctrl-C");
+    expect(actionsPane?.textContent).not.toContain("Alt-B");
     expect(actions).not.toContain("open-dashboard");
     expect(actions).toContain("open-kanban");
     expect(actions).toContain("open-session");
     expect(actions).toContain("config-session");
     expect(actions).toContain("rename-session");
     expect(actions).toContain("send-command");
+    expect(actions).toContain("soft-key-esc");
+    expect(actions).toContain("soft-key-tab");
+    expect(actions).toContain("soft-key-ctrl-c");
+    expect(actions).toContain("soft-key-ctrl-l");
+    expect(actions).not.toContain("toggle-mobile-status-actions");
+    expect(actions).toContain("open-current-session-groups");
     expect(actions).toContain("open-group-task");
     expect(actions).toContain("open-group-messages");
     expect(actions).toContain("reconnect-session");
@@ -188,12 +305,12 @@ describe("sessionFloatingMenu", () => {
     expect(actions).toContain("capture-image");
     expect(actions).toContain("kill-session");
     expect(actions).toContain("refresh-sessions");
-    expect(actions).toContain("toggle-session-pinned");
-    expect(actions).toContain("toggle-session-muted");
     expect(actions).toContain("toggle-action-center");
-    expect(actions).toContain("toggle-floating-session-pinned");
-    expect(actions).toContain("toggle-floating-session-muted");
-    expect(actions).toContain("refresh-muted-sessions");
+    expect(actions).not.toContain("toggle-session-pinned");
+    expect(actions).not.toContain("toggle-session-muted");
+    expect(actions).not.toContain("toggle-floating-session-pinned");
+    expect(actions).not.toContain("toggle-floating-session-muted");
+    expect(actions).not.toContain("refresh-muted-sessions");
     expect(
       [
         ...panel.querySelectorAll<HTMLElement>(".session-floating-menu-title")
@@ -204,8 +321,8 @@ describe("sessionFloatingMenu", () => {
         ...panel.querySelectorAll<HTMLElement>(".session-floating-menu-title")
       ].map((title) => title.textContent)
     ).not.toContain("Mute");
-    expect(panel.textContent).toContain("Timeline");
-    expect(panel.textContent).toContain("sent command: npm test");
+    expect(panel.textContent).not.toContain("Timeline");
+    expect(panel.textContent).not.toContain("sent command: npm test");
     const sections = [
       ...panel.querySelectorAll<HTMLElement>(".session-floating-menu-section")
     ];
@@ -291,6 +408,11 @@ describe("sessionFloatingMenu", () => {
         .querySelector<HTMLButtonElement>("[data-session-name='xxvisa-pm']")
         ?.classList.contains("is-active")
     ).toBe(true);
+    expect(
+      panel
+        .querySelector<HTMLButtonElement>("[data-session-name='xxvisa-pm']")
+        ?.classList.contains("is-name-only")
+    ).toBe(false);
 
     root
       .querySelector<HTMLButtonElement>("[data-session-name='xxvisa-review']")
@@ -302,6 +424,8 @@ describe("sessionFloatingMenu", () => {
     toggle.click();
     root.querySelector<HTMLButtonElement>("[data-action='send-command']")?.click();
     toggle.click();
+    root.querySelector<HTMLButtonElement>("[data-action='soft-key-ctrl-c']")?.click();
+    root.querySelector<HTMLButtonElement>("[data-action='soft-key-tab']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='open-group-task']")?.click();
     toggle.click();
     root
@@ -320,33 +444,11 @@ describe("sessionFloatingMenu", () => {
     toggle.click();
     root.querySelector<HTMLButtonElement>("[data-action='refresh-sessions']")?.click();
     toggle.click();
-    root.querySelector<HTMLButtonElement>("[data-action='toggle-session-pinned']")?.click();
-    toggle.click();
-    root.querySelector<HTMLButtonElement>("[data-action='toggle-session-muted']")?.click();
-    toggle.click();
     root.querySelector<HTMLButtonElement>("[data-action='toggle-action-center']")?.click();
     toggle.click();
     root
       .querySelector<HTMLButtonElement>(
         "[data-project-name='local'][data-session-name='build']"
-      )
-      ?.click();
-    toggle.click();
-    root
-      .querySelector<HTMLButtonElement>(
-        "[data-action='refresh-muted-sessions']"
-      )
-      ?.click();
-    toggle.click();
-    root
-      .querySelector<HTMLButtonElement>(
-        "[data-action='toggle-floating-session-pinned'][data-target-session='build']"
-      )
-      ?.click();
-    toggle.click();
-    root
-      .querySelector<HTMLButtonElement>(
-        "[data-action='toggle-floating-session-muted'][data-target-session='build']"
       )
       ?.click();
     toggle.click();
@@ -357,6 +459,8 @@ describe("sessionFloatingMenu", () => {
     expect(onConfig).toHaveBeenCalledOnce();
     expect(onRename).toHaveBeenCalledOnce();
     expect(onSendCommand).toHaveBeenCalledOnce();
+    expect(onSendSoftKey).toHaveBeenNthCalledWith(1, "\x03");
+    expect(onSendSoftKey).toHaveBeenNthCalledWith(2, "\t");
     expect(onOpenGroupTask).toHaveBeenCalledOnce();
     expect(onOpenGroupMessages).toHaveBeenCalledOnce();
     expect(onReconnect).toHaveBeenCalledOnce();
@@ -365,17 +469,164 @@ describe("sessionFloatingMenu", () => {
     expect(onCaptureImage).toHaveBeenCalledOnce();
     expect(onKill).toHaveBeenCalledOnce();
     expect(onRefresh).toHaveBeenCalledOnce();
-    expect(onTogglePinned).toHaveBeenCalledWith("xxvisa-pm");
-    expect(onToggleMuted).toHaveBeenCalledWith("xxvisa-pm");
     expect(onToggleActionCenter).toHaveBeenCalledOnce();
     expect(onOpenSession).toHaveBeenCalledWith("build");
     expect(onOpenKanbanProject).not.toHaveBeenCalled();
-    expect(onRefreshMuted).toHaveBeenCalledOnce();
-    expect(onTogglePinned).toHaveBeenCalledWith("build");
-    expect(onToggleMuted).toHaveBeenCalledWith("build");
-    expect(onTogglePinned).toHaveBeenCalledTimes(2);
-    expect(onToggleMuted).toHaveBeenCalledTimes(2);
+    expect(onRefreshMuted).not.toHaveBeenCalled();
+    expect(onTogglePinned).not.toHaveBeenCalled();
+    expect(onToggleMuted).not.toHaveBeenCalled();
     expect(onOpenKanban).toHaveBeenCalledOnce();
+  });
+
+  it("shows a highlighted action entry when pending actions exist", () => {
+    const root = document.createElement("div");
+    const onToggleActionCenter = vi.fn();
+
+    renderSessionFloatingMenu(root, {
+      currentSessionName: "hooks",
+      sessions: ["hooks"],
+      actionCount: 2,
+      actionCenterOpen: false,
+      onToggleActionCenter,
+      onOpenDashboard: vi.fn(),
+      onOpenKanban: vi.fn(),
+      onOpenSession: vi.fn(),
+      onConfig: vi.fn(),
+      onRename: vi.fn(),
+      onSendCommand: vi.fn(),
+      onRefresh: vi.fn(),
+      onCreateSession: vi.fn()
+    });
+
+    root
+      .querySelector<HTMLButtonElement>("[data-action='toggle-session-floating-menu']")
+      ?.click();
+    const actionButton = root.querySelector<HTMLButtonElement>(
+      "[data-action='toggle-action-center']"
+    );
+
+    expect(actionButton).not.toBeNull();
+    expect(actionButton?.textContent).toBe("!2");
+    expect(actionButton?.classList.contains("is-attention")).toBe(true);
+
+    actionButton?.click();
+
+    expect(onToggleActionCenter).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the action entry visible on mobile alongside groups", () => {
+    const root = document.createElement("div");
+
+    renderSessionFloatingMenu(root, {
+      currentSessionName: "hooks",
+      sessions: ["hooks"],
+      actionCount: 1,
+      actionCenterOpen: false,
+      uiTier: "phone",
+      kanbanProject: {
+        name: "local",
+        sessions: [{ name: "hooks", label: "hooks" }]
+      },
+      onToggleActionCenter: vi.fn(),
+      onMoveKanbanSession: vi.fn(),
+      onOpenDashboard: vi.fn(),
+      onOpenKanban: vi.fn(),
+      onOpenSession: vi.fn(),
+      onConfig: vi.fn(),
+      onRename: vi.fn(),
+      onSendCommand: vi.fn(),
+      onRefresh: vi.fn(),
+      onCreateSession: vi.fn()
+    });
+
+    root
+      .querySelector<HTMLButtonElement>("[data-action='toggle-session-floating-menu']")
+      ?.click();
+
+    expect(root.querySelector("[data-action='switch-groups']")).not.toBeNull();
+    expect(root.querySelector("[data-action='toggle-action-center']")).not.toBeNull();
+  });
+
+  it("exposes current session group switching in the primary actions", () => {
+    const root = document.createElement("div");
+    const onMoveKanbanSession = vi.fn();
+
+    renderSessionFloatingMenu(root, {
+      currentSessionName: "build",
+      sessions: ["build", "pm"],
+      boards: [
+        {
+          name: "local",
+          sessions: [{ name: "pm", label: "pm" }]
+        },
+        {
+          name: "xxvisa",
+          sessions: []
+        }
+      ],
+      kanbanProject: null,
+      onMoveKanbanSession,
+      onOpenDashboard: vi.fn(),
+      onOpenKanban: vi.fn(),
+      onOpenSession: vi.fn(),
+      onConfig: vi.fn(),
+      onRename: vi.fn(),
+      onSendCommand: vi.fn(),
+      onRefresh: vi.fn(),
+      onCreateSession: vi.fn()
+    });
+
+    root
+      .querySelector<HTMLButtonElement>("[data-action='toggle-session-floating-menu']")
+      ?.click();
+
+    const groupsButton = root.querySelector<HTMLButtonElement>(
+      ".session-floating-menu-actions [data-action='open-current-session-groups']"
+    );
+
+    expect(groupsButton).not.toBeNull();
+
+    groupsButton?.click();
+
+    const moveButton = root.querySelector<HTMLButtonElement>(
+      ".session-floating-menu-session-actions [data-action='add-session-to-project'][data-project-name='xxvisa']"
+    );
+
+    expect(moveButton).not.toBeNull();
+
+    moveButton?.click();
+
+    expect(onMoveKanbanSession).toHaveBeenCalledWith(null, "xxvisa", "build");
+  });
+
+  it("marks sessions without summary metadata as name-only cards", () => {
+    const root = document.createElement("div");
+
+    renderSessionFloatingMenu(root, {
+      currentSessionName: "solo",
+      sessions: ["solo"],
+      onOpenDashboard: vi.fn(),
+      onOpenKanban: vi.fn(),
+      onOpenSession: vi.fn(),
+      onConfig: vi.fn(),
+      onRename: vi.fn(),
+      onSendCommand: vi.fn(),
+      onRefresh: vi.fn(),
+      onCreateSession: vi.fn(),
+      onCreateKanbanProjectFromSession: vi.fn()
+    });
+
+    root
+      .querySelector<HTMLButtonElement>(
+        "[data-action='toggle-session-floating-menu']"
+      )
+      ?.click();
+
+    expect(
+      root
+        .querySelector<HTMLButtonElement>("[data-session-name='solo']")
+        ?.classList.contains("is-name-only")
+    ).toBe(true);
   });
 
   it("creates a session from the floating menu without submitting blank names", () => {
@@ -420,6 +671,466 @@ describe("sessionFloatingMenu", () => {
 
     expect(onCreateSession).toHaveBeenCalledWith("logs");
     expect(root.querySelector(".session-floating-menu-panel")).toBeNull();
+  });
+
+  it("creates kanban projects and moves sessions from the floating menu", () => {
+    const root = document.createElement("div");
+    const onKanbanDraftChange = vi.fn();
+    const onCreateKanbanProjectFromSession = vi.fn();
+    const onAddKanbanSession = vi.fn();
+    const onMoveKanbanSession = vi.fn();
+
+    renderSessionFloatingMenu(root, {
+      currentSessionName: "scratch",
+      sessions: ["build", "scratch", "xxvisa-pm"],
+      boards: [
+        {
+          name: "xxvisa",
+          sessions: [{ name: "xxvisa-pm", label: "pm" }]
+        }
+      ],
+      kanbanDraft: {
+        name: "",
+        path: "~",
+        server: "",
+        selectedAgentNames: []
+      },
+      onKanbanDraftChange,
+      onCreateKanbanProjectFromSession,
+      onAddKanbanSession,
+      onOpenDashboard: vi.fn(),
+      onOpenKanban: vi.fn(),
+      onOpenSession: vi.fn(),
+      onConfig: vi.fn(),
+      onRename: vi.fn(),
+      onSendCommand: vi.fn(),
+      onRefresh: vi.fn(),
+      onCreateSession: vi.fn()
+    });
+
+    root
+      .querySelector<HTMLButtonElement>(
+        "[data-action='toggle-session-floating-menu']"
+      )
+      ?.click();
+
+    const projectPanel = root.querySelector<HTMLElement>(
+      ".session-floating-menu-projects .kanban-create-panel-content"
+    )!;
+    const projectInput = projectPanel.querySelector<HTMLInputElement>(
+      "input[name='project-name']"
+    )!;
+    expect(projectPanel).not.toBeNull();
+    projectInput.value = "  local  ";
+    projectInput.dispatchEvent(new Event("input", { bubbles: true }));
+
+    expect(onKanbanDraftChange).toHaveBeenLastCalledWith(
+      {
+        name: "  local  ",
+        path: "~",
+        server: "",
+        selectedAgentNames: []
+      },
+      { render: false }
+    );
+
+    projectPanel.querySelector<HTMLFormElement>("form.kanban-create-form")?.dispatchEvent(
+      new Event("submit", { bubbles: true, cancelable: true })
+    );
+
+    expect(onCreateKanbanProjectFromSession).toHaveBeenCalledWith(
+      {
+        name: "local",
+        path: "~",
+        server: null,
+        selectedAgentNames: ["scratch"]
+      },
+      "scratch"
+    );
+
+    expect(onMoveKanbanSession).not.toHaveBeenCalled();
+  });
+
+  it("opens the project create form from the actions section", () => {
+    const root = document.createElement("div");
+
+    renderSessionFloatingMenu(root, {
+      currentSessionName: "scratch",
+      sessions: ["scratch"],
+      kanbanDraft: {
+        name: "",
+        path: "~",
+        server: "",
+        selectedAgentNames: []
+      },
+      onKanbanDraftChange: vi.fn(),
+      onCreateKanbanProject: vi.fn(),
+      onOpenDashboard: vi.fn(),
+      onOpenKanban: vi.fn(),
+      onOpenSession: vi.fn(),
+      onConfig: vi.fn(),
+      onRename: vi.fn(),
+      onSendCommand: vi.fn(),
+      onRefresh: vi.fn(),
+      onCreateSession: vi.fn(),
+      onCreateKanbanProjectFromSession: vi.fn()
+    });
+
+    root
+      .querySelector<HTMLButtonElement>(
+        "[data-action='toggle-session-floating-menu']"
+      )
+      ?.click();
+
+    const createButton = root.querySelector<HTMLButtonElement>(
+      "[data-action='open-create-group']"
+    );
+
+    expect(createButton).not.toBeNull();
+
+    createButton?.click();
+
+    expect(root.querySelector(".session-floating-menu-projects .kanban-create-panel-content")).not.toBeNull();
+    expect(root.querySelector(".session-floating-menu-projects .kanban-template")).not.toBeNull();
+    expect(root.querySelector(".session-floating-menu-projects .kanban-template input[type='checkbox']")).not.toBeNull();
+  });
+
+  it("opens session group actions from right click and long press", () => {
+    vi.useFakeTimers();
+
+    const root = document.createElement("div");
+    const onAddKanbanSession = vi.fn();
+    const onMoveKanbanSession = vi.fn();
+    const onKanbanDraftChange = vi.fn();
+    const onCreateKanbanProject = vi.fn();
+
+    renderSessionFloatingMenu(root, {
+      currentSessionName: "scratch",
+      sessions: ["build", "scratch", "xxvisa-pm"],
+      boards: [
+        {
+          name: "xxvisa",
+          sessions: [{ name: "xxvisa-pm", label: "pm" }]
+        }
+      ],
+      kanbanDraft: {
+        name: "",
+        path: "~",
+        server: "",
+        selectedAgentNames: []
+      },
+      onKanbanDraftChange,
+      onCreateKanbanProject,
+      onAddKanbanSession,
+      onMoveKanbanSession,
+      onOpenDashboard: vi.fn(),
+      onOpenKanban: vi.fn(),
+      onOpenSession: vi.fn(),
+      onConfig: vi.fn(),
+      onRename: vi.fn(),
+      onSendCommand: vi.fn(),
+      onRefresh: vi.fn(),
+      onCreateSession: vi.fn()
+    });
+
+    root
+      .querySelector<HTMLButtonElement>(
+        "[data-action='toggle-session-floating-menu']"
+      )
+      ?.click();
+
+    const buildButton = root.querySelector<HTMLButtonElement>(
+      "[data-session-name='build']"
+    )!;
+    buildButton.dispatchEvent(
+      new MouseEvent("contextmenu", { bubbles: true, cancelable: true })
+    );
+
+    const contextMenu = root.querySelector<HTMLElement>(
+      ".session-floating-menu-session-actions"
+    )!;
+
+    expect(contextMenu).not.toBeNull();
+    expect(contextMenu.dataset.sessionName).toBe("build");
+    contextMenu
+      .querySelector<HTMLButtonElement>(
+        "[data-action='add-session-to-project'][data-project-name='xxvisa']"
+      )
+      ?.click();
+
+    expect(onAddKanbanSession).not.toHaveBeenCalled();
+    expect(onMoveKanbanSession).toHaveBeenCalledWith(null, "xxvisa", "build");
+
+    const scratchButton = root.querySelector<HTMLButtonElement>(
+      ".session-floating-menu-session[data-session-name='scratch']"
+    )!;
+    scratchButton.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        bubbles: true,
+        cancelable: true,
+        pointerType: "touch"
+      })
+    );
+    vi.advanceTimersByTime(650);
+
+    expect(
+      root.querySelector<HTMLElement>(
+        ".session-floating-menu-session-actions[data-session-name='scratch']"
+      )
+    ).not.toBeNull();
+
+    vi.useRealTimers();
+  });
+
+  it("moves the grouped session that was right-clicked instead of the active one", () => {
+    const root = document.createElement("div");
+    const onMoveKanbanSession = vi.fn();
+
+    renderSessionFloatingMenu(root, {
+      currentSessionName: "scratch",
+      sessions: ["build", "scratch"],
+      boards: [
+        {
+          name: "xxvisa",
+          sessions: [{ name: "build", label: "build" }]
+        },
+        {
+          name: "local",
+          sessions: [{ name: "scratch", label: "scratch" }]
+        }
+      ],
+      kanbanProject: {
+        name: "local",
+        sessions: [{ name: "scratch", label: "scratch" }]
+      },
+      onMoveKanbanSession,
+      onOpenDashboard: vi.fn(),
+      onOpenKanban: vi.fn(),
+      onOpenSession: vi.fn(),
+      onConfig: vi.fn(),
+      onRename: vi.fn(),
+      onSendCommand: vi.fn(),
+      onRefresh: vi.fn(),
+      onCreateSession: vi.fn()
+    });
+
+    root
+      .querySelector<HTMLButtonElement>(
+        "[data-action='toggle-session-floating-menu']"
+      )
+      ?.click();
+
+    root
+      .querySelector<HTMLButtonElement>(
+        "[data-session-name='build'][data-project-name='xxvisa']"
+      )
+      ?.dispatchEvent(
+        new MouseEvent("contextmenu", { bubbles: true, cancelable: true })
+      );
+
+    root
+      .querySelector<HTMLButtonElement>(
+        "[data-action='add-session-to-project'][data-project-name='local']"
+      )
+      ?.click();
+
+    expect(onMoveKanbanSession).toHaveBeenCalledWith("xxvisa", "local", "build");
+  });
+
+  it("moves the right-clicked session to another project from the menu", () => {
+    const root = document.createElement("div");
+    const onMoveKanbanSession = vi.fn();
+
+    renderSessionFloatingMenu(root, {
+      currentSessionName: "scratch",
+      sessions: ["build", "scratch"],
+      boards: [
+        {
+          name: "xxvisa",
+          sessions: [{ name: "build", label: "build" }]
+        },
+        {
+          name: "local",
+          sessions: [{ name: "scratch", label: "scratch" }]
+        }
+      ],
+      kanbanProject: {
+        name: "local",
+        sessions: [{ name: "scratch", label: "scratch" }]
+      },
+      onMoveKanbanSession,
+      onOpenDashboard: vi.fn(),
+      onOpenKanban: vi.fn(),
+      onOpenSession: vi.fn(),
+      onConfig: vi.fn(),
+      onRename: vi.fn(),
+      onSendCommand: vi.fn(),
+      onRefresh: vi.fn(),
+      onCreateSession: vi.fn()
+    });
+
+    root
+      .querySelector<HTMLButtonElement>(
+        "[data-action='toggle-session-floating-menu']"
+      )
+      ?.click();
+
+    root
+      .querySelector<HTMLButtonElement>(
+        "[data-session-name='build'][data-project-name='xxvisa']"
+      )
+      ?.dispatchEvent(
+        new MouseEvent("contextmenu", { bubbles: true, cancelable: true })
+      );
+
+    root
+      .querySelector<HTMLButtonElement>(
+        ".session-floating-menu-session-actions [data-action='add-session-to-project'][data-project-name='local']"
+      )
+      ?.click();
+
+    expect(onMoveKanbanSession).toHaveBeenCalledWith("xxvisa", "local", "build");
+  });
+
+  it("moves an ungrouped session from null instead of the current board", () => {
+    const root = document.createElement("div");
+    const onMoveKanbanSession = vi.fn();
+
+    renderSessionFloatingMenu(root, {
+      currentSessionName: "scratch",
+      sessions: ["build", "scratch"],
+      boards: [
+        {
+          name: "local",
+          sessions: [{ name: "scratch", label: "scratch" }]
+        }
+      ],
+      kanbanProject: {
+        name: "local",
+        sessions: [{ name: "scratch", label: "scratch" }]
+      },
+      onMoveKanbanSession,
+      onOpenDashboard: vi.fn(),
+      onOpenKanban: vi.fn(),
+      onOpenSession: vi.fn(),
+      onConfig: vi.fn(),
+      onRename: vi.fn(),
+      onSendCommand: vi.fn(),
+      onRefresh: vi.fn(),
+      onCreateSession: vi.fn()
+    });
+
+    root
+      .querySelector<HTMLButtonElement>(
+        "[data-action='toggle-session-floating-menu']"
+      )
+      ?.click();
+
+    root
+      .querySelector<HTMLButtonElement>(
+        "[data-session-name='build']"
+      )
+      ?.dispatchEvent(
+        new MouseEvent("contextmenu", { bubbles: true, cancelable: true })
+      );
+
+    root
+      .querySelector<HTMLButtonElement>(
+        "[data-action='add-session-to-project'][data-project-name='local']"
+      )
+      ?.click();
+
+    expect(onMoveKanbanSession).toHaveBeenCalledWith(null, "local", "build");
+  });
+
+  it("uses the mobile groups control to open the current kanban view", () => {
+    const root = document.createElement("div");
+    const onMoveKanbanSession = vi.fn();
+
+    renderSessionFloatingMenu(root, {
+      currentSessionName: "build",
+      sessions: ["build"],
+      kanbanProject: {
+        name: "xxvisa",
+        sessions: [{ name: "build", label: "build" }]
+      },
+      onOpenDashboard: vi.fn(),
+      onOpenKanban: vi.fn(),
+      onMoveKanbanSession,
+      onOpenSession: vi.fn(),
+      onConfig: vi.fn(),
+      onRename: vi.fn(),
+      onSendCommand: vi.fn(),
+      onRefresh: vi.fn(),
+      onCreateSession: vi.fn(),
+      uiTier: "phone"
+    });
+
+    root
+      .querySelector<HTMLButtonElement>(
+        "[data-action='toggle-session-floating-menu']"
+      )
+      ?.click();
+
+    root.querySelector<HTMLButtonElement>("[data-action='switch-groups']")?.click();
+
+    expect(onMoveKanbanSession).toHaveBeenCalledWith("xxvisa", "xxvisa", "build");
+  });
+
+  it("closes a session action menu when the floating panel closes", () => {
+    const root = document.createElement("div");
+
+    renderSessionFloatingMenu(root, {
+      currentSessionName: "scratch",
+      sessions: ["build", "scratch", "xxvisa-pm"],
+      boards: [
+        {
+          name: "xxvisa",
+          sessions: [{ name: "xxvisa-pm", label: "pm" }]
+        }
+      ],
+      kanbanDraft: {
+        name: "",
+        path: "~",
+        server: "",
+        selectedAgentNames: []
+      },
+      onKanbanDraftChange: vi.fn(),
+      onCreateKanbanProject: vi.fn(),
+      onAddKanbanSession: vi.fn(),
+      onOpenDashboard: vi.fn(),
+      onOpenKanban: vi.fn(),
+      onOpenSession: vi.fn(),
+      onConfig: vi.fn(),
+      onRename: vi.fn(),
+      onSendCommand: vi.fn(),
+      onRefresh: vi.fn(),
+      onCreateSession: vi.fn()
+    });
+
+    root
+      .querySelector<HTMLButtonElement>(
+        "[data-action='toggle-session-floating-menu']"
+      )
+      ?.click();
+
+    const buildButton = root.querySelector<HTMLButtonElement>(
+      "[data-session-name='build']"
+    )!;
+    buildButton.dispatchEvent(
+      new MouseEvent("contextmenu", { bubbles: true, cancelable: true })
+    );
+
+    expect(
+      root.querySelector(".session-floating-menu-session-actions")
+    ).not.toBeNull();
+
+    document.body.dispatchEvent(
+      new MouseEvent("pointerdown", { bubbles: true, cancelable: true })
+    );
+
+    expect(root.querySelector(".session-floating-menu-panel")).toBeNull();
+    expect(root.querySelector(".session-floating-menu-session-actions")).toBeNull();
   });
 
   it("keeps an open menu mounted across status re-renders", () => {
@@ -482,6 +1193,67 @@ describe("sessionFloatingMenu", () => {
     ).toBe("true");
     expect(root.querySelector(".session-floating-menu-panel")).not.toBeNull();
     expect(root.textContent).toContain("logs");
+  });
+
+  it("hides pin and mute controls for kanban sessions while keeping other actions", () => {
+    const root = document.createElement("div");
+    const onTogglePinned = vi.fn();
+    const onToggleMuted = vi.fn();
+
+    renderSessionFloatingMenu(root, {
+      currentSessionName: "kanban-pm",
+      sessions: ["kanban-pm", "kanban-review"],
+      kanbanProject: {
+        name: "kanban",
+        sessions: [
+          { name: "kanban-pm", label: "pm" },
+          { name: "kanban-review", label: "review" }
+        ]
+      },
+      boards: [
+        {
+          name: "kanban",
+          sessions: [
+            { name: "kanban-pm", label: "pm" },
+            { name: "kanban-review", label: "review" }
+          ]
+        }
+      ],
+      onOpenDashboard: vi.fn(),
+      onOpenKanban: vi.fn(),
+      onOpenSession: vi.fn(),
+      onConfig: vi.fn(),
+      onRename: vi.fn(),
+      onSendCommand: vi.fn(),
+      onRefresh: vi.fn(),
+      onCreateSession: vi.fn(),
+      onTogglePinned,
+      onToggleMuted,
+      onToggleActionCenter: vi.fn(),
+      hideSessionControls: true
+    });
+
+    root
+      .querySelector<HTMLButtonElement>(
+        "[data-action='toggle-session-floating-menu']"
+      )
+      ?.click();
+
+    const panel = root.querySelector<HTMLElement>(".session-floating-menu-panel")!;
+    const actions = [
+      ...panel.querySelectorAll<HTMLButtonElement>("[data-action]")
+    ].map((button) => button.dataset.action);
+
+    expect(actions).toContain("open-kanban");
+    expect(actions).toContain("send-command");
+    expect(actions).toContain("config-session");
+    expect(actions).toContain("rename-session");
+    expect(actions).not.toContain("toggle-session-pinned");
+    expect(actions).not.toContain("toggle-session-muted");
+    expect(actions).not.toContain("toggle-floating-session-pinned");
+    expect(actions).not.toContain("toggle-floating-session-muted");
+    expect(onTogglePinned).not.toHaveBeenCalled();
+    expect(onToggleMuted).not.toHaveBeenCalled();
   });
 
   it("closes with Escape or outside clicks without closing on inside clicks", () => {
@@ -558,7 +1330,7 @@ describe("sessionFloatingMenu", () => {
     toggle.click();
 
     expect(document.activeElement).toBe(
-      root.querySelector<HTMLButtonElement>("[data-action='open-kanban']")
+      root.querySelector<HTMLButtonElement>("[data-action='open-current-session-groups']")
     );
 
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
@@ -614,7 +1386,7 @@ describe("sessionFloatingMenu", () => {
     root.remove();
   });
 
-  it("restores focused session action buttons after an open-menu re-render", () => {
+  it("falls back when a focused session button disappears after an open-menu re-render", () => {
     const root = document.createElement("div");
     document.body.append(root);
     const baseState = {
@@ -643,21 +1415,19 @@ describe("sessionFloatingMenu", () => {
       )
       ?.click();
 
-    const muteButton = root.querySelector<HTMLButtonElement>(
-      "[data-action='toggle-floating-session-muted'][data-target-session='logs']"
+    const sessionButton = root.querySelector<HTMLButtonElement>(
+      "[data-action='open-session'][data-session-name='logs']"
     )!;
-    muteButton.focus();
+    sessionButton.focus();
 
     renderSessionFloatingMenu(root, {
       ...baseState,
-      mutedSessionNames: new Set(["logs"])
+      sessions: ["build"]
     });
 
-    const rerenderedMuteButton = root.querySelector<HTMLButtonElement>(
-      "[data-action='toggle-floating-session-muted'][data-target-session='logs']"
-    )!;
-    expect(document.activeElement).toBe(rerenderedMuteButton);
-    expect(rerenderedMuteButton.getAttribute("aria-pressed")).toBe("true");
+    expect(document.activeElement).toBe(
+      root.querySelector<HTMLButtonElement>("[data-action='open-current-session-groups']")
+    );
 
     root.remove();
   });
@@ -693,7 +1463,7 @@ describe("sessionFloatingMenu", () => {
 
     root
       .querySelector<HTMLButtonElement>(
-        "[data-action='toggle-floating-session-muted'][data-target-session='logs']"
+        "[data-action='open-session'][data-session-name='logs']"
       )
       ?.focus();
 
@@ -703,7 +1473,7 @@ describe("sessionFloatingMenu", () => {
     });
 
     expect(document.activeElement).toBe(
-      root.querySelector<HTMLButtonElement>("[data-action='open-kanban']")
+      root.querySelector<HTMLButtonElement>("[data-action='open-current-session-groups']")
     );
 
     root.remove();

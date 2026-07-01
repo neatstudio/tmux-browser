@@ -4,6 +4,7 @@ import type {
   CreateGroupMessageRequest,
   GroupMessage
 } from "../../shared/groupMessages";
+import type { SessionRuntimeKind } from "../../shared/sessionRuntime";
 import type { SessionSettings } from "../../shared/sessionSettings";
 import type { TimelineEvent } from "../../shared/timeline";
 
@@ -15,6 +16,7 @@ export type SessionSummary = {
   paneCount: number;
   activeWindowName: string | null;
   currentCommand: string | null;
+  runtimeKind?: SessionRuntimeKind;
   currentPath: string | null;
   gitBranch: string | null;
   gitDirty: boolean | null;
@@ -34,10 +36,15 @@ export type PaneSummary = {
   paneIndex: number;
   paneActive: boolean;
   currentCommand: string | null;
+  runtimeKind?: SessionRuntimeKind;
   currentPath: string | null;
   paneDead: boolean;
   paneDeadStatus: number | null;
   panePid: number | null;
+  paneLeft: number;
+  paneTop: number;
+  paneWidth: number;
+  paneHeight: number;
 };
 
 export type SplitPaneDirection = "horizontal" | "vertical";

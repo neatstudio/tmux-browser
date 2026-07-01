@@ -14,6 +14,8 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { createApp } from "../../src/server/createApp";
+import { createAppEventHub } from "../../src/server/services/events/createAppEventHub";
+import { createTimelineStore } from "../../src/server/services/timeline/createTimelineStore";
 import { fetchRemoteImage } from "../../src/server/services/uploads/remoteImageUploadService";
 
 describe("createApp", () => {
@@ -108,6 +110,176 @@ describe("createApp", () => {
         message: "created session build"
       }
     ]);
+  });
+
+  it("accepts authenticated hook events, records timeline, and broadcasts app events", async () => {
+    const timelineStore = createTimelineStore();
+    const eventHub = createAppEventHub();
+    const received: unknown[] = [];
+    eventHub.subscribe((event) => received.push(event));
+    const app = createApp({
+      hookToken: "secret-token",
+      timelineStore,
+      eventHub,
+      tmuxService: {
+        listSessions: vi.fn(),
+        createSession: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    const response = await request(app)
+      .post("/api/hooks/events")
+      .set("Authorization", "Bearer secret-token")
+      .send({
+        source: "codex",
+        sessionName: "local-pets",
+        cwd: "/Users/gouki/server/wwwroot/own/pets",
+        eventType: "approval-required",
+        status: "waiting",
+        title: "Need confirmation",
+        body: "Approve file edit?",
+        taskId: "task-1",
+        metadata: {
+          tool: "apply_patch",
+          ignored: { nested: true }
+        }
+      });
+
+    expect(response.status).toBe(202);
+    expect(response.body.event).toMatchObject({
+      type: "hook-event",
+      source: "codex",
+      sessionName: "local-pets",
+      cwd: "/Users/gouki/server/wwwroot/own/pets",
+      eventType: "approval-required",
+      status: "waiting",
+      title: "Need confirmation",
+      body: "Approve file edit?",
+      taskId: "task-1",
+      metadata: {
+        tool: "apply_patch"
+      }
+    });
+    expect(timelineStore.listEvents({ limit: 1 })[0]).toMatchObject({
+      type: "hook-event",
+      sessionName: "local-pets",
+      message: "Need confirmation",
+      metadata: {
+        source: "codex",
+        eventType: "approval-required",
+        status: "waiting",
+        taskId: "task-1",
+        cwd: "/Users/gouki/server/wwwroot/own/pets"
+      }
+    });
+    expect(received).toEqual([
+      expect.objectContaining({
+        type: "hook-event",
+        source: "codex",
+        sessionName: "local-pets",
+        status: "waiting"
+      })
+    ]);
+  });
+
+  it("rejects hook events without the configured bearer token", async () => {
+    const app = createApp({
+      hookToken: "secret-token",
+      tmuxService: {
+        listSessions: vi.fn(),
+        createSession: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    const response = await request(app)
+      .post("/api/hooks/events")
+      .set("X-Forwarded-For", "203.0.113.20")
+      .set("Authorization", "Bearer wrong")
+      .send({
+        source: "codex",
+        sessionName: "local-pets",
+        eventType: "approval-required",
+        status: "waiting"
+      });
+
+    expect(response.status).toBe(401);
+  });
+
+  it("allows hook events from localhost or Tailscale addresses without a token", async () => {
+    const app = createApp({
+      tmuxService: {
+        listSessions: vi.fn(),
+        createSession: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    const localhostResponse = await request(app)
+      .post("/api/hooks/events")
+      .set("X-Forwarded-For", "127.0.0.1")
+      .send({
+        source: "codex",
+        sessionName: "hooks",
+        eventType: "need-input",
+        status: "waiting"
+      });
+    const tailscaleResponse = await request(app)
+      .post("/api/hooks/events")
+      .set("X-Forwarded-For", "100.89.0.116")
+      .send({
+        source: "codex",
+        sessionName: "hooks",
+        eventType: "need-input",
+        status: "waiting"
+      });
+
+    expect(localhostResponse.status).toBe(202);
+    expect(tailscaleResponse.status).toBe(202);
+  });
+
+  it("still requires a token for hook events from non-local private addresses", async () => {
+    const app = createApp({
+      hookToken: "secret-token",
+      tmuxService: {
+        listSessions: vi.fn(),
+        createSession: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    const response = await request(app)
+      .post("/api/hooks/events")
+      .set("X-Forwarded-For", "192.168.1.20")
+      .send({
+        source: "codex",
+        sessionName: "hooks",
+        eventType: "need-input",
+        status: "waiting"
+      });
+
+    expect(response.status).toBe(401);
   });
 
   it("serves local image previews from absolute paths", async () => {
@@ -951,7 +1123,7 @@ describe("createApp", () => {
     });
   });
 
-  it("syncs kanban projects against live tmux sessions when listing projects", async () => {
+  it("serves kanban projects after pruning sessions missing from tmux", async () => {
     const preferences = {
       getPreferences: vi.fn(() => ({
         pinnedSessionNames: [],
@@ -1352,6 +1524,58 @@ describe("createApp", () => {
     });
   });
 
+  it("rejects the reserved virtual ungrouped kanban project name", async () => {
+    const preferences = {
+      getPreferences: vi.fn(() => ({
+        pinnedSessionNames: [],
+        mutedSessionNames: ["tmux-ui"],
+        sessionSettings: {},
+        kanbanProjects: []
+      })),
+      setPinnedSession: vi.fn(),
+      setMutedSession: vi.fn(),
+      setSessionSettings: vi.fn(),
+      upsertKanbanProject: vi.fn(),
+      deleteKanbanProject: vi.fn(),
+      addKanbanSession: vi.fn(),
+      removeKanbanSession: vi.fn(),
+      syncKanbanSessions: vi.fn(),
+      renameSession: vi.fn()
+    };
+    const app = createApp({
+      preferences,
+      tmuxService: {
+        listSessions: vi.fn(),
+        getSessionStatus: vi.fn(),
+        createSession: vi.fn(),
+        createProjectSessions: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        sendInput: vi.fn(),
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    const response = await request(app)
+      .post("/api/kanban/projects")
+      .send({
+        name: "ungrouped",
+        path: "~",
+        server: null,
+        selectedAgentNames: [],
+        agents: []
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({
+      error: "ungrouped is reserved for the virtual kanban group"
+    });
+    expect(preferences.upsertKanbanProject).not.toHaveBeenCalled();
+  });
+
   it("saves kanban projects even when no recommended agents are provided", async () => {
     const preferences = {
       getPreferences: vi.fn(() => ({
@@ -1493,8 +1717,20 @@ describe("createApp", () => {
     });
     expect(sendInput).toHaveBeenCalledTimes(2);
     expect(sendInput.mock.calls[0][0]).toBe("xxvisa-review");
-    expect(sendInput.mock.calls[0][1]).toContain("[tmux-ui:task]");
-    expect(sendInput.mock.calls[0][1]).toContain("to: xxvisa-review");
+    const agentPayload = JSON.parse(sendInput.mock.calls[0][1].trim());
+    expect(agentPayload).toMatchObject({
+      type: "tmux-ui.task",
+      id: response.body.message.id,
+      project: "xxvisa",
+      from: "xxvisa-pm",
+      to: "xxvisa-review",
+      body: "Please review checkout."
+    });
+    expect(agentPayload.reply_with).toMatchObject({
+      type: "tmux-ui.reply",
+      id: response.body.message.id,
+      from: "xxvisa-review"
+    });
     expect(sendInput.mock.calls[0][1]).toMatch(/\r$/);
 
     const listResponse = await request(app).get(
@@ -1580,8 +1816,90 @@ describe("createApp", () => {
       "local-shell",
       expect.stringMatching(/^printf '%b\\n' /)
     );
-    expect(sendLiteralInput.mock.calls[0][1]).toContain("[tmux-ui:task]");
+    expect(sendLiteralInput.mock.calls[0][1]).toContain('"type": "tmux-ui.task"');
+    expect(sendLiteralInput.mock.calls[0][1]).toContain('"body": "echo should-not-run"');
     expect(sendLiteralInput.mock.calls[0][1]).not.toContain("\necho should-not-run\n");
+  });
+
+  it("sends group messages between ungrouped live sessions through the virtual ungrouped project", async () => {
+    const sendInput = vi.fn().mockResolvedValue(undefined);
+    const preferences = {
+      getPreferences: vi.fn(() => ({
+        pinnedSessionNames: [],
+        mutedSessionNames: ["tmux-ui"],
+        sessionSettings: {},
+        kanbanProjects: [
+          {
+            name: "xxvisa",
+            path: "/srv/xxvisa",
+            server: null,
+            agents: [
+              {
+                kind: "session",
+                name: "xxvisa-pm",
+                command: null,
+                sessionName: "xxvisa-pm"
+              }
+            ]
+          }
+        ]
+      })),
+      setPinnedSession: vi.fn(),
+      setMutedSession: vi.fn(),
+      setSessionSettings: vi.fn(),
+      upsertKanbanProject: vi.fn(),
+      deleteKanbanProject: vi.fn(),
+      addKanbanSession: vi.fn(),
+      removeKanbanSession: vi.fn(),
+      syncKanbanSessions: vi.fn(),
+      renameSession: vi.fn()
+    };
+    const app = createApp({
+      preferences,
+      tmuxService: {
+        listSessions: vi.fn().mockResolvedValue([
+          { name: "xxvisa-pm", currentCommand: "codex" },
+          { name: "scratch-a", currentCommand: "codex" },
+          { name: "scratch-b", currentCommand: "claude" }
+        ]),
+        getSessionStatus: vi.fn(),
+        createSession: vi.fn(),
+        createProjectSessions: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        sendInput,
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    const response = await request(app)
+      .post("/api/kanban/projects/ungrouped/messages")
+      .send({
+        fromSession: "scratch-a",
+        kind: "task",
+        target: { type: "others" },
+        body: "Check this ungrouped task."
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body.message).toMatchObject({
+      projectName: "ungrouped",
+      fromSession: "scratch-a",
+      toSessions: ["scratch-b"],
+      deliveries: [
+        { sessionName: "scratch-b", status: "sent", mode: "agent-input" }
+      ]
+    });
+    expect(sendInput).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(sendInput.mock.calls[0][1].trim())).toMatchObject({
+      type: "tmux-ui.task",
+      project: "ungrouped",
+      from: "scratch-a",
+      to: "scratch-b"
+    });
   });
 
   it("keeps successful kanban group deliveries when one target send fails", async () => {

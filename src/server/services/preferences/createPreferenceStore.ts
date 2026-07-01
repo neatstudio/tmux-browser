@@ -412,7 +412,19 @@ export function createPreferenceStore(
                   )
                 ),
                 [normalizedToName]: preferences.sessionSettings[normalizedFromName]
-              }
+              },
+        kanbanProjects: preferences.kanbanProjects.map((project) => ({
+          ...project,
+          agents: project.agents.map((agent) =>
+            getKanbanAgentActualSessionName(project.name, agent) ===
+            normalizedFromName
+              ? {
+                  ...agent,
+                  sessionName: normalizedToName
+                }
+              : agent
+          )
+        }))
       });
       await persist();
 

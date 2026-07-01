@@ -257,6 +257,57 @@ server and attaches to or creates the same named tmux session on the remote
 host. This keeps browser tabs openable from the local tmux-ui while still giving
 remote agents a predictable resume name.
 
+## Agent Hook Events
+
+tmux-ui can accept explicit events from Codex, Claude, or other agent hooks.
+This is more reliable than screen parsing for states such as waiting for
+approval, blocked tasks, or failed commands.
+
+Hook requests from `127.0.0.1`, `::1`, or Tailscale `100.64.0.0/10` do not
+require a token. Other sources require a token. Setting one is still recommended
+when you want explicit protection in every environment:
+
+```bash
+export TMUX_UI_HOOK_TOKEN='change-me'
+tmux-ui restart
+```
+
+Install Codex/Claude hooks:
+
+```bash
+tmux-ui hooks-install
+```
+
+Uninstall hooks installed by tmux-ui:
+
+```bash
+tmux-ui hooks-uninstall
+```
+
+`hooks-install` merges a Codex `PermissionRequest` hook into
+`~/.codex/hooks.json` and a Claude `Notification(permission_prompt|idle_prompt)`
+hook into `~/.claude/settings.json`. Existing hooks are preserved.
+
+For other tools, call the helper manually from that tool's hook system:
+
+```bash
+echo "Approve file edit?" | \
+  TMUX_UI_HOOK_SOURCE=codex \
+  TMUX_UI_HOOK_EVENT_TYPE=approval-required \
+  TMUX_UI_HOOK_STATUS=waiting \
+  TMUX_UI_HOOK_TITLE='Need confirmation' \
+  ~/.tmux-ui/bin/tmux-ui-hook
+```
+
+The helper infers the tmux session from the current tmux environment. Outside
+tmux, set `TMUX_UI_SESSION_NAME=<session>` explicitly. The server records the
+event in the timeline and pushes it over the global websocket; `waiting`,
+`blocked`, `need-input`, and `failed` events appear in Action Center.
+
+If the service is not listening on `127.0.0.1:3000`, set
+`TMUX_UI_HOOK_URL=http://100.x.y.z:3000/api/hooks/events` in the hook
+environment.
+
 ## tmux Restoration
 
 tmux-ui can optionally install and manage `tmux-resurrect` plus

@@ -2,22 +2,21 @@ import type {
   SessionSummary,
   KanbanProject
 } from "../api/sessionApi";
+import type { KanbanCreateDraft as KanbanDraft } from "./kanbanCreatePanel";
+import type { ResponsiveUiTier } from "../responsiveUiTier";
 import {
-  KANBAN_RECOMMENDED_SESSIONS
-} from "../../shared/kanbanTemplates";
-
-export type KanbanDraft = {
-  name: string;
-  path: string;
-  server: string;
-  selectedAgentNames: string[];
-};
+  getKanbanAgentSessionName,
+  hasKanbanDraftContent,
+  renderKanbanCreatePanelContent
+} from "./kanbanCreatePanel";
+export { getKanbanAgentSessionName } from "./kanbanCreatePanel";
 
 export type KanbanState = {
   projects: KanbanProject[];
   sessions?: SessionSummary[];
   targetProjectName?: string | null;
   draft: KanbanDraft;
+  uiTier?: ResponsiveUiTier;
   availableSessions: string[];
   loading: boolean;
   error: string | null;
@@ -39,10 +38,6 @@ function normalizeSessionNamePart(value: string) {
     .replace(/^-+|-+$/g, "");
 }
 
-export function getKanbanAgentSessionName(projectName: string, agentName: string) {
-  return `${normalizeSessionNamePart(projectName)}-${normalizeSessionNamePart(agentName)}`;
-}
-
 function renderField(
   labelText: string,
   input: HTMLInputElement | HTMLTextAreaElement
@@ -55,16 +50,33 @@ function renderField(
   return label;
 }
 
-function getSessionNameForProject(projectName: string, sessionName: string) {
-  return getKanbanAgentSessionName(projectName, sessionName);
-}
-
 function getKanbanAgentActualSessionName(projectName: string, agent: KanbanProject["agents"][number]) {
   return agent.sessionName ?? getKanbanAgentSessionName(projectName, agent.name);
 }
 
 function getKanbanProjectElementId(projectName: string) {
   return `kanban-project-${normalizeSessionNamePart(projectName)}`;
+}
+
+function getSortedProjects(
+  projects: KanbanState["projects"],
+  targetProjectName?: string | null
+) {
+  const targetIndex = targetProjectName
+    ? projects.findIndex((project) => project.name === targetProjectName)
+    : -1;
+
+  if (targetIndex <= 0) {
+    return [...projects];
+  }
+
+  const target = projects[targetIndex];
+
+  return [
+    target,
+    ...projects.slice(0, targetIndex),
+    ...projects.slice(targetIndex + 1)
+  ];
 }
 
 function getSessionPreview(
@@ -284,7 +296,7 @@ function renderUngroupedSessions(state: KanbanState) {
       placeholder.textContent = "Add to...";
       select.append(placeholder);
 
-      state.projects.forEach((project) => {
+      getSortedProjects(state.projects, state.targetProjectName).forEach((project) => {
         const option = document.createElement("option");
         option.value = project.name;
         option.textContent = project.name;
@@ -333,130 +345,36 @@ export function renderKanban(root: HTMLElement, state: KanbanState) {
     header.className = "kanban-header";
 
     const title = document.createElement("h1");
-    title.textContent = "Kanban";
+    title.textContent = "Groups";
 
     const subtitle = document.createElement("p");
     subtitle.textContent =
-      "Create project-scoped tmux sessions for Claude, Codex, Kiro, and other agents.";
+      "Create project-scoped tmux groups for Claude, Codex, Kiro, and other agents.";
     header.append(title, subtitle);
 
-    const form = document.createElement("form");
-    form.className = "kanban-create-form";
+    const createPanel = document.createElement("details");
+    createPanel.className = "kanban-create-panel";
+    createPanel.open = hasKanbanDraftContent(state.draft);
 
-    const nameInput = document.createElement("input");
-    nameInput.name = "project-name";
-    nameInput.placeholder = "xxvisa";
-    nameInput.value = state.draft.name;
+    const createSummary = document.createElement("summary");
+    createSummary.className = "kanban-create-summary";
 
-    const pathInput = document.createElement("input");
-    pathInput.name = "project-path";
-    pathInput.placeholder = "~";
-    pathInput.value = state.draft.path;
+    const createSummaryTitle = document.createElement("strong");
+    createSummaryTitle.textContent = "Create group";
 
-    const serverInput = document.createElement("input");
-    serverInput.name = "project-server";
-    serverInput.placeholder = "tw1";
-    serverInput.value = state.draft.server;
+    const createSummaryHint = document.createElement("span");
+    createSummaryHint.textContent = `${state.draft.selectedAgentNames.length} sessions`;
+    createSummary.append(createSummaryTitle, createSummaryHint);
 
-    const emitDraftChange = () => {
-      state.onDraftChange(
-        {
-          name: nameInput.value,
-          path: pathInput.value,
-          server: serverInput.value,
-          selectedAgentNames: [...state.draft.selectedAgentNames]
-        },
-        { render: false }
-      );
-    };
-
-    nameInput.addEventListener("input", emitDraftChange);
-    pathInput.addEventListener("input", emitDraftChange);
-    serverInput.addEventListener("input", emitDraftChange);
-
-    const submit = document.createElement("button");
-    submit.type = "submit";
-    submit.textContent = "Create project";
-    submit.disabled = state.loading;
-
-    form.addEventListener("submit", (event) => {
-      event.preventDefault();
-      state.onCreateProject();
-    });
-
-    form.append(
-      renderField("Project", nameInput),
-      renderField("Path", pathInput),
-      renderField("Server", serverInput),
-      submit
+    createPanel.append(
+      createSummary,
+      renderKanbanCreatePanelContent({
+        ...state,
+        uiTier: state.uiTier ?? "desktop"
+      })
     );
 
-    const template = document.createElement("section");
-    template.className = "kanban-template";
-
-    const templateHeader = document.createElement("div");
-    templateHeader.className = "kanban-template-header";
-
-    const templateTitle = document.createElement("h2");
-    templateTitle.textContent = "Recommended sessions";
-
-    const templateHint = document.createElement("p");
-    templateHint.textContent =
-      "Choose the tmux sessions to create now. The project is saved either way.";
-    templateHeader.append(templateTitle, templateHint);
-
-    const templateList = document.createElement("div");
-    templateList.className = "kanban-template-list";
-
-    KANBAN_RECOMMENDED_SESSIONS.forEach((session) => {
-      const row = document.createElement("label");
-      row.className = "kanban-template-item";
-
-      const checkbox = document.createElement("input");
-      checkbox.type = "checkbox";
-      checkbox.checked = state.draft.selectedAgentNames.includes(session.name);
-      checkbox.addEventListener("change", () => {
-        const selectedAgentNames = checkbox.checked
-          ? [...new Set([...state.draft.selectedAgentNames, session.name])]
-          : state.draft.selectedAgentNames.filter((name) => name !== session.name);
-
-        state.onDraftChange(
-          {
-            ...state.draft,
-            name: nameInput.value,
-            path: pathInput.value,
-            server: serverInput.value,
-            selectedAgentNames
-          },
-          { render: true }
-        );
-      });
-
-      const info = document.createElement("div");
-      info.className = "kanban-template-info";
-
-      const role = document.createElement("strong");
-      role.textContent = session.name;
-
-      const summary = document.createElement("span");
-      summary.textContent = session.description;
-
-      const derived = document.createElement("code");
-      derived.textContent = getSessionNameForProject(
-        state.draft.name || "project",
-        session.name
-      );
-
-      info.append(role, summary, derived);
-      row.append(checkbox, info);
-
-      templateList.append(row);
-    });
-
-    template.append(templateHeader, templateList);
-    form.append(template);
-
-    section.append(header, form);
+    section.append(header, createPanel);
 
     if (state.error) {
       const error = document.createElement("p");
@@ -470,7 +388,7 @@ export function renderKanban(root: HTMLElement, state: KanbanState) {
 
     section.append(renderUngroupedSessions(state));
 
-  state.projects.forEach((project) => {
+  getSortedProjects(state.projects, state.targetProjectName).forEach((project) => {
     const card = document.createElement("article");
     const isTargeted = state.targetProjectName === project.name;
     card.className = `kanban-project-card${isTargeted ? " is-targeted" : ""}`;
@@ -514,8 +432,10 @@ export function renderKanban(root: HTMLElement, state: KanbanState) {
 
     project.agents.forEach((agent) => {
       const sessionName = getKanbanAgentActualSessionName(project.name, agent);
+      const summary = getSessionSummary(state.sessions, sessionName);
+      const isOffline = state.sessions !== undefined && !summary;
       const agentCard = document.createElement("div");
-      agentCard.className = "kanban-agent-card";
+      agentCard.className = `kanban-agent-card${isOffline ? " is-offline" : ""}`;
 
       const agentName = document.createElement("strong");
       agentName.textContent = agent.name;
@@ -527,13 +447,23 @@ export function renderKanban(root: HTMLElement, state: KanbanState) {
       agentSession.textContent = sessionName;
 
       const agentCommand = document.createElement("p");
-      agentCommand.textContent = agent.command || "resume manually in this tmux session";
+      agentCommand.textContent = isOffline
+        ? "offline saved session"
+        : agent.command || "resume manually in this tmux session";
 
       const openButton = document.createElement("button");
       openButton.type = "button";
       openButton.className = "kanban-agent-open";
       openButton.textContent = "Open";
-      openButton.addEventListener("click", () => state.onOpenSession(sessionName));
+      openButton.disabled = isOffline;
+      openButton.title = isOffline
+        ? `${sessionName} is not currently running`
+        : `Open ${sessionName}`;
+      openButton.addEventListener("click", () => {
+        if (!isOffline) {
+          state.onOpenSession(sessionName);
+        }
+      });
 
       const removeButton = document.createElement("button");
       removeButton.type = "button";
@@ -590,7 +520,7 @@ export function renderKanban(root: HTMLElement, state: KanbanState) {
     actions.className = "kanban-project-actions";
 
     const createInfo = document.createElement("span");
-    createInfo.textContent = `${project.agents.length} recommended sessions`;
+    createInfo.textContent = `${project.agents.length} sessions`;
     actions.append(createInfo);
 
     const addSessionForm = document.createElement("form");

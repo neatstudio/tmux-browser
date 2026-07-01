@@ -104,4 +104,53 @@ describe("deriveActionCenterItems", () => {
       }
     ]);
   });
+
+  it("promotes waiting and blocked hook timeline events into actions", () => {
+    const items = deriveActionCenterItems({
+      prompts: [],
+      sessions: [BASE_SESSION],
+      timelineEvents: [
+        {
+          id: "hook-1",
+          type: "hook-event",
+          sessionName: "codex",
+          message: "Need approval",
+          createdAt: "2026-06-29T10:00:00.000Z",
+          metadata: {
+            source: "codex",
+            eventType: "approval-required",
+            status: "waiting",
+            body: "Approve file edit?",
+            taskId: "task-1"
+          }
+        },
+        {
+          id: "hook-2",
+          type: "hook-event",
+          sessionName: "worker",
+          message: "Task finished",
+          createdAt: "2026-06-29T10:01:00.000Z",
+          metadata: {
+            source: "claude",
+            eventType: "task-done",
+            status: "done"
+          }
+        }
+      ]
+    });
+
+    expect(items).toEqual([
+      {
+        type: "hook-event",
+        id: "hook:hook-1",
+        sessionName: "codex",
+        source: "codex",
+        eventType: "approval-required",
+        status: "waiting",
+        title: "Need approval",
+        body: "Approve file edit?",
+        taskId: "task-1"
+      }
+    ]);
+  });
 });

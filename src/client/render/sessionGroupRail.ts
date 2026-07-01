@@ -2,11 +2,13 @@ import type {
   KanbanStatusProject,
   KanbanStatusSession
 } from "./sessionStatusBar";
+import type { ResponsiveUiTier } from "../responsiveUiTier";
 
 export type SessionGroupRailActions = {
   maxVisibleSessions?: number;
   onOpenSession?: (sessionName: string) => void;
   onOpenGroupTask?: () => void;
+  uiTier?: ResponsiveUiTier;
 };
 
 function getVisibleSessions(
@@ -41,17 +43,21 @@ function createSessionButton(
   actions: SessionGroupRailActions
 ) {
   const isCurrent = session.name === currentSessionName;
+  const isOffline = session.live === false;
   const button = document.createElement("button");
   button.type = "button";
   button.className = `terminal-session-rail-session${
     isCurrent ? " is-active" : ""
-  }`;
+  }${isOffline ? " is-offline" : ""}`;
   button.dataset.action = "top-switch-kanban-session";
   button.dataset.sessionName = session.name;
   button.textContent = session.label;
   button.title = isCurrent
     ? `Current session: ${session.name}`
+    : isOffline
+      ? `Offline saved session: ${session.name}`
     : `Switch to ${session.name}`;
+  button.disabled = isOffline;
 
   if (isCurrent) {
     button.setAttribute("aria-current", "true");
@@ -60,7 +66,7 @@ function createSessionButton(
   button.addEventListener("click", (event) => {
     event.stopPropagation();
 
-    if (!isCurrent) {
+    if (!isCurrent && !isOffline) {
       actions.onOpenSession?.(session.name);
     }
   });
@@ -111,7 +117,8 @@ export function renderSessionGroupRail(
     taskButton.type = "button";
     taskButton.className = "terminal-session-rail-action";
     taskButton.dataset.action = "top-open-group-task";
-    taskButton.textContent = "Task";
+    taskButton.textContent = "📝";
+    taskButton.setAttribute("aria-label", "Task");
     taskButton.title = `Send task in ${project.name}`;
     taskButton.addEventListener("click", (event) => {
       event.stopPropagation();

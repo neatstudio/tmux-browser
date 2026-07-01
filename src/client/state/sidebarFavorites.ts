@@ -38,7 +38,8 @@ export function createSidebarFavoritesStore(api: SidebarFavoritesApi) {
           ? [...pinnedSessionNames, sessionName]
           : pinnedSessionNames.filter((name) => name !== sessionName),
         mutedSessionNames: [],
-        sessionSettings: {}
+        sessionSettings: {},
+        kanbanProjects: []
       });
       await api.setPinnedSession(sessionName, pinned);
     }

@@ -32,6 +32,7 @@ describe("groupMessagePanel", () => {
     renderGroupMessagePanel(root, {
       project: {
         name: "xxvisa",
+        virtual: false,
         sessions: [
           { name: "xxvisa-pm", label: "pm" },
           { name: "xxvisa-review", label: "review" }
@@ -47,13 +48,13 @@ describe("groupMessagePanel", () => {
     const textarea = root.querySelector<HTMLTextAreaElement>(
       "textarea[name='group-message-body']"
     )!;
-    const target = root.querySelector<HTMLSelectElement>(
-      "select[name='group-message-target']"
+    const target = root.querySelector<HTMLInputElement>(
+      "input[name='group-message-target'][value='session:xxvisa-review']"
     )!;
     textarea.focus();
     textarea.value = "Please review checkout.";
     textarea.dispatchEvent(new Event("input", { bubbles: true }));
-    target.value = "session:xxvisa-review";
+    target.checked = true;
     root.querySelector<HTMLFormElement>(".group-message-compose")!.requestSubmit();
 
     expect(document.activeElement).toBe(textarea);
@@ -65,6 +66,41 @@ describe("groupMessagePanel", () => {
     });
   });
 
+  it("uses a compact dialog-like task composer with session pill targets", () => {
+    const root = document.createElement("div");
+
+    renderGroupMessagePanel(root, {
+      project: {
+        name: "ungrouped",
+        virtual: true,
+        sessions: [
+          { name: "scratch-a", label: "scratch-a" },
+          { name: "scratch-b", label: "scratch-b" }
+        ]
+      },
+      currentSessionName: "scratch-a",
+      messages: [],
+      onSubmit: vi.fn(),
+      onScan: vi.fn(),
+      onClose: vi.fn()
+    });
+
+    const panel = root.querySelector<HTMLElement>(".group-message-panel")!;
+    expect(panel.getAttribute("role")).toBe("dialog");
+    expect(panel.querySelector(".group-message-compose-card")).not.toBeNull();
+    expect(panel.querySelector(".group-message-project-badge")?.textContent).toBe(
+      "ungrouped"
+    );
+    expect(
+      [
+        ...panel.querySelectorAll<HTMLLabelElement>(".group-message-target-pill")
+      ].map((label) => label.textContent)
+    ).toEqual(["All others", "scratch-b"]);
+    expect(panel.querySelector(".group-message-kind-select")).not.toBeNull();
+    expect(panel.querySelector(".group-message-body")).not.toBeNull();
+    expect(panel.querySelector(".group-message-send")?.textContent).toBe("Send");
+  });
+
   it("renders message states and scans a selected message", () => {
     const root = document.createElement("div");
     const onScan = vi.fn();
@@ -72,6 +108,7 @@ describe("groupMessagePanel", () => {
     renderGroupMessagePanel(root, {
       project: {
         name: "xxvisa",
+        virtual: false,
         sessions: [
           { name: "xxvisa-pm", label: "pm" },
           { name: "xxvisa-review", label: "review" }
