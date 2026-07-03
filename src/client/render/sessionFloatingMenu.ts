@@ -1,27 +1,34 @@
 import type {
   SessionSummary
 } from "../api/sessionApi";
-import type { TimelineEvent } from "../../shared/timeline";
+import type {
+  KanbanDraft
+} from "./renderKanban";
 import type {
   KanbanStatusProject
 } from "./sessionStatusBar";
+import type { ResponsiveUiTier } from "../responsiveUiTier";
+import {
+  renderKanbanCreatePanelContent
+} from "./kanbanCreatePanel";
+import {
+  openSessionGroupMenu
+} from "./sessionGroupMenu";
+import { MOBILE_SOFT_KEYS } from "../terminal/softKeys";
 
 const FLOATING_MENU_GLOBAL_CLEANUP_EVENT = "tmux-ui-floating-menu-cleanup";
 
 export type SessionFloatingMenuState = {
   currentSessionName: string;
+  currentProjectName?: string | null;
   sessions: string[];
   sessionSummaries?: SessionSummary[];
   homeDirectory?: string | null;
   kanbanProject?: KanbanStatusProject | null;
   boards?: KanbanStatusProject[];
-  pinnedSessionNames?: Set<string>;
-  mutedSessionNames?: Set<string>;
-  timelineEvents?: TimelineEvent[];
   actionCount?: number;
   actionCenterOpen?: boolean;
-  isPinned?: boolean;
-  isMuted?: boolean;
+  kanbanDraft?: KanbanDraft;
   onOpenDashboard: () => void;
   onOpenKanban: () => void;
   onOpenSession: (sessionName: string) => void;
@@ -35,13 +42,37 @@ export type SessionFloatingMenuState = {
   onChooseImage?: () => void;
   onCaptureImage?: () => void;
   onKill?: () => void;
+  onSendSoftKey?: (sequence: string) => void;
   onRefresh: () => void;
   onCreateSession: (sessionName: string) => void;
+  onKanbanDraftChange?: (
+    draft: KanbanDraft,
+    options?: { render?: boolean }
+  ) => void;
+  onCreateKanbanProject?: () => void;
+  onCreateKanbanProjectFromSession?: (
+    project: {
+      name: string;
+      path: string;
+      server: string | null;
+    },
+    sessionName: string
+  ) => void;
+  onAddKanbanSession?: (projectName: string, sessionName: string) => void;
+  onMoveKanbanSession?: (
+    fromProjectName: string | null,
+    toProjectName: string,
+    sessionName: string
+  ) => void;
   onOpenKanbanProject?: (projectName: string) => void;
-  onTogglePinned?: (sessionName: string) => void;
-  onToggleMuted?: (sessionName: string) => void;
   onToggleActionCenter?: () => void;
-  onRefreshMuted?: () => void;
+  onKillSession?: (sessionName: string) => void;
+  uiTier?: ResponsiveUiTier;
+};
+
+type SessionActionMenuState = {
+  sessionName: string;
+  close: () => void;
 };
 
 function createMenuButton(
@@ -114,70 +145,212 @@ function renderCreateSessionForm(
   return form;
 }
 
+function renderProjectManagementSection(
+  state: SessionFloatingMenuState,
+  closePanel: () => void
+) {
+  if (!state.kanbanDraft || !state.onKanbanDraftChange) {
+    return null;
+  }
+
+  const section = createMenuSection("Project");
+  section.classList.add("session-floating-menu-projects");
+
+  const createPanel = renderKanbanCreatePanelContent({
+    uiTier: state.uiTier,
+    draft: state.kanbanDraft,
+    loading: false,
+    onDraftChange: (draft, options) => {
+      state.onKanbanDraftChange?.(draft, options);
+    },
+    onCreateProject: (draft) => {
+      const name = draft.name.trim();
+      if (!name) {
+        return;
+      }
+
+      closePanel();
+    state.onCreateKanbanProjectFromSession?.(
+      {
+        name,
+        path: draft.path.trim() || "~",
+        server: draft.server.trim() || null,
+        selectedAgentNames:
+          draft.selectedAgentNames.length > 0
+            ? draft.selectedAgentNames
+            : [state.currentSessionName]
+      },
+        state.currentSessionName
+      );
+    }
+  });
+  section.append(createPanel);
+
+  const boards = state.boards?.filter((board) => !board.virtual) ?? [];
+  const ungroupedSessionNames = getUngroupedSessionNames(state);
+
+  if (
+    boards.length > 0 &&
+    ungroupedSessionNames.length > 0 &&
+    state.onAddKanbanSession
+  ) {
+    const moveForm = document.createElement("form");
+    moveForm.className = "session-floating-menu-project-move";
+
+    const sessionSelect = document.createElement("select");
+    sessionSelect.name = "floating-session-name";
+    sessionSelect.setAttribute("aria-label", "Session to move");
+
+    const orderedSessionNames = [
+      state.currentSessionName,
+      ...ungroupedSessionNames.filter(
+        (sessionName) => sessionName !== state.currentSessionName
+      )
+    ].filter((sessionName) => ungroupedSessionNames.includes(sessionName));
+
+    orderedSessionNames.forEach((sessionName) => {
+      const option = document.createElement("option");
+      option.value = sessionName;
+      option.textContent = sessionName;
+      sessionSelect.append(option);
+    });
+
+    const projectSelect = document.createElement("select");
+    projectSelect.name = "floating-target-project";
+    projectSelect.setAttribute("aria-label", "Target project");
+
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "to group";
+    projectSelect.append(placeholder);
+
+    boards.forEach((board) => {
+      const option = document.createElement("option");
+      option.value = board.name;
+      option.textContent = board.name;
+      projectSelect.append(option);
+    });
+
+    const moveButton = document.createElement("button");
+    moveButton.type = "submit";
+    moveButton.dataset.action = "move-session-to-project";
+    moveButton.textContent = "Move";
+    moveButton.title = "Move session to project group";
+
+    moveForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (!sessionSelect.value || !projectSelect.value) {
+        return;
+      }
+
+      closePanel();
+      state.onMoveKanbanSession?.(
+        state.kanbanProject?.name ?? null,
+        projectSelect.value,
+        sessionSelect.value
+      );
+    });
+
+    moveForm.append(sessionSelect, projectSelect, moveButton);
+    section.append(moveForm);
+  }
+
+  return section;
+}
+
 function renderCurrentSessionSection(
   state: SessionFloatingMenuState,
   closePanel: () => void
 ) {
-  const hasCurrentActions =
-    Boolean(state.onTogglePinned) ||
-    Boolean(state.onToggleMuted) ||
+  const actionCount = state.actionCount ?? 0;
+  const hasActionCenter =
     Boolean(state.onToggleActionCenter) ||
-    (state.actionCount ?? 0) > 0 ||
+    actionCount > 0 ||
     Boolean(state.actionCenterOpen);
+  if (state.uiTier && state.uiTier !== "desktop") {
+    const current = createMenuSection("Current");
+    const currentProjectName = state.kanbanProject?.name ?? null;
 
-  if (!hasCurrentActions) {
+    if (currentProjectName) {
+      current.append(
+        createMenuButton(
+        "switch-groups",
+        "Groups",
+      () => {
+        closePanel();
+        if (currentProjectName) {
+          state.onMoveKanbanSession?.(currentProjectName, currentProjectName, state.currentSessionName);
+        }
+      },
+      "Switch groups"
+      )
+      );
+    }
+
+    if (state.onToggleActionCenter && (actionCount > 0 || state.actionCenterOpen)) {
+      const actionButton = createMenuButton(
+        "toggle-action-center",
+        `!${actionCount}`,
+        () => {
+          closePanel();
+          state.onToggleActionCenter?.();
+        },
+        `${actionCount} pending actions`
+      );
+      actionButton.classList.toggle("is-attention", actionCount > 0);
+      current.append(actionButton);
+    }
+
+    return current.childElementCount > 1 ? current : null;
+  }
+
+  if (!hasActionCenter) {
     return null;
   }
 
   const current = createMenuSection("Current");
 
-  if (state.onTogglePinned) {
-    current.append(
-      createMenuButton(
-        "toggle-session-pinned",
-        state.isPinned ? "Unpin" : "Pin",
-        () => {
-          closePanel();
-          state.onTogglePinned?.(state.currentSessionName);
-        },
-        state.isPinned
-          ? `Unpin ${state.currentSessionName}`
-          : `Pin ${state.currentSessionName}`
-      )
+  if (state.onToggleActionCenter && (actionCount > 0 || state.actionCenterOpen)) {
+    const actionButton = createMenuButton(
+      "toggle-action-center",
+      `!${actionCount}`,
+      () => {
+        closePanel();
+        state.onToggleActionCenter?.();
+      },
+      `${actionCount} pending actions`
     );
-  }
-
-  if (state.onToggleMuted) {
-    current.append(
-      createMenuButton(
-        "toggle-session-muted",
-        state.isMuted ? "Unmute" : "Mute",
-        () => {
-          closePanel();
-          state.onToggleMuted?.(state.currentSessionName);
-        },
-        state.isMuted
-          ? `Unmute ${state.currentSessionName}`
-          : `Mute ${state.currentSessionName}`
-      )
-    );
-  }
-
-  if (state.onToggleActionCenter && ((state.actionCount ?? 0) > 0 || state.actionCenterOpen)) {
-    current.append(
-      createMenuButton(
-        "toggle-action-center",
-        `!${state.actionCount ?? 0}`,
-        () => {
-          closePanel();
-          state.onToggleActionCenter?.();
-        },
-        `${state.actionCount ?? 0} pending actions`
-      )
-    );
+    actionButton.classList.toggle("is-attention", actionCount > 0);
+    current.append(actionButton);
   }
 
   return current.childElementCount > 1 ? current : null;
+}
+
+function renderSoftKeysSection(state: SessionFloatingMenuState) {
+  if (!state.onSendSoftKey) {
+    return null;
+  }
+
+  const section = createMenuSection("Keys");
+  section.classList.add("session-floating-menu-soft-keys");
+
+  MOBILE_SOFT_KEYS.forEach((key) => {
+    const button = createMenuButton(
+      `soft-key-${key.id}`,
+      key.label,
+      () => {
+        state.onSendSoftKey?.(key.sequence);
+      },
+      key.title
+    );
+    button.classList.add("session-floating-menu-soft-key");
+    section.append(button);
+  });
+
+  return section;
 }
 
 function renderSessionShortcut(
@@ -185,13 +358,23 @@ function renderSessionShortcut(
   label: string,
   state: SessionFloatingMenuState,
   closePanel: () => void,
-  projectName?: string,
-  options: { controls?: boolean } = {}
+  openSessionActionMenu: (
+    sessionName: string,
+    anchor: HTMLElement,
+    projectName?: string | null
+  ) => void,
+  projectName?: string | null
 ) {
   const summary = state.sessionSummaries?.find(
     (session) => session.name === sessionName
   );
+  const boardSession = state.boards
+    ?.flatMap((board) => board.sessions)
+    .find((session) => session.name === sessionName);
   const isActive = sessionName === state.currentSessionName;
+  const isOffline =
+    boardSession?.live === false ||
+    (projectName !== undefined && state.sessionSummaries !== undefined && !summary);
   const item = document.createElement("span");
   item.className = "session-floating-menu-session-item";
   if (projectName) {
@@ -203,11 +386,15 @@ function renderSessionShortcut(
     "",
     () => {
       closePanel();
-      if (!isActive) {
+      if (!isActive && !isOffline) {
         state.onOpenSession(sessionName);
       }
     },
-    isActive ? `Current session: ${sessionName}` : `Open ${sessionName}`
+    isActive
+      ? `Current session: ${sessionName}`
+      : isOffline
+        ? `Offline saved session: ${sessionName}`
+        : `Open ${sessionName}`
   );
   button.dataset.sessionName = sessionName;
   if (projectName) {
@@ -215,7 +402,45 @@ function renderSessionShortcut(
   }
   button.className = `session-floating-menu-session${
     isActive ? " is-active" : ""
-  }`;
+  }${isOffline ? " is-offline" : ""}`;
+  button.disabled = isOffline;
+
+  const openMenu = (event: Event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openSessionActionMenu(sessionName, button, projectName);
+  };
+
+  button.addEventListener("contextmenu", openMenu);
+  let longPressTimer: number | null = null;
+  button.addEventListener("pointerdown", (event) => {
+    if (event.pointerType !== "touch") {
+      return;
+    }
+
+    longPressTimer = window.setTimeout(() => {
+      longPressTimer = null;
+      openSessionActionMenu(sessionName, button, projectName);
+    }, 600);
+  });
+  button.addEventListener("pointerup", () => {
+    if (longPressTimer !== null) {
+      window.clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+  });
+  button.addEventListener("pointercancel", () => {
+    if (longPressTimer !== null) {
+      window.clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+  });
+  button.addEventListener("pointermove", () => {
+    if (longPressTimer !== null) {
+      window.clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+  });
 
   if (isActive) {
     button.setAttribute("aria-current", "true");
@@ -238,51 +463,11 @@ function renderSessionShortcut(
     meta.title = meta.textContent;
     button.append(name, meta);
   } else {
+    button.classList.add("is-name-only");
     button.append(name);
   }
 
   item.append(button);
-
-  if (options.controls) {
-    const controls = document.createElement("span");
-    controls.className = "session-floating-menu-session-controls";
-
-    if (state.onTogglePinned) {
-      const pinned = state.pinnedSessionNames?.has(sessionName) ?? false;
-      const pinButton = createMenuButton(
-        "toggle-floating-session-pinned",
-        pinned ? "★" : "☆",
-        () => {
-          closePanel();
-          state.onTogglePinned?.(sessionName);
-        },
-        `${pinned ? "Unpin" : "Pin"} ${sessionName}`
-      );
-      pinButton.dataset.targetSession = sessionName;
-      pinButton.setAttribute("aria-pressed", pinned ? "true" : "false");
-      controls.append(pinButton);
-    }
-
-    if (state.onToggleMuted) {
-      const muted = state.mutedSessionNames?.has(sessionName) ?? false;
-      const muteButton = createMenuButton(
-        "toggle-floating-session-muted",
-        "M",
-        () => {
-          closePanel();
-          state.onToggleMuted?.(sessionName);
-        },
-        `${muted ? "Unmute" : "Mute"} ${sessionName}`
-      );
-      muteButton.dataset.targetSession = sessionName;
-      muteButton.setAttribute("aria-pressed", muted ? "true" : "false");
-      controls.append(muteButton);
-    }
-
-    if (controls.childElementCount > 0) {
-      item.append(controls);
-    }
-  }
 
   return item;
 }
@@ -310,7 +495,12 @@ function getSortedBoards(state: SessionFloatingMenuState) {
 
 function renderBoardsSection(
   state: SessionFloatingMenuState,
-  closePanel: () => void
+  closePanel: () => void,
+  openSessionActionMenu: (
+    sessionName: string,
+    anchor: HTMLElement,
+    projectName?: string
+  ) => void
 ) {
   const boards = getSortedBoards(state);
 
@@ -338,8 +528,8 @@ function renderBoardsSection(
           session.label,
           state,
           closePanel,
-          board.name,
-          { controls: true }
+          openSessionActionMenu,
+          board.name
         )
       );
     });
@@ -369,7 +559,12 @@ function renderSessionGroup(
   sessionNames: string[],
   state: SessionFloatingMenuState,
   closePanel: () => void,
-  options: { muted?: boolean; fieldset?: boolean } = {}
+  openSessionActionMenu: (
+    sessionName: string,
+    anchor: HTMLElement,
+    projectName?: string | null
+  ) => void,
+  options: { fieldset?: boolean } = {}
 ) {
   if (sessionNames.length === 0) {
     return null;
@@ -379,20 +574,6 @@ function renderSessionGroup(
   const container = options.fieldset
     ? document.createElement("fieldset")
     : section;
-
-  if (options.muted && state.onRefreshMuted) {
-    section.append(
-      createMenuButton(
-        "refresh-muted-sessions",
-        "Refresh mute",
-        () => {
-          closePanel();
-          state.onRefreshMuted?.();
-        },
-        "Refresh muted sessions"
-      )
-    );
-  }
 
   if (options.fieldset && container instanceof HTMLFieldSetElement) {
     container.className = "session-floating-menu-board";
@@ -407,9 +588,14 @@ function renderSessionGroup(
 
   sessionNames.forEach((sessionName) => {
     container.append(
-      renderSessionShortcut(sessionName, sessionName, state, closePanel, undefined, {
-        controls: true
-      })
+      renderSessionShortcut(
+        sessionName,
+        sessionName,
+        state,
+        closePanel,
+        openSessionActionMenu,
+        options.fieldset ? null : undefined
+      )
     );
   });
 
@@ -422,61 +608,25 @@ function renderSessionGroup(
 
 function renderUngroupedSection(
   state: SessionFloatingMenuState,
-  closePanel: () => void
+  closePanel: () => void,
+  openSessionActionMenu: (
+    sessionName: string,
+    anchor: HTMLElement,
+    projectName?: string | null
+  ) => void
 ) {
   return renderSessionGroup(
     "Ungrouped",
     getUngroupedSessionNames(state),
     state,
     closePanel,
+    openSessionActionMenu,
     { fieldset: true }
   );
 }
 
-function formatTimelineTime(createdAt: string) {
-  const date = new Date(createdAt);
-
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  return `${String(date.getMonth() + 1).padStart(2, "0")}-${String(
-    date.getDate()
-  ).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(
-    date.getMinutes()
-  ).padStart(2, "0")}`;
-}
-
-function renderTimelineSection(state: SessionFloatingMenuState) {
-  const events = state.timelineEvents?.slice(0, 4) ?? [];
-
-  if (events.length === 0) {
-    return null;
-  }
-
-  const section = createMenuSection("Timeline");
-  section.classList.add("session-floating-menu-timeline");
-
-  events.forEach((event) => {
-    const item = document.createElement("span");
-    item.className = "session-floating-menu-timeline-item";
-    item.title = `${event.sessionName ?? "system"} · ${event.message}`;
-
-    const time = document.createElement("span");
-    time.textContent = formatTimelineTime(event.createdAt);
-
-    const text = document.createElement("span");
-    text.textContent = `${event.sessionName ?? "system"} · ${event.message}`;
-
-    item.append(time, text);
-    section.append(item);
-  });
-
-  return section;
-}
-
 function renderPanel(
-  root: HTMLElement,
+  container: HTMLElement,
   toggle: HTMLButtonElement,
   state: SessionFloatingMenuState,
   closePanel: () => void,
@@ -484,10 +634,50 @@ function renderPanel(
     createSessionDraft?: string;
     focusSelector?: string;
   }
-) {
+  ) {
   const panel = document.createElement("div");
   panel.className = "session-floating-menu-panel";
   panel.setAttribute("role", "menu");
+  let activeSessionActionMenu: SessionActionMenuState | null = null;
+  const clearActiveSessionActionMenu = () => {
+    activeSessionActionMenu?.close();
+    activeSessionActionMenu = null;
+  };
+
+  const closeSessionActionMenu = () => {
+    clearActiveSessionActionMenu();
+  };
+
+  const openSessionActionMenu = (
+    sessionName: string,
+    anchor: HTMLElement,
+    projectName?: string | null
+  ) => {
+    closeSessionActionMenu();
+
+    const cleanup = openSessionGroupMenu(
+      container,
+      anchor,
+      {
+        currentSessionName: sessionName,
+        currentProjectName:
+          projectName === null
+            ? null
+            : projectName?.trim() ??
+              state.currentProjectName?.trim() ??
+              (state.kanbanProject?.virtual ? null : state.kanbanProject?.name ?? null),
+        projectNames: (state.boards ?? [])
+          .filter((board) => !board.virtual)
+          .map((board) => board.name),
+        onOpenKanban: state.onOpenKanban,
+        onMoveKanbanSession: state.onMoveKanbanSession,
+        onKillSession: state.onKillSession,
+        uiTier: state.uiTier
+      },
+      sessionName
+    );
+    activeSessionActionMenu = { sessionName, close: cleanup };
+  };
 
   const actionsPane = document.createElement("div");
   actionsPane.className = "session-floating-menu-actions-pane";
@@ -497,10 +687,34 @@ function renderPanel(
   const actions = createMenuSection("Actions");
   actions.classList.add("session-floating-menu-actions");
   actions.append(
+    createMenuButton("open-current-session-groups", "Groups", () => {
+      const anchor = panel.querySelector<HTMLElement>(
+        "[data-action='open-current-session-groups']"
+      );
+
+      if (anchor) {
+        openSessionActionMenu(state.currentSessionName, anchor);
+      }
+    }, "Move current session to another group"),
     createMenuButton("open-kanban", "Grp", () => {
       closePanel();
       state.onOpenKanban();
     }, "Open group manager"),
+    createMenuButton(
+      "open-create-group",
+      "New group",
+      () => {
+        const template = panel.querySelector<HTMLElement>(
+          ".session-floating-menu-projects .kanban-template"
+        );
+
+        template?.scrollIntoView?.({ block: "nearest" });
+        template
+          ?.querySelector<HTMLInputElement>("input[type='checkbox']")
+          ?.focus();
+      },
+      "Focus create group form"
+    ),
     createMenuButton("send-command", "Cmd", () => {
       closePanel();
       state.onSendCommand();
@@ -543,10 +757,10 @@ function renderPanel(
       closePanel();
       state.onKill?.();
     }, "Kill session"),
-    createMenuButton("refresh-sessions", "Refr", () => {
+    createMenuButton("refresh-sessions", "Sync", () => {
       closePanel();
       state.onRefresh();
-    }),
+    }, "Sync live sessions and group status"),
     createMenuButton("config-session", "Cfg", () => {
       closePanel();
       state.onConfig();
@@ -556,46 +770,58 @@ function renderPanel(
       state.onRename();
     })
   );
-  if (state.onRefreshMuted && (state.mutedSessionNames?.size ?? 0) > 0) {
-    actions.append(
-      createMenuButton(
-        "refresh-muted-sessions",
-        "Refr",
-        () => {
-          closePanel();
-          state.onRefreshMuted?.();
-        },
-        "Refresh muted sessions"
-      )
-    );
-  }
   actionsPane.append(actions);
+  const softKeys = renderSoftKeysSection(state);
+  if (softKeys) {
+    actionsPane.append(softKeys);
+  }
   actionsPane.append(renderCreateSessionForm(state, closePanel));
-  panel.append(actionsPane);
+  const projectManagement = renderProjectManagementSection(state, closePanel);
+  if (projectManagement) {
+    actionsPane.append(projectManagement);
+  }
+
+  const boards = renderBoardsSection(state, closePanel, openSessionActionMenu);
+  if (boards) {
+    sessionsPane.append(boards);
+  }
+
+  const ungrouped = renderUngroupedSection(
+    state,
+    closePanel,
+    openSessionActionMenu
+  );
+  if (ungrouped) {
+    sessionsPane.append(ungrouped);
+  }
+
+  container.addEventListener("click", (event) => {
+    if (event.target instanceof HTMLElement) {
+      const sessionButton = event.target.closest<HTMLElement>(
+        "[data-session-name]"
+      );
+
+      if (sessionButton && event.target === sessionButton) {
+        closeSessionActionMenu();
+      }
+    }
+  });
+
+  container.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeSessionActionMenu();
+    }
+  });
 
   const current = renderCurrentSessionSection(state, closePanel);
   if (current) {
     actionsPane.append(current);
   }
 
-  const boards = renderBoardsSection(state, closePanel);
-  if (boards) {
-    sessionsPane.append(boards);
-  }
-
-  const ungrouped = renderUngroupedSection(state, closePanel);
-  if (ungrouped) {
-    sessionsPane.append(ungrouped);
-  }
-
-  const timeline = renderTimelineSection(state);
-  if (timeline) {
-    sessionsPane.append(timeline);
-  }
-
+  panel.append(actionsPane);
   panel.append(sessionsPane);
 
-  root.append(panel);
+  container.append(panel);
 
   const createSessionInput = panel.querySelector<HTMLInputElement>(
     "input[name='session-name']"
@@ -707,6 +933,10 @@ export function renderSessionFloatingMenu(
   let cleanupOpenListeners: (() => void) | null = null;
 
   const closePanel = (options: { focusToggle?: boolean } = {}) => {
+    const submenuCleanupEvent = container.dataset.cleanupSessionGroupMenu;
+    if (submenuCleanupEvent) {
+      document.dispatchEvent(new CustomEvent(submenuCleanupEvent));
+    }
     container.querySelector(".session-floating-menu-panel")?.remove();
     toggle.setAttribute("aria-expanded", "false");
     cleanupOpenListeners?.();

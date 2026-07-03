@@ -22,6 +22,7 @@ describe("parseTmuxListOutput", () => {
         paneCount: 0,
         activeWindowName: null,
         currentCommand: null,
+        runtimeKind: "unknown",
         currentPath: null,
         gitBranch: null,
         gitDirty: null,
@@ -38,6 +39,7 @@ describe("parseTmuxListOutput", () => {
         paneCount: 0,
         activeWindowName: null,
         currentCommand: null,
+        runtimeKind: "unknown",
         currentPath: null,
         gitBranch: null,
         gitDirty: null,
@@ -53,8 +55,8 @@ describe("parseTmuxListOutput", () => {
     const sessions = parseTmuxListOutput("build\t2\t1\t1714200000");
     const panes = parseTmuxPaneOutput(
       [
-        "build\t%1\t0\tserver\t0\t0\t1\tvim\t/tmp/project\t0\t\t100",
-        "build\t%2\t1\tworker\t1\t0\t1\tnpm\t/tmp/project/app\t1\t1\t101"
+        "build\t%1\t0\tserver\t0\t0\t1\tvim\t/tmp/project\t0\t\t100\t0\t0\t80\t24",
+        "build\t%2\t1\tworker\t1\t0\t1\tnpm\t/tmp/project/app\t1\t1\t101\t0\t0\t80\t24"
       ].join("\n")
     );
 
@@ -67,6 +69,7 @@ describe("parseTmuxListOutput", () => {
         paneCount: 2,
         activeWindowName: "worker",
         currentCommand: "npm",
+        runtimeKind: "unknown",
         currentPath: "/tmp/project/app",
         gitBranch: null,
         gitDirty: null,
@@ -82,8 +85,8 @@ describe("parseTmuxListOutput", () => {
     const sessions = parseTmuxListOutput("build\t1\t0\t1714200000");
     const panes = parseTmuxPaneOutput(
       [
-        "build\t%1\t0\tserver\t1\t0\t0\tzsh\t/tmp/project\t0\t\t100",
-        "build\t%2\t0\tserver\t1\t1\t1\ttail\t/tmp/project/logs\t0\t\t101"
+        "build\t%1\t0\tserver\t1\t0\t0\tzsh\t/tmp/project\t0\t\t100\t0\t0\t40\t24",
+        "build\t%2\t0\tserver\t1\t1\t1\ttail\t/tmp/project/logs\t0\t\t101\t41\t0\t39\t24"
       ].join("\n")
     );
 
@@ -96,6 +99,7 @@ describe("parseTmuxListOutput", () => {
         paneCount: 2,
         activeWindowName: "server",
         currentCommand: "tail",
+        runtimeKind: "unknown",
         currentPath: "/tmp/project/logs",
         gitBranch: null,
         gitDirty: null,
@@ -113,10 +117,15 @@ describe("parseTmuxListOutput", () => {
             paneIndex: 0,
             paneActive: false,
             currentCommand: "zsh",
+            runtimeKind: "shell",
             currentPath: "/tmp/project",
             paneDead: false,
             paneDeadStatus: null,
-            panePid: 100
+            panePid: 100,
+            paneLeft: 0,
+            paneTop: 0,
+            paneWidth: 40,
+            paneHeight: 24
           },
           {
             sessionName: "build",
@@ -127,13 +136,31 @@ describe("parseTmuxListOutput", () => {
             paneIndex: 1,
             paneActive: true,
             currentCommand: "tail",
+            runtimeKind: "unknown",
             currentPath: "/tmp/project/logs",
             paneDead: false,
             paneDeadStatus: null,
-            panePid: 101
+            panePid: 101,
+            paneLeft: 41,
+            paneTop: 0,
+            paneWidth: 39,
+            paneHeight: 24
           }
         ]
       }
     ]);
+  });
+
+  it("marks sessions with active agent panes as agent runtime", () => {
+    const sessions = parseTmuxListOutput("agent\t1\t0\t1714200000");
+    const panes = parseTmuxPaneOutput(
+      "agent\t%1\t0\tmain\t1\t0\t1\tcodex\t/tmp/project\t0\t\t100\t0\t0\t80\t24"
+    );
+
+    expect(mergeTmuxPaneSummaries(sessions, panes)[0]).toMatchObject({
+      name: "agent",
+      currentCommand: "codex",
+      runtimeKind: "agent"
+    });
   });
 });

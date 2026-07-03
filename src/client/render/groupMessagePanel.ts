@@ -106,57 +106,89 @@ export function renderGroupMessagePanel(
 
   const panel = document.createElement("section");
   panel.className = "group-message-panel";
+  panel.setAttribute("role", "dialog");
+  panel.setAttribute("aria-modal", "true");
+  panel.setAttribute("aria-label", `Messages in ${state.project.name}`);
 
   const header = document.createElement("header");
   header.className = "group-message-header";
 
   const title = document.createElement("strong");
-  title.textContent = `${state.project.name} messages`;
+  title.textContent = "Group message";
+
+  const badge = document.createElement("span");
+  badge.className = "group-message-project-badge";
+  badge.textContent = state.project.name;
 
   const close = document.createElement("button");
   close.type = "button";
   close.dataset.action = "close-group-message-panel";
   close.textContent = "Close";
   close.addEventListener("click", () => state.onClose());
-  header.append(title, close);
+  header.append(title, badge, close);
 
   const form = document.createElement("form");
   form.className = "group-message-compose";
+  const composeCard = document.createElement("div");
+  composeCard.className = "group-message-compose-card";
 
   const kind = document.createElement("select");
   kind.name = "group-message-kind";
   kind.append(createOption("task", "Task"), createOption("report", "Report"));
+  kind.className = "group-message-kind-select";
 
-  const target = document.createElement("select");
-  target.name = "group-message-target";
-  target.append(createOption("others", "All others"));
+  const target = document.createElement("div");
+  target.className = "group-message-targets";
+  target.setAttribute("role", "radiogroup");
+  target.setAttribute("aria-label", "Message target");
+
+  function appendTargetPill(value: string, label: string, checked = false) {
+    const pill = document.createElement("label");
+    pill.className = "group-message-target-pill";
+
+    const input = document.createElement("input");
+    input.type = "radio";
+    input.name = "group-message-target";
+    input.value = value;
+    input.checked = checked;
+
+    pill.append(input, document.createTextNode(label));
+    target.append(pill);
+  }
+
+  appendTargetPill("others", "All others", true);
   state.project.sessions
     .filter((session) => session.name !== state.currentSessionName)
     .forEach((session) => {
-      target.append(createOption(`session:${session.name}`, session.label));
-      target.append(createOption(`role:${session.label}`, `Role: ${session.label}`));
+      appendTargetPill(`session:${session.name}`, session.label);
     });
 
   const textarea = document.createElement("textarea");
   textarea.name = "group-message-body";
   textarea.placeholder = "Task/report body";
   textarea.rows = 4;
+  textarea.className = "group-message-body";
 
   const submit = document.createElement("button");
   submit.type = "submit";
   submit.textContent = "Send";
+  submit.className = "group-message-send";
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
+    const selectedTarget = form.querySelector<HTMLInputElement>(
+      "input[name='group-message-target']:checked"
+    );
     state.onSubmit({
       fromSession: state.currentSessionName,
       kind: kind.value as GroupMessageKind,
-      target: parseTarget(target.value),
+      target: parseTarget(selectedTarget?.value ?? "others"),
       body: textarea.value.trim()
     });
   });
 
-  form.append(kind, target, textarea, submit);
+  composeCard.append(kind, target, textarea);
+  form.append(composeCard, submit);
   panel.append(header, form, renderMessages(state));
   root.append(panel);
 }

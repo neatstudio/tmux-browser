@@ -18,6 +18,8 @@
   --dashboard-card-meta-size: clamp(0.76rem, 0.28vw + 0.68rem, 1rem);
   --dashboard-card-button-size: clamp(0.72rem, 0.18vw + 0.66rem, 0.9rem);
   --dashboard-card-button-width: clamp(2.85rem, 1.2vw + 2.35rem, 3.7rem);
+  --ui-density-scale: 1;
+  --ui-control-scale: 1;
   color: var(--app-fg);
   background: var(--app-page-bg);
   font-family: "Iosevka Etoile", "IBM Plex Sans", sans-serif;
@@ -52,127 +54,34 @@ select {
 
 .app-shell {
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: 1fr;
   height: 100vh;
   height: 100dvh;
   overflow: hidden;
   background: var(--app-shell-bg);
 }
 
-.app-shell--sidebar {
-  grid-template-rows: 1fr;
+.app-shell[data-ui-tier="desktop"] {
+  --ui-density-scale: 1.42;
+  --ui-control-scale: 1.5;
+  --dashboard-card-name-size: clamp(1.32rem, 0.92vw + 1.04rem, 2.08rem);
+  --dashboard-card-meta-size: clamp(1rem, 0.42vw + 0.84rem, 1.25rem);
+  --dashboard-card-button-size: clamp(0.96rem, 0.28vw + 0.78rem, 1.15rem);
+  --dashboard-card-button-width: clamp(3.9rem, 1.75vw + 3rem, 5.4rem);
 }
 
-.tabs-root {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  min-width: 0;
-  max-width: 100%;
-  overflow: hidden;
-  padding: 4px 6px 0;
-  border-bottom: 1px solid var(--border-strong);
-  background: var(--tabs-bg);
+.app-shell[data-ui-tier="pad"] {
+  --ui-density-scale: 1;
+  --ui-control-scale: 1;
 }
 
-.tab-strip {
-  display: flex;
-  gap: 3px;
-  min-width: 0;
-  max-width: 100%;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  scrollbar-width: none;
-  -webkit-overflow-scrolling: touch;
-}
-
-.tab-strip::-webkit-scrollbar {
-  display: none;
-}
-
-.tab-item {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 0;
-  border: 1px solid var(--border-strong);
-  border-bottom: none;
-  border-top-left-radius: 4px;
-  border-top-right-radius: 4px;
-  background: var(--tab-bg);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-}
-
-.tab-item.is-active {
-  background: var(--tab-active-bg);
-  transform: translateY(1px);
-}
-
-.tab-item button {
-  border: 0;
-  min-height: 28px;
-  color: var(--app-fg);
-  background: transparent;
-  cursor: pointer;
-  padding: 0 0.5rem;
-  font-size: 11px;
-  line-height: 1;
-  white-space: nowrap;
-  touch-action: manipulation;
-}
-
-.tab-item button:first-child {
-  max-width: clamp(6rem, 14vw, 12rem);
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.tab-item.is-pinned .tab-label::before {
-  content: "★";
-  display: inline-block;
-  width: 0.72rem;
-  margin-right: 0.35rem;
-  color: #ffd37a;
-  font-size: 0.72rem;
-  line-height: 1;
-  vertical-align: 0.08rem;
-}
-
-.tab-item--dashboard button:first-child {
-  min-width: 88px;
-  padding: 0 0.55rem;
-  font-size: 11px;
-  text-align: center;
-}
-
-.tab-context-menu {
-  position: fixed;
-  z-index: 60;
-  display: grid;
-  min-width: 7rem;
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  background: var(--control-bg);
-  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.38);
-  overflow: hidden;
-}
-
-.tab-context-menu button {
-  border: 0;
-  background: transparent;
-  color: var(--control-fg);
-  cursor: pointer;
-  padding: 0.34rem 0.55rem;
-  font-size: 0.78rem;
-  text-align: left;
-}
-
-.tab-context-menu button:hover {
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.app-shell--sidebar .tabs-root {
-  display: none;
+.app-shell[data-ui-tier="phone"] {
+  --ui-density-scale: 0.9;
+  --ui-control-scale: 0.92;
+  --dashboard-card-name-size: clamp(0.95rem, 0.36vw + 0.84rem, 1.18rem);
+  --dashboard-card-meta-size: clamp(0.72rem, 0.26vw + 0.64rem, 0.9rem);
+  --dashboard-card-button-size: clamp(0.66rem, 0.16vw + 0.62rem, 0.82rem);
+  --dashboard-card-button-width: clamp(2.55rem, 1vw + 2.1rem, 3.2rem);
 }
 
 .content-root {
@@ -183,609 +92,14 @@ select {
   background: var(--content-bg);
 }
 
-.app-shell--sidebar .content-root {
-  grid-template-columns: clamp(13rem, 22vw, 18rem) minmax(0, 1fr);
-}
-
-.app-shell--sidebar.is-sidebar-collapsed .content-root {
-  grid-template-columns: 3.35rem minmax(0, 1fr);
-}
-
-.app-shell--sidebar.app-shell--kanban-view .content-root {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.session-sidebar-root {
-  display: none;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.app-shell--sidebar .session-sidebar-root {
-  display: block;
-  grid-column: 1;
-  grid-row: 1;
-  border-right: 1px solid var(--border-strong);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.045), transparent 12rem),
-    rgba(8, 12, 16, 0.28);
-}
-
-.app-shell--sidebar.app-shell--kanban-view .session-sidebar-root {
-  display: none;
-}
-
-.mobile-sidebar-launcher {
-  display: none;
-}
-
-.app-shell--sidebar .dashboard-root,
-.app-shell--sidebar .panels-root {
-  grid-column: 2;
-  grid-row: 1;
-}
-
-.app-shell--sidebar.app-shell--kanban-view .dashboard-root,
-.app-shell--sidebar.app-shell--kanban-view .panels-root {
-  grid-column: 1;
-}
-
-.session-sidebar {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-width: 0;
-  overflow: hidden;
-  padding: 0.5rem;
-}
-
-.session-sidebar.is-collapsed {
-  padding: 0.44rem;
-}
-
-.session-sidebar-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  min-width: 0;
-  padding: 0.25rem 0.2rem 0.55rem;
-}
-
-.session-sidebar-header strong {
-  font-size: 0.95rem;
-  line-height: 1;
-}
-
-.session-sidebar.is-collapsed .session-sidebar-header strong {
-  display: none;
-}
-
-.session-sidebar-header span {
-  color: rgba(217, 226, 234, 0.56);
-  font-size: 0.68rem;
-  white-space: nowrap;
-}
-
-.session-sidebar-header-actions {
-  display: inline-flex;
-  align-items: center;
-  flex: 0 0 auto;
-  gap: 0.25rem;
-}
-
-.session-sidebar-toggle {
-  flex: 0 0 auto;
-  min-width: 1.4rem;
-  min-height: 1.4rem;
-  border: 1px solid rgba(217, 226, 234, 0.16);
-  border-radius: 3px;
-  background: rgba(217, 226, 234, 0.06);
-  color: rgba(217, 226, 234, 0.78);
-  cursor: pointer;
-  font-size: 0.72rem;
-  line-height: 1;
-}
-
-.session-sidebar-toolbar {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 0.3rem;
-  margin-top: 0.45rem;
-  padding-top: 0.45rem;
-  border-top: 1px solid rgba(217, 226, 234, 0.1);
-}
-
-.session-sidebar-create-form {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0.25rem;
-  min-width: 0;
-}
-
-.session-sidebar-create-form input {
-  min-width: 0;
-  border: 1px solid rgba(217, 226, 234, 0.14);
-  border-radius: 3px;
-  background: rgba(0, 0, 0, 0.16);
-  color: var(--control-fg);
-  font-size: 0.72rem;
-  min-height: 28px;
-  padding: 0.18rem 0.36rem;
-}
-
-.session-sidebar-tool-button {
-  border: 1px solid rgba(217, 226, 234, 0.16);
-  border-radius: 3px;
-  background: rgba(217, 226, 234, 0.06);
-  color: rgba(239, 246, 252, 0.84);
-  cursor: pointer;
-  font-size: 0.72rem;
-  min-height: 28px;
-  padding: 0.16rem 0.38rem;
-}
-
-.session-sidebar-tool-button[data-action="refresh-sidebar"] {
-  font-size: 1.05rem;
-  font-weight: 800;
-  line-height: 1;
-}
-
-.session-sidebar.is-collapsed .session-sidebar-toolbar {
-  grid-template-columns: 1fr;
-}
-
-.session-sidebar.is-collapsed .session-sidebar-create-form {
-  grid-template-columns: 1fr;
-}
-
-.session-sidebar.is-collapsed .session-sidebar-create-form input {
-  display: none;
-}
-
-.session-sidebar.is-collapsed .session-sidebar-tool-button {
-  display: grid;
-  place-items: center;
-  min-width: 0;
-  padding: 0;
-}
-
-.session-sidebar-dashboard,
-.session-sidebar-item {
-  width: 100%;
-  min-width: 0;
-  border: 1px solid rgba(217, 226, 234, 0.12);
-  border-radius: 3px;
-  background: rgba(217, 226, 234, 0.035);
-  color: var(--control-fg);
-  cursor: pointer;
-  text-align: left;
-}
-
-.session-sidebar.is-collapsed .session-sidebar-dashboard,
-.session-sidebar.is-collapsed .session-sidebar-item {
-  display: grid;
-  justify-items: center;
-  min-height: 2.2rem;
-  padding: 0.28rem;
-  text-align: center;
-}
-
-.session-sidebar-dashboard {
-  flex: 0 0 auto;
-  min-height: 30px;
-  margin-bottom: 0.45rem;
-  padding: 0.25rem 0.45rem;
-  font-size: 0.78rem;
-}
-
-.session-sidebar-kanban-projects {
-  display: grid;
-  flex: 0 0 auto;
-  gap: 0.25rem;
-  max-height: min(10rem, 24vh);
-  overflow: auto;
-  margin: -0.16rem 0 0.45rem;
-  border: 1px solid rgba(217, 226, 234, 0.08);
-  border-radius: 3px;
-  background: rgba(217, 226, 234, 0.025);
-  padding: 0.32rem;
-  scrollbar-width: thin;
-}
-
-.session-sidebar-kanban-title {
-  color: rgba(217, 226, 234, 0.42);
-  font-size: 0.56rem;
-  font-weight: 820;
-  letter-spacing: 0.11em;
-  line-height: 1;
-  text-transform: uppercase;
-}
-
-.session-sidebar-kanban-item {
-  display: grid;
-  gap: 0.18rem;
-  min-width: 0;
-}
-
-.session-sidebar-kanban-project {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.4rem;
-  min-width: 0;
-  border: 1px solid rgba(143, 217, 255, 0.12);
-  border-radius: 3px;
-  background: rgba(91, 192, 255, 0.045);
-  color: rgba(239, 246, 252, 0.84);
-  cursor: pointer;
-  font-size: 0.7rem;
-  padding: 0.24rem 0.34rem;
-}
-
-.session-sidebar-kanban-sessions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.16rem;
-  min-width: 0;
-  padding-left: 0.18rem;
-}
-
-.session-sidebar-kanban-session {
-  max-width: 100%;
-  min-width: 0;
-  border: 1px solid rgba(217, 226, 234, 0.1);
-  border-radius: 3px;
-  background: rgba(217, 226, 234, 0.04);
-  color: rgba(217, 226, 234, 0.74);
-  cursor: pointer;
-  font-size: 0.62rem;
-  line-height: 1;
-  overflow: hidden;
-  padding: 0.18rem 0.28rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.session-sidebar-kanban-session:hover {
-  border-color: rgba(143, 217, 255, 0.2);
-  background: rgba(91, 192, 255, 0.08);
-  color: #d8f3ff;
-}
-
-.session-sidebar-kanban-session.is-active {
-  border-color: rgba(191, 255, 196, 0.34);
-  background: rgba(94, 255, 130, 0.11);
-  color: #d5ffd8;
-}
-
-.session-sidebar-kanban-project span:first-child {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.session-sidebar-kanban-count {
-  display: inline-grid;
-  place-items: center;
-  min-width: 1.2rem;
-  border: 1px solid rgba(143, 217, 255, 0.18);
-  border-radius: 999px;
-  color: #bfeeff;
-  font-size: 0.58rem;
-  line-height: 1;
-  padding: 0.11rem 0.18rem;
-}
-
-.session-sidebar-action-center {
-  min-width: 1.75rem;
-  min-height: 1.4rem;
-  border: 1px solid rgba(255, 211, 122, 0.2);
-  border-radius: 3px;
-  background:
-    linear-gradient(90deg, rgba(255, 211, 122, 0.09), transparent 58%),
-    rgba(217, 226, 234, 0.035);
-  color: rgba(255, 226, 167, 0.88);
-  cursor: pointer;
-  font-size: 0.76rem;
-  font-weight: 760;
-  line-height: 1;
-  padding: 0.1rem 0.32rem;
-}
-
-.session-sidebar-action-center.is-active {
-  border-color: rgba(255, 211, 122, 0.66);
-  background:
-    linear-gradient(90deg, rgba(255, 211, 122, 0.2), transparent 62%),
-    rgba(255, 211, 122, 0.06);
-  box-shadow: inset 3px 0 0 #ffd37a;
-}
-
-.session-sidebar-dashboard.is-active,
-.session-sidebar-item.is-active {
-  border-color: rgba(143, 217, 255, 0.4);
-  background: rgba(91, 192, 255, 0.12);
-}
-
-.session-sidebar-item.is-pinned {
-  border-color: rgba(255, 211, 122, 0.58);
-  background:
-    linear-gradient(90deg, rgba(255, 211, 122, 0.2), transparent 52%),
-    rgba(217, 226, 234, 0.035);
-  box-shadow: inset 3px 0 0 #ffd37a;
-}
-
-.session-sidebar-item.is-muted {
-  border-color: rgba(143, 217, 255, 0.38);
-  background:
-    linear-gradient(90deg, rgba(143, 217, 255, 0.16), transparent 50%),
-    rgba(91, 192, 255, 0.035);
-  box-shadow: inset 3px 0 0 #8fd9ff;
-  opacity: 0.9;
-}
-
-.session-sidebar-list {
-  display: grid;
-  flex: 1 1 auto;
-  align-content: start;
-  gap: 0.32rem;
-  min-height: 0;
-  overflow: auto;
-  padding-right: 0.1rem;
-  scrollbar-width: thin;
-}
-
-.session-sidebar-group {
-  display: grid;
-  gap: 0.32rem;
-  min-width: 0;
-}
-
-.session-sidebar-group + .session-sidebar-group {
-  margin-top: 0.28rem;
-}
-
-.session-sidebar-group-title {
-  color: rgba(217, 226, 234, 0.42);
-  font-size: 0.58rem;
-  font-weight: 800;
-  letter-spacing: 0.11em;
-  line-height: 1;
-  padding: 0.1rem 0.18rem 0;
-  text-transform: uppercase;
-}
-
-.session-sidebar-group.is-pinned .session-sidebar-group-title {
-  color: #ffd37a;
-}
-
-.session-sidebar-group.is-muted .session-sidebar-group-title {
-  color: rgba(217, 226, 234, 0.5);
-}
-
-.session-sidebar-item {
-  position: relative;
-  display: grid;
-  gap: 0.22rem;
-  padding: 0.42rem 0.48rem;
-}
-
-.session-sidebar-icon {
-  display: none;
-  place-items: center;
-  width: 1.45rem;
-  height: 1.45rem;
-  border: 1px solid rgba(217, 226, 234, 0.18);
-  border-radius: 4px;
-  background: rgba(217, 226, 234, 0.06);
-  color: rgba(239, 246, 252, 0.88);
-  font-size: 0.78rem;
-  font-weight: 750;
-  line-height: 1;
-  text-transform: uppercase;
-}
-
-.session-sidebar.is-collapsed .session-sidebar-icon {
-  display: grid;
-}
-
-.session-sidebar.is-collapsed .session-sidebar-kanban-projects {
-  display: none;
-}
-
-.session-sidebar.is-collapsed .session-sidebar-text {
-  display: none;
-}
-
-.session-sidebar.is-collapsed .session-sidebar-collapse-hidden {
-  display: none;
-}
-
-.session-sidebar-item-header,
-.session-sidebar-badges,
-.session-sidebar-meta {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-}
-
-.session-sidebar-item-header {
-  justify-content: space-between;
-  gap: 0.45rem;
-}
-
-.session-sidebar-item-header strong {
-  min-width: 0;
-  overflow: hidden;
-  font-size: 0.86rem;
-  line-height: 1.1;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.session-sidebar-badges {
-  flex: 0 0 auto;
-  gap: 0.18rem;
-}
-
-.session-sidebar-pin,
-.session-sidebar-mute {
-  flex: 0 0 auto;
-  width: 1.2rem;
-  height: 1.2rem;
-  border: 0;
-  border-radius: 3px;
-  background: transparent;
-  color: rgba(217, 226, 234, 0.38);
-  cursor: pointer;
-  font-size: 0.86rem;
-  line-height: 1;
-  padding: 0;
-}
-
-.session-sidebar-pin[aria-pressed="true"] {
-  color: #ffd37a;
-}
-
-.session-sidebar-mute[aria-pressed="true"] {
-  background: rgba(143, 217, 255, 0.14);
-  color: #8fd9ff;
-}
-
-.session-sidebar-pin:hover,
-.session-sidebar-pin:focus-visible {
-  background: rgba(255, 211, 122, 0.1);
-  color: #ffd37a;
-}
-
-.session-sidebar-mute:hover,
-.session-sidebar-mute:focus-visible {
-  background: rgba(217, 226, 234, 0.1);
-  color: rgba(239, 246, 252, 0.9);
-}
-
-.session-sidebar-muted-refresh {
-  border: 0;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  font-size: 0.8rem;
-  line-height: 1;
-  padding: 0;
-}
-
-.session-sidebar-badge {
-  border: 1px solid currentColor;
-  border-radius: 2px;
-  color: rgba(217, 226, 234, 0.58);
-  font-size: 0.55rem;
-  letter-spacing: 0.04em;
-  line-height: 1;
-  padding: 0.12rem 0.22rem;
-  text-transform: uppercase;
-}
-
-.session-sidebar-badge.is-attached,
-.session-sidebar-badge.is-waiting {
-  color: #bfffc4;
-  background: rgba(94, 255, 130, 0.1);
-}
-
-.session-sidebar-badge.is-browser {
-  color: #8fd9ff;
-  background: rgba(91, 192, 255, 0.1);
-}
-
-.session-sidebar-badge.is-muted {
-  color: #8fd9ff;
-  background: rgba(91, 192, 255, 0.1);
-}
-
-.session-sidebar-meta {
-  gap: 0.22rem;
-  overflow: hidden;
-  color: rgba(217, 226, 234, 0.58);
-  font-size: 0.66rem;
-  line-height: 1.2;
-  white-space: nowrap;
-}
-
-.session-sidebar-meta-item,
-.session-sidebar-path {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.session-sidebar-meta-item + .session-sidebar-meta-item::before {
-  content: "·";
-  margin-right: 0.22rem;
-  color: rgba(217, 226, 234, 0.32);
-}
-
-.session-sidebar-path {
-  color: rgba(217, 226, 234, 0.68);
-  font:
-    0.68rem "Iosevka Term",
-    Menlo,
-    "PingFang SC",
-    monospace;
-}
-
-.session-sidebar-note {
-  border: 1px solid rgba(217, 226, 234, 0.1);
-  border-radius: 3px;
-  color: rgba(217, 226, 234, 0.58);
-  font-size: 0.72rem;
-  padding: 0.42rem;
-}
-
-.session-sidebar-note.is-error {
-  border-color: rgba(255, 174, 152, 0.24);
-  color: var(--error-fg);
-}
-
-.session-sidebar-timeline {
-  display: grid;
-  gap: 0.22rem;
-  min-width: 0;
-  margin-top: 0.45rem;
-  padding-top: 0.45rem;
-  border-top: 1px solid rgba(217, 226, 234, 0.1);
-}
-
-.session-sidebar-timeline-title {
-  color: rgba(217, 226, 234, 0.46);
-  font-size: 0.58rem;
-  font-weight: 800;
-  letter-spacing: 0.11em;
-  line-height: 1;
-  text-transform: uppercase;
-}
-
-.session-sidebar-timeline-item {
-  display: grid;
-  grid-template-columns: 4.1rem minmax(0, 1fr);
-  gap: 0.35rem;
-  min-width: 0;
-  color: rgba(217, 226, 234, 0.66);
-  font-size: 0.64rem;
-  line-height: 1.25;
-}
-
-.session-sidebar-timeline-time,
-.session-sidebar-timeline-text {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.session-sidebar-timeline-time {
-  color: rgba(217, 226, 234, 0.38);
+.session-sidebar-root,
+.session-sidebar,
+.mobile-sidebar-launcher,
+.mobile-sidebar-logo,
+.mobile-sidebar-count {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
 
 .dashboard-root {
@@ -834,16 +148,64 @@ select {
   line-height: 1.35;
 }
 
-.kanban-create-form {
+.kanban-create-panel {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.5rem;
+  gap: 0;
   margin-bottom: 0.75rem;
   border: 1px solid var(--border-soft);
   border-radius: 4px;
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.018)),
     rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.kanban-create-panel-content[data-ui-tier="phone"] .kanban-create-form,
+.kanban-create-panel-content[data-ui-tier="pad"] .kanban-create-form {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.kanban-create-panel-content[data-ui-tier="phone"] .kanban-create-form label:nth-child(n + 2),
+.kanban-create-panel-content[data-ui-tier="pad"] .kanban-create-form label:nth-child(n + 2) {
+  display: none;
+}
+
+.kanban-create-panel-content[data-ui-tier="phone"] .kanban-template {
+  display: none;
+}
+
+.kanban-create-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: 2.1rem;
+  color: rgba(239, 246, 252, 0.9);
+  cursor: pointer;
+  list-style: none;
+  padding: 0.36rem 0.62rem;
+}
+
+.kanban-create-summary::-webkit-details-marker {
+  display: none;
+}
+
+.kanban-create-summary strong {
+  font-size: 0.82rem;
+  line-height: 1;
+}
+
+.kanban-create-summary span {
+  color: rgba(217, 226, 234, 0.52);
+  font-size: 0.68rem;
+  line-height: 1;
+}
+
+.kanban-create-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  border-top: 1px solid rgba(217, 226, 234, 0.1);
   padding: 0.65rem;
 }
 
@@ -986,6 +348,7 @@ select {
 .kanban-project-list {
   columns: 18rem;
   column-gap: 0.6rem;
+  align-items: start;
 }
 
 .kanban-project-card {
@@ -1071,6 +434,8 @@ select {
 
 .kanban-agent-list {
   display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(16rem, 100%), 16rem));
+  justify-content: start;
   gap: 0.42rem;
   min-width: 0;
 }
@@ -1120,7 +485,8 @@ select {
 
 .kanban-ungrouped-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(15rem, 100%), 15rem));
+  justify-content: start;
   gap: 0.42rem;
   min-width: 0;
 }
@@ -1239,6 +605,11 @@ select {
   padding: 0.46rem 0.5rem;
 }
 
+.kanban-agent-card.is-offline {
+  border-style: dashed;
+  opacity: 0.58;
+}
+
 .kanban-agent-card strong,
 .kanban-agent-card span,
 .kanban-agent-card code,
@@ -1303,6 +674,11 @@ select {
   font-size: 0.72rem;
   font-weight: 760;
   padding: 0.16rem 0.46rem;
+}
+
+.kanban-agent-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
 }
 
 .kanban-agent-actions .kanban-agent-remove {
@@ -1576,6 +952,15 @@ select {
   padding: 0.42rem 0.48rem;
 }
 
+.app-shell[data-ui-tier="desktop"] .session-table tbody {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.app-shell[data-ui-tier="desktop"] .session-table tr {
+  gap: 0.56rem;
+  padding: 0.72rem 0.78rem;
+}
+
 .session-table td {
   border-bottom: 0;
   min-width: 0;
@@ -1612,6 +997,10 @@ select {
   font-weight: 700;
   line-height: 1.15;
   white-space: nowrap;
+}
+
+.app-shell[data-ui-tier="desktop"] .session-name {
+  font-size: clamp(1.32rem, 0.92vw + 1.04rem, 2.08rem);
 }
 
 .session-heading-actions {
@@ -1671,6 +1060,10 @@ select {
   white-space: nowrap;
 }
 
+.app-shell[data-ui-tier="desktop"] .session-meta {
+  font-size: clamp(1rem, 0.42vw + 0.84rem, 1.25rem);
+}
+
 .session-path {
   display: block;
   width: 100%;
@@ -1689,6 +1082,10 @@ select {
   padding-top: 0.22rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.app-shell[data-ui-tier="desktop"] .session-path {
+  font-size: clamp(0.92rem, 0.3vw + 0.78rem, 1.08rem);
 }
 
 .session-detail-row {
@@ -1743,6 +1140,12 @@ select {
   padding: 0.34rem 0.4rem;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.app-shell[data-ui-tier="desktop"] .session-preview {
+  min-height: 4.1rem;
+  max-height: 6.1rem;
+  font-size: clamp(0.88rem, 0.3vw + 0.76rem, 1.08rem);
 }
 
 .session-meta-item {
@@ -1869,7 +1272,7 @@ select {
 .image-preview-backdrop {
   position: absolute;
   inset: 0;
-  z-index: 14;
+  z-index: 60;
   display: grid;
   align-items: center;
   justify-items: center;
@@ -2296,10 +1699,10 @@ select {
 
 .session-floating-menu-panel {
   display: grid;
-  grid-template-columns: minmax(10.8rem, 0.98fr) minmax(0, 1.12fr);
+  grid-template-columns: minmax(11rem, 0.88fr) minmax(0, 1.62fr);
   gap: 0.42rem;
-  width: min(40rem, calc(100vw - 1rem));
-  max-height: min(72dvh, 32rem);
+  width: min(84vw, calc(100vw - 1rem));
+  max-height: min(82dvh, 40rem);
   overflow: auto;
   border: 1px solid rgba(217, 226, 234, 0.16);
   border-radius: 6px;
@@ -2309,6 +1712,20 @@ select {
   padding: 0.42rem;
   pointer-events: auto;
   scrollbar-width: thin;
+}
+
+.app-shell[data-ui-tier="desktop"] .session-floating-menu-panel {
+  gap: 0.64rem;
+  width: min(90vw, calc(100vw - 1rem));
+  max-height: min(88dvh, 48rem);
+  padding: 0.64rem;
+}
+
+.app-shell[data-ui-tier="phone"] .session-floating-menu-panel {
+  gap: 0.22rem;
+  width: min(96vw, calc(100vw - 0.45rem));
+  max-height: min(76dvh, 30rem);
+  padding: 0.16rem;
 }
 
 .session-floating-menu-actions-pane,
@@ -2324,6 +1741,14 @@ select {
   padding-right: 0.42rem;
 }
 
+.app-shell[data-ui-tier="desktop"] .session-floating-menu-actions-pane {
+  padding-right: 0.62rem;
+}
+
+.app-shell[data-ui-tier="phone"] .session-floating-menu-actions-pane {
+  padding-right: 0.22rem;
+}
+
 .session-floating-menu-section {
   display: flex;
   flex-wrap: wrap;
@@ -2331,16 +1756,40 @@ select {
   min-width: 0;
 }
 
+.app-shell[data-ui-tier="desktop"] .session-floating-menu-section {
+  gap: 0.42rem;
+}
+
+.app-shell[data-ui-tier="phone"] .session-floating-menu-section {
+  gap: 0.18rem;
+}
+
 .session-floating-menu-section.session-floating-menu-actions {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0.16rem;
+}
+
+.app-shell[data-ui-tier="desktop"] .session-floating-menu-section.session-floating-menu-actions {
+  gap: 0.26rem;
+}
+
+.app-shell[data-ui-tier="phone"] .session-floating-menu-section.session-floating-menu-actions {
+  gap: 0.11rem;
 }
 
 .session-floating-menu-section.session-floating-menu-soft-keys {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.14rem;
+}
+
+.app-shell[data-ui-tier="desktop"] .session-floating-menu-section.session-floating-menu-soft-keys {
+  gap: 0.22rem;
+}
+
+.app-shell[data-ui-tier="phone"] .session-floating-menu-section.session-floating-menu-soft-keys {
+  gap: 0.1rem;
 }
 
 .session-floating-menu-title {
@@ -2353,7 +1802,23 @@ select {
   text-transform: uppercase;
 }
 
+.app-shell[data-ui-tier="desktop"] .session-floating-menu-title {
+  font-size: 0.76rem;
+}
+
+.app-shell[data-ui-tier="phone"] .session-floating-menu-title {
+  font-size: 0.5rem;
+}
+
+.session-floating-menu-actions .session-floating-menu-title,
+.session-floating-menu-soft-keys .session-floating-menu-title {
+  grid-column: 1 / -1;
+}
+
 .session-floating-menu-panel button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-width: 0;
   border: 1px solid rgba(217, 226, 234, 0.13);
   border-radius: 3px;
@@ -2363,16 +1828,65 @@ select {
   font-size: 0.6rem;
   line-height: 1;
   overflow: hidden;
-  min-height: 21px;
-  padding: 0.16rem 0.22rem;
+  min-height: 24px;
+  padding: 0.18rem 0.3rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition:
+    transform 120ms ease,
+    background 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease,
+    color 120ms ease;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.app-shell[data-ui-tier="desktop"] .session-floating-menu-panel button {
+  min-height: 30px;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.84rem;
+}
+
+.app-shell[data-ui-tier="phone"] .session-floating-menu-panel button {
+  min-height: 22px;
+  padding: 0.12rem 0.18rem;
+  font-size: 0.5rem;
 }
 
 .session-floating-menu-panel button:hover {
   border-color: rgba(143, 217, 255, 0.28);
   background: rgba(91, 192, 255, 0.1);
   color: #d8f3ff;
+  box-shadow: 0 0 0 1px rgba(143, 217, 255, 0.12) inset;
+}
+
+.session-floating-menu-panel button.is-attention {
+  border-color: rgba(255, 204, 102, 0.8);
+  background: linear-gradient(180deg, rgba(255, 204, 102, 0.24), rgba(255, 119, 68, 0.16));
+  color: #fff6d6;
+  box-shadow: 0 0 0 1px rgba(255, 204, 102, 0.22), 0 0 18px rgba(255, 166, 64, 0.24);
+}
+
+.session-floating-menu-panel button:focus-visible {
+  outline: 1px solid rgba(143, 217, 255, 0.72);
+  outline-offset: 1px;
+}
+
+.session-floating-menu-soft-key {
+  border-color: rgba(255, 211, 122, 0.2);
+  background: rgba(255, 211, 122, 0.08);
+  color: #ffe2a7;
+  font-size: 0.58rem;
+  font-weight: 760;
+}
+
+.app-shell[data-ui-tier="desktop"] .session-floating-menu-soft-key {
+  font-size: 0.76rem;
+}
+
+.app-shell[data-ui-tier="phone"] .session-floating-menu-soft-key {
+  font-size: 0.5rem;
 }
 
 .session-floating-menu-session {
@@ -2388,31 +1902,38 @@ select {
   text-align: left;
 }
 
+.session-floating-menu-panel button.session-floating-menu-session {
+  display: grid;
+  justify-content: stretch;
+}
+
+.app-shell[data-ui-tier="desktop"] .session-floating-menu-session {
+  gap: 0.28rem;
+  padding-block: 0.42rem;
+}
+
+.app-shell[data-ui-tier="phone"] .session-floating-menu-session {
+  gap: 0.1rem;
+  padding-block: 0.18rem;
+}
+
 .session-floating-menu-session-item {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: stretch;
   flex: 0 1 7.1rem;
   gap: 0.16rem;
   min-width: min(100%, 6.7rem);
 }
 
-.session-floating-menu-session-controls {
-  display: inline-flex;
-  align-items: stretch;
-  gap: 0.16rem;
+.app-shell[data-ui-tier="desktop"] .session-floating-menu-session-item {
+  flex-basis: 8.6rem;
+  min-width: min(100%, 8rem);
 }
 
-.session-floating-menu-session-controls button {
-  min-width: 1.55rem;
-  padding-right: 0.25rem;
-  padding-left: 0.25rem;
-}
-
-.session-floating-menu-session-controls button[aria-pressed="true"] {
-  border-color: rgba(255, 211, 122, 0.42);
-  background: rgba(255, 211, 122, 0.11);
-  color: #ffe2a7;
+.app-shell[data-ui-tier="phone"] .session-floating-menu-session-item {
+  flex-basis: 6.5rem;
+  min-width: min(100%, 6.1rem);
 }
 
 .session-floating-menu-board {
@@ -2430,6 +1951,18 @@ select {
   padding: 0.42rem;
 }
 
+.app-shell[data-ui-tier="desktop"] .session-floating-menu-board {
+  grid-template-columns: repeat(auto-fill, minmax(8.2rem, 1fr));
+  gap: 0.34rem;
+  padding: 0.62rem;
+}
+
+.app-shell[data-ui-tier="phone"] .session-floating-menu-board {
+  grid-template-columns: repeat(auto-fill, minmax(6.1rem, 1fr));
+  gap: 0.14rem;
+  padding: 0.22rem;
+}
+
 .session-floating-menu-board-label {
   grid-column: 1 / -1;
   max-width: 100%;
@@ -2445,10 +1978,267 @@ select {
   white-space: nowrap;
 }
 
+.app-shell[data-ui-tier="desktop"] .session-floating-menu-board-label {
+  font-size: 0.88rem;
+}
+
+.app-shell[data-ui-tier="phone"] .session-floating-menu-board-label {
+  font-size: 0.6rem;
+  padding: 0 0.18rem;
+}
+
+.session-floating-menu-projects {
+  display: grid;
+  gap: 0.32rem;
+  min-width: 0;
+  border: 1px solid rgba(143, 217, 255, 0.16);
+  border-radius: 4px;
+  background: rgba(91, 192, 255, 0.045);
+  padding: 0.45rem;
+}
+
+.session-floating-menu-projects .kanban-create-form {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.34rem;
+  border-top: 0;
+  padding: 0;
+}
+
+.session-floating-menu-projects .kanban-create-form label {
+  grid-column: auto;
+}
+
+.session-floating-menu-projects .kanban-create-form button {
+  grid-column: auto;
+  align-self: end;
+  justify-self: stretch;
+  min-width: 5rem;
+}
+
+.session-floating-menu-projects .kanban-template {
+  grid-column: 1 / -1;
+  gap: 0.28rem;
+  padding: 0.34rem;
+}
+
+.session-floating-menu-projects .kanban-template-header {
+  align-items: center;
+}
+
+.session-floating-menu-projects .kanban-template-header h2 {
+  font-size: 0.68rem;
+}
+
+.session-floating-menu-projects .kanban-template-list {
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+  gap: 0.2rem;
+}
+
+.session-floating-menu-projects .kanban-template-item {
+  gap: 0.22rem;
+  padding: 0.26rem;
+}
+
+.session-floating-menu-projects .kanban-template-info {
+  gap: 0.08rem;
+}
+
+.session-floating-menu-projects .kanban-template-info strong {
+  font-size: 0.68rem;
+}
+
+.session-floating-menu-projects .kanban-template-info code {
+  font-size: 0.62rem;
+}
+
+.app-shell[data-ui-tier="desktop"] .session-floating-menu-projects {
+  gap: 0.46rem;
+  padding: 0.62rem;
+}
+
+.app-shell[data-ui-tier="phone"] .session-floating-menu-projects {
+  gap: 0.22rem;
+  padding: 0.3rem;
+}
+
+.session-floating-menu-project-create {
+  display: grid;
+  gap: 0.24rem;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.9fr) auto;
+}
+
+.app-shell[data-ui-tier="desktop"] .session-floating-menu-project-create,
+.app-shell[data-ui-tier="desktop"] .session-floating-menu-project-move {
+  gap: 0.36rem;
+}
+
+.app-shell[data-ui-tier="phone"] .session-floating-menu-project-create,
+.app-shell[data-ui-tier="phone"] .session-floating-menu-project-move {
+  gap: 0.16rem;
+}
+
+.session-floating-menu-project-move {
+  display: grid;
+  gap: 0.24rem;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+}
+
+.session-floating-menu-project-create input,
+.session-floating-menu-project-move select {
+  min-width: 0;
+  border: 1px solid rgba(217, 226, 234, 0.13);
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.18);
+  color: rgba(239, 246, 252, 0.84);
+  font-size: 0.68rem;
+  line-height: 1;
+  min-height: 28px;
+  padding: 0.22rem 0.34rem;
+}
+
+.app-shell[data-ui-tier="desktop"] .session-floating-menu-project-create input,
+.app-shell[data-ui-tier="desktop"] .session-floating-menu-project-move select {
+  min-height: 34px;
+  font-size: 0.9rem;
+  padding: 0.3rem 0.5rem;
+}
+
+.app-shell[data-ui-tier="phone"] .session-floating-menu-project-create input,
+.app-shell[data-ui-tier="phone"] .session-floating-menu-project-move select {
+  min-height: 24px;
+  font-size: 0.62rem;
+  padding: 0.16rem 0.22rem;
+}
+
+.session-floating-menu-project-create button,
+.session-floating-menu-project-move button {
+  min-height: 28px;
+  min-width: 2.7rem;
+  padding: 0.22rem 0.38rem;
+}
+
+.app-shell[data-ui-tier="desktop"] .session-floating-menu-project-create button,
+.app-shell[data-ui-tier="desktop"] .session-floating-menu-project-move button {
+  min-height: 34px;
+  min-width: 3.4rem;
+  font-size: 0.9rem;
+}
+
+.app-shell[data-ui-tier="phone"] .session-floating-menu-project-create button,
+.app-shell[data-ui-tier="phone"] .session-floating-menu-project-move button {
+  min-height: 24px;
+  min-width: 2.4rem;
+  font-size: 0.62rem;
+  padding: 0.16rem 0.28rem;
+}
+
+.session-floating-menu-session-actions {
+  position: fixed;
+  z-index: 90;
+  display: grid;
+  gap: 0.22rem;
+  min-width: 0;
+  max-width: min(26rem, calc(100vw - 1rem));
+  max-height: min(48rem, 78dvh);
+  overflow: auto;
+  border: 1px solid rgba(143, 217, 255, 0.22);
+  border-radius: 5px;
+  background:
+    linear-gradient(180deg, rgba(16, 22, 28, 0.98), rgba(7, 11, 15, 0.98));
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.42);
+  padding: 0.34rem;
+  pointer-events: auto;
+}
+
+.app-shell[data-ui-tier="desktop"] .session-floating-menu-session-actions {
+  max-width: min(31rem, calc(100vw - 1rem));
+  max-height: min(56rem, 86dvh);
+  padding: 0.52rem;
+}
+
+.app-shell[data-ui-tier="phone"] .session-floating-menu-session-actions {
+  max-width: min(24rem, calc(100vw - 0.5rem));
+  max-height: min(42rem, 72dvh);
+  padding: 0.26rem;
+}
+
+.session-floating-menu-session-actions-header {
+  color: rgba(217, 226, 234, 0.48);
+  font-size: 0.58rem;
+  font-weight: 820;
+  letter-spacing: 0.1em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.app-shell[data-ui-tier="desktop"] .session-floating-menu-session-actions-header {
+  font-size: 0.76rem;
+}
+
+.app-shell[data-ui-tier="phone"] .session-floating-menu-session-actions-header {
+  font-size: 0.5rem;
+}
+
+.session-floating-menu-session-actions a,
+.session-floating-menu-session-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  border: 1px solid rgba(217, 226, 234, 0.16);
+  border-radius: 4px;
+  background: rgba(217, 226, 234, 0.06);
+  color: rgba(239, 246, 252, 0.9);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 720;
+  line-height: 1;
+  min-height: 30px;
+  padding: 0.32rem 0.46rem;
+  text-align: center;
+  text-decoration: none;
+  transition:
+    transform 120ms ease,
+    background 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease,
+    color 120ms ease;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.session-floating-menu-session-actions a:hover,
+.session-floating-menu-session-actions button:hover {
+  border-color: rgba(143, 217, 255, 0.38);
+  background: rgba(91, 192, 255, 0.14);
+  color: #d8f3ff;
+  box-shadow: 0 0 0 1px rgba(143, 217, 255, 0.12) inset;
+}
+
+.session-floating-menu-session-actions a:focus-visible,
+.session-floating-menu-session-actions button:focus-visible {
+  outline: 1px solid rgba(143, 217, 255, 0.72);
+  outline-offset: 1px;
+}
+
+.session-floating-menu-session-actions-separator {
+  border-top: 1px solid rgba(217, 226, 234, 0.12);
+  margin: 0.08rem 0;
+}
+
 .session-floating-menu-session.is-active {
   border-color: rgba(191, 255, 196, 0.34);
   background: rgba(94, 255, 130, 0.11);
   color: #d5ffd8;
+}
+
+.session-floating-menu-session.is-name-only {
+  align-content: center;
+  justify-items: center;
+  text-align: center;
 }
 
 .session-floating-menu-session-name {
@@ -2460,6 +2250,14 @@ select {
   font-weight: 760;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.app-shell[data-ui-tier="desktop"] .session-floating-menu-session-name {
+  font-size: 0.92rem;
+}
+
+.app-shell[data-ui-tier="phone"] .session-floating-menu-session-name {
+  font-size: 0.56rem;
 }
 
 .session-floating-menu-session-meta {
@@ -2474,29 +2272,12 @@ select {
   white-space: nowrap;
 }
 
-.session-floating-menu-timeline {
-  display: grid;
+.app-shell[data-ui-tier="desktop"] .session-floating-menu-session-meta {
+  font-size: 0.78rem;
 }
 
-.session-floating-menu-timeline-item {
-  display: grid;
-  grid-template-columns: 4.1rem minmax(0, 1fr);
-  gap: 0.35rem;
-  min-width: 0;
-  color: rgba(217, 226, 234, 0.66);
-  font-size: 0.62rem;
-  line-height: 1.25;
-}
-
-.session-floating-menu-timeline-item span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.session-floating-menu-timeline-item span:first-child {
-  color: rgba(217, 226, 234, 0.38);
+.app-shell[data-ui-tier="phone"] .session-floating-menu-session-meta {
+  font-size: 0.48rem;
 }
 
 .session-floating-menu-create {
@@ -2531,6 +2312,7 @@ select {
 }
 
 .terminal-frame {
+  position: relative;
   width: 100%;
   min-width: 0;
   min-height: 0;
@@ -2552,6 +2334,12 @@ select {
   padding: 0.34rem 3.8rem 0.34rem 0.62rem;
 }
 
+.app-shell[data-ui-tier="desktop"] .terminal-session-rail {
+  min-height: 44px;
+  gap: 0.68rem;
+  padding: 0.56rem 4.8rem 0.56rem 0.88rem;
+}
+
 .terminal-session-rail-project {
   flex: 0 1 auto;
   max-width: min(14rem, 26vw);
@@ -2564,6 +2352,11 @@ select {
   text-overflow: ellipsis;
   text-transform: uppercase;
   white-space: nowrap;
+}
+
+.app-shell[data-ui-tier="desktop"] .terminal-session-rail-project {
+  max-width: min(18rem, 32vw);
+  font-size: 0.94rem;
 }
 
 .terminal-session-rail-sessions {
@@ -2594,6 +2387,12 @@ select {
   white-space: nowrap;
 }
 
+.app-shell[data-ui-tier="desktop"] .terminal-session-rail-session,
+.app-shell[data-ui-tier="desktop"] .terminal-session-rail-overflow {
+  font-size: 0.94rem;
+  padding: 0.36rem 0.62rem;
+}
+
 .terminal-session-rail-session {
   cursor: pointer;
   max-width: min(12rem, 18vw);
@@ -2612,9 +2411,58 @@ select {
   color: #d5ffd8;
 }
 
+.terminal-session-rail-session.is-offline,
+.session-floating-menu-session.is-offline {
+  border-style: dashed;
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
 .terminal-session-rail-overflow {
   flex: 0 0 auto;
   color: rgba(217, 226, 234, 0.52);
+}
+
+.terminal-session-rail-action {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 1.35rem;
+  border: 1px solid rgba(143, 217, 255, 0.22);
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, rgba(91, 192, 255, 0.12), rgba(255, 255, 255, 0.04)),
+    rgba(0, 0, 0, 0.08);
+  color: rgba(217, 226, 234, 0.9);
+  cursor: pointer;
+  font:
+    0.64rem/1 "Iosevka Term",
+    Menlo,
+    "PingFang SC",
+    monospace;
+  letter-spacing: 0.08em;
+  overflow: hidden;
+  padding: 0.18rem 0.44rem;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.app-shell[data-ui-tier="desktop"] .terminal-session-rail-action {
+  min-height: 1.7rem;
+  font-size: 0.82rem;
+  padding: 0.28rem 0.68rem;
+}
+
+.terminal-session-rail-action:hover:not(:disabled),
+.terminal-session-rail-action:focus-visible {
+  border-color: rgba(143, 217, 255, 0.34);
+  background:
+    linear-gradient(180deg, rgba(91, 192, 255, 0.18), rgba(255, 255, 255, 0.06)),
+    rgba(0, 0, 0, 0.1);
+  color: #d8f3ff;
 }
 
 .terminal-status-bar {
@@ -2641,6 +2489,14 @@ select {
   padding: 0 0.75rem;
   scrollbar-width: thin;
   white-space: nowrap;
+}
+
+.app-shell[data-ui-tier="desktop"] .terminal-status-bar {
+  height: 42px;
+  min-height: 42px;
+  flex-basis: 42px;
+  font-size: 14.5px;
+  padding: 0 1rem;
 }
 
 .terminal-status-bar::-webkit-scrollbar {
@@ -2677,6 +2533,17 @@ select {
   display: none;
 }
 
+.terminal-status-mobile-toggle {
+  min-height: 34px;
+  min-width: 4.75rem;
+  padding: 0.34rem 0.72rem;
+  font-size: 0.82rem;
+  border-radius: 4px;
+  box-shadow:
+    0 0 0 1px rgba(143, 217, 255, 0.12) inset,
+    0 4px 10px rgba(0, 0, 0, 0.16);
+}
+
 .terminal-status-action-group {
   display: inline-flex;
   align-items: center;
@@ -2702,22 +2569,6 @@ select {
   display: none;
 }
 
-.terminal-status-action-group[data-group="kanban-sessions"] {
-  max-width: min(34vw, 28rem);
-  overflow: hidden;
-}
-
-.terminal-status-kanban-label {
-  flex: 0 0 auto;
-  max-width: 7rem;
-  overflow: hidden;
-  color: #ffe2a7;
-  font-size: 11px;
-  font-weight: 760;
-  line-height: 1;
-  text-overflow: ellipsis;
-}
-
 .terminal-status-action {
   border: 1px solid rgba(217, 226, 234, 0.24);
   border-radius: 3px;
@@ -2732,18 +2583,39 @@ select {
   min-height: 26px;
   min-width: 0;
   padding: 0.22rem 0.42rem;
+  transition:
+    transform 120ms ease,
+    background 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease,
+    color 120ms ease;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.terminal-status-action[data-action="switch-kanban-session"] {
-  max-width: 7.5rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.terminal-status-action:active:not(:disabled),
+.session-floating-menu-session-actions button:active,
+.session-floating-menu-panel button:active {
+  transform: translateY(1px);
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.app-shell[data-ui-tier="desktop"] .terminal-status-action {
+  min-height: 32px;
+  font-size: 13.25px;
+  padding: 0.34rem 0.58rem;
 }
 
 .terminal-status-action:hover:not(:disabled) {
   border-color: rgba(217, 226, 234, 0.36);
   background: rgba(255, 255, 255, 0.12);
   color: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 0 0 1px rgba(217, 226, 234, 0.08) inset;
+}
+
+.terminal-status-action:focus-visible {
+  outline: 1px solid rgba(143, 217, 255, 0.72);
+  outline-offset: 1px;
 }
 
 .terminal-status-action.is-active {
@@ -2773,73 +2645,20 @@ select {
   color: rgba(217, 226, 234, 0.5);
 }
 
-.terminal-status-panes {
-  display: flex;
-  flex: 0 1 auto;
-  align-items: center;
-  gap: 0.22rem;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.terminal-status-pane {
-  display: inline-grid;
-  grid-template-columns: minmax(0, auto) auto;
-  align-items: center;
-  overflow: hidden;
-  border: 1px solid rgba(217, 226, 234, 0.14);
-  border-radius: 3px;
-  background: rgba(217, 226, 234, 0.04);
-}
-
-.terminal-status-pane-button,
-.terminal-status-pane-kill {
-  border: 0;
-  background: transparent;
-  color: rgba(217, 226, 234, 0.72);
-  cursor: pointer;
-  font: inherit;
-  line-height: 1;
-}
-
-.terminal-status-pane-button {
-  max-width: 8.5rem;
-  min-height: 22px;
-  min-width: 0;
-  overflow: hidden;
-  padding: 0.18rem 0.32rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.terminal-status-pane-button.is-active {
-  color: #bfffc4;
-  background: rgba(94, 255, 130, 0.1);
-}
-
-.terminal-status-pane-kill {
-  min-height: 22px;
-  min-width: 20px;
-  border-left: 1px solid rgba(217, 226, 234, 0.1);
-  padding: 0.12rem 0.24rem;
-}
-
-.terminal-status-pane-button:hover:not(:disabled),
-.terminal-status-pane-button:focus-visible,
-.terminal-status-pane-kill:hover:not(:disabled),
-.terminal-status-pane-kill:focus-visible {
-  color: rgba(255, 255, 255, 0.92);
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.terminal-status-pane-button:disabled,
-.terminal-status-pane-kill:disabled {
-  cursor: not-allowed;
-  opacity: 0.42;
-}
-
 .terminal-frame .xterm {
   height: 100%;
+}
+
+.terminal-pane-selection-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.terminal-pane-selection-line {
+  position: absolute;
+  background: var(--terminal-selection, rgba(91, 192, 255, 0.34));
 }
 
 .terminal-frame .xterm-viewport {
@@ -3063,6 +2882,107 @@ select {
   background: rgba(217, 226, 234, 0.22);
 }
 
+.hook-event-toast {
+  position: fixed;
+  right: 1rem;
+  bottom: calc(1rem + env(safe-area-inset-bottom));
+  z-index: 92;
+  display: grid;
+  gap: 0.5rem;
+  width: min(390px, calc(100vw - 2rem));
+  border: 1px solid rgba(255, 211, 122, 0.36);
+  border-radius: 6px;
+  background:
+    linear-gradient(180deg, rgba(31, 35, 31, 0.98), rgba(9, 12, 14, 0.98));
+  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.48);
+  color: rgba(239, 246, 252, 0.92);
+  padding: 0.62rem;
+}
+
+.hook-event-toast-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 0.7rem;
+}
+
+.hook-event-toast-title {
+  display: grid;
+  gap: 0.16rem;
+  min-width: 0;
+}
+
+.hook-event-toast-title strong {
+  overflow: hidden;
+  color: #ffe2a7;
+  font-size: 0.84rem;
+  line-height: 1.18;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hook-event-toast-title span {
+  overflow: hidden;
+  color: rgba(217, 226, 234, 0.58);
+  font-size: 0.66rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hook-event-toast-close {
+  border: 0;
+  background: transparent;
+  color: rgba(239, 246, 252, 0.72);
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0.02rem 0.16rem;
+}
+
+.hook-event-toast-body {
+  max-height: 7.5rem;
+  overflow: auto;
+  margin: 0;
+  border: 1px solid rgba(217, 226, 234, 0.12);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.26);
+  color: rgba(239, 246, 252, 0.84);
+  font:
+    0.72rem/1.42 "Iosevka Term",
+    Menlo,
+    "PingFang SC",
+    monospace;
+  padding: 0.45rem;
+  white-space: pre-wrap;
+}
+
+.hook-event-toast-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.36rem;
+}
+
+.hook-event-toast-actions button {
+  min-height: 28px;
+  border: 1px solid rgba(217, 226, 234, 0.22);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(239, 246, 252, 0.9);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 800;
+  padding: 0.26rem 0.54rem;
+}
+
+.hook-event-toast-actions button:hover,
+.hook-event-toast-actions button:focus-visible {
+  border-color: rgba(255, 211, 122, 0.46);
+  background: rgba(255, 211, 122, 0.12);
+  color: #ffe2a7;
+}
+
 .input-prompt-header {
   display: flex;
   align-items: center;
@@ -3215,186 +3135,180 @@ select {
     overflow: hidden;
   }
 
+  .app-shell {
+    grid-template-rows: 1fr;
+  }
+
   .kanban-root {
-    padding: 0.62rem;
+    padding: 0.42rem;
   }
 
   .kanban-header {
     display: grid;
     align-items: start;
-    gap: 0.25rem;
-    padding: 0.55rem 0.65rem;
+    gap: 0.16rem;
+    margin-bottom: 0.42rem;
+    padding: 0.38rem 0.48rem;
+  }
+
+  .kanban-header h1 {
+    font-size: 0.95rem;
   }
 
   .kanban-header p {
-    font-size: 0.72rem;
+    display: none;
   }
 
   .kanban-create-form {
     grid-template-columns: 1fr;
-    gap: 0.42rem;
+    gap: 0.28rem;
+    margin-bottom: 0.42rem;
+    padding: 0.42rem;
+  }
+
+  .kanban-create-summary {
+    min-height: 1.8rem;
+    padding: 0.22rem 0.38rem;
+  }
+
+  .kanban-create-form label {
+    gap: 0.16rem;
+    font-size: 0.56rem;
+  }
+
+  .kanban-create-form input,
+  .kanban-create-form textarea {
+    font-size: 0.72rem;
+    padding: 0.26rem 0.36rem;
+  }
+
+  .kanban-create-form button {
+    min-height: 24px;
+    font-size: 0.68rem;
+    padding: 0.16rem 0.42rem;
+  }
+
+  .kanban-template {
+    gap: 0.32rem;
+    padding: 0.38rem;
+  }
+
+  .kanban-template-header p {
+    display: none;
+  }
+
+  .kanban-template-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.22rem;
+  }
+
+  .kanban-template-item {
+    gap: 0.26rem;
+    padding: 0.3rem;
   }
 
   .kanban-project-list {
-    columns: 1;
-  }
-
-  .app-shell--sidebar .content-root,
-  .app-shell--sidebar.is-sidebar-collapsed .content-root {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .app-shell--sidebar .session-sidebar-root {
-    position: fixed;
-    inset: 0;
-    z-index: 70;
-    width: auto;
-    max-width: none;
-    overflow: visible;
-    border-right: 0;
-    background: transparent;
-    pointer-events: none;
-  }
-
-  .app-shell--sidebar .session-sidebar {
-    width: min(86vw, 20rem);
-    max-width: calc(100vw - 2.75rem);
-    pointer-events: auto;
-    background: linear-gradient(180deg, rgba(28, 36, 45, 0.98), rgba(8, 12, 16, 0.98));
-    box-shadow: 16px 0 42px rgba(0, 0, 0, 0.36);
-    transform: translateX(0);
-    transition: transform 160ms ease;
-  }
-
-  .app-shell--sidebar .session-sidebar.is-collapsed {
-    padding: 0.5rem;
-  }
-
-  .app-shell--sidebar .session-sidebar.is-collapsed .session-sidebar-dashboard,
-  .app-shell--sidebar .session-sidebar.is-collapsed .session-sidebar-item {
     display: grid;
-    justify-items: stretch;
-    min-height: 0;
-    padding: 0.42rem 0.48rem;
-    text-align: left;
+    columns: auto;
+    gap: 0.42rem;
   }
 
-  .app-shell--sidebar .session-sidebar.is-collapsed .session-sidebar-icon {
-    display: none;
+  .kanban-project-card,
+  .kanban-ungrouped {
+    gap: 0.34rem;
+    margin-bottom: 0.42rem;
+    padding: 0.42rem;
   }
 
-  .app-shell--sidebar .session-sidebar.is-collapsed .session-sidebar-text {
-    display: inline-flex;
+  .kanban-project-card {
+    display: grid;
+    margin-bottom: 0;
   }
 
-  .app-shell--sidebar .session-sidebar.is-collapsed .session-sidebar-collapse-hidden {
-    display: flex;
+  .kanban-project-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 0.28rem;
   }
 
-  .app-shell--sidebar .session-sidebar.is-collapsed .session-sidebar-badges,
-  .app-shell--sidebar .session-sidebar.is-collapsed .session-sidebar-meta {
-    display: flex;
+  .kanban-project-header h2 {
+    font-size: 0.9rem;
   }
 
-  .app-shell--sidebar .session-sidebar.is-collapsed .session-sidebar-path {
-    display: block;
+  .kanban-project-server,
+  .kanban-project-close {
+    align-self: center;
   }
 
-  .app-shell--sidebar .session-sidebar.is-collapsed .session-sidebar-header strong,
-  .app-shell--sidebar .session-sidebar.is-collapsed .session-sidebar-create-form input {
-    display: block;
-  }
-
-  .app-shell--sidebar .session-sidebar.is-collapsed .session-sidebar-toolbar,
-  .app-shell--sidebar .session-sidebar.is-collapsed .session-sidebar-create-form {
+  .kanban-project-actions {
+    display: grid;
     grid-template-columns: auto minmax(0, 1fr);
-  }
-
-  .app-shell--sidebar .session-sidebar.is-collapsed .session-sidebar-tool-button {
-    display: inline-flex;
     align-items: center;
-    justify-content: center;
+    gap: 0.28rem;
+  }
+
+  .kanban-add-session-form {
+    grid-template-columns: minmax(0, 1fr) auto;
     min-width: 0;
-    padding: 0.16rem 0.38rem;
   }
 
-  .app-shell--sidebar:not(.is-mobile-sidebar-open) .session-sidebar {
-    pointer-events: none;
-    transform: translateX(-100%);
+  .kanban-agent-list,
+  .kanban-ungrouped-list {
+    grid-template-columns: 1fr;
+    gap: 0.28rem;
   }
 
-  .mobile-sidebar-launcher {
-    position: fixed;
-    left: max(0.45rem, env(safe-area-inset-left));
-    top: max(0.45rem, env(safe-area-inset-top));
-    z-index: 80;
-    display: grid;
-    grid-template-rows: 1fr auto;
-    place-items: center;
-    width: 2.45rem;
-    min-height: 3.2rem;
-    border: 1px solid rgba(143, 217, 255, 0.32);
-    border-radius: 5px;
-    background:
-      linear-gradient(180deg, rgba(91, 192, 255, 0.18), rgba(8, 12, 16, 0.78)),
-      rgba(8, 12, 16, 0.86);
-    color: #d8f3ff;
-    cursor: pointer;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.34);
-    padding: 0.26rem 0.18rem;
-    pointer-events: auto;
+  .kanban-agent-card {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.22rem;
+    padding: 0.28rem 0.32rem;
   }
 
-  .app-shell--sidebar.is-mobile-sidebar-open .mobile-sidebar-launcher {
+  .kanban-ungrouped-card {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.18rem 0.28rem;
+    padding: 0.28rem 0.32rem;
+  }
+
+  .kanban-agent-card p,
+  .kanban-template-info span {
     display: none;
   }
 
-  .mobile-sidebar-logo {
-    font-size: 1rem;
-    font-weight: 850;
-    line-height: 1;
+  .kanban-agent-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.18rem;
   }
 
-  .mobile-sidebar-count {
-    min-width: 1.2rem;
-    border: 1px solid rgba(217, 226, 234, 0.2);
-    border-radius: 999px;
-    color: rgba(217, 226, 234, 0.78);
+  .kanban-ungrouped-actions {
+    grid-column: 1 / -1;
+    gap: 0.18rem;
+  }
+
+  .kanban-agent-actions button,
+  .kanban-ungrouped-actions button,
+  .kanban-ungrouped-add-form select,
+  .kanban-add-session-form select,
+  .kanban-add-session-form button {
+    min-height: 22px;
     font-size: 0.62rem;
-    line-height: 1;
-    padding: 0.12rem 0.18rem;
+    padding: 0.14rem 0.3rem;
   }
 
-  .app-shell--sidebar .dashboard-root,
-  .app-shell--sidebar .panels-root {
-    grid-column: 1;
+  .action-center-backdrop {
+    align-items: start;
+    justify-items: center;
+    padding-top: calc(0.7rem + env(safe-area-inset-top));
+    padding-right: 0.5rem;
+    padding-bottom: 0.5rem;
+    padding-left: 0.5rem;
   }
 
-  .app-shell--sidebar .session-sidebar-list {
-    overflow: auto;
-  }
-
-  .tabs-root {
-    padding: 5px 6px 0;
-  }
-
-  .tab-strip {
-    gap: 4px;
-    padding-bottom: 1px;
-  }
-
-  .tab-item {
-    border-radius: 3px 3px 0 0;
-  }
-
-  .tab-item button {
-    min-height: 34px;
-    padding: 0 0.68rem;
-    font-size: 12px;
-  }
-
-  .tab-item button:last-child {
-    min-width: 34px;
+  .action-center-panel {
+    align-self: start;
+    width: min(26rem, calc(100vw - 1rem));
+    max-height: min(52dvh, 24rem);
   }
 
   .dashboard-root {
@@ -3539,55 +3453,132 @@ select {
     padding: 0.25rem;
   }
 
+  .terminal-session-rail {
+    gap: 0.24rem;
+    min-height: 30px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0.24rem 3.1rem 0.24rem 0.42rem;
+    scrollbar-width: none;
+  }
+
+  .terminal-session-rail::-webkit-scrollbar {
+    display: none;
+  }
+
+  .terminal-session-rail-project {
+    max-width: 7.5rem;
+    font-size: 0.58rem;
+  }
+
+  .terminal-session-rail-sessions {
+    overflow: visible;
+  }
+
+  .terminal-session-rail-session,
+  .terminal-session-rail-overflow {
+    flex: 0 0 auto;
+    max-width: 7rem;
+    font-size: 0.58rem;
+    padding: 0.2rem 0.32rem;
+  }
+
+  .terminal-session-rail-action {
+    min-height: 1.15rem;
+    font-size: 0.52rem;
+    padding: 0.14rem 0.32rem;
+  }
+
   .session-floating-menu {
-    top: 0.55rem;
+    top: 0.42rem;
     right: max(0.45rem, env(safe-area-inset-right));
+    gap: 0.2rem;
+  }
+
+  .session-floating-menu-toggle {
+    min-height: 24px;
+    padding: 0.16rem 0.42rem;
+    font-size: 0.6rem;
   }
 
   .session-floating-menu-panel {
-    grid-template-columns: minmax(10rem, 0.82fr) minmax(0, 1fr);
-    gap: 0.24rem;
-    width: min(30rem, calc(100vw - 0.55rem));
-    max-height: min(64dvh, 26rem);
-    padding: 0.24rem;
+    grid-template-columns: minmax(6rem, 1fr) minmax(0, 1.85fr);
+    gap: 0.18rem;
+    width: min(92vw, calc(100vw - 0.45rem));
+    max-height: min(72dvh, 28rem);
+    padding: 0.2rem;
   }
 
   .session-floating-menu-actions-pane {
     border-right: 1px solid rgba(217, 226, 234, 0.1);
     border-bottom: 0;
-    padding-right: 0.24rem;
+    padding-right: 0.18rem;
     padding-bottom: 0;
+  }
+
+  .session-floating-menu-section {
+    gap: 0.1rem;
   }
 
   .session-floating-menu-section.session-floating-menu-actions {
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 0.1rem;
+    gap: 0.07rem;
   }
 
   .session-floating-menu-section.session-floating-menu-soft-keys {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 0.1rem;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.07rem;
+  }
+
+  .session-floating-menu-title {
+    font-size: 0.46rem;
   }
 
   .session-floating-menu-panel button {
-    min-height: 18px;
-    padding: 0.1rem 0.12rem;
-    font-size: 0.5rem;
+    min-height: 24px;
+    padding: 0.16rem 0.24rem;
+    font-size: 0.56rem;
+  }
+
+  .session-floating-menu-project-create {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .session-floating-menu-projects .kanban-create-form {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .session-floating-menu-project-move {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .session-floating-menu-board {
-    grid-template-columns: repeat(auto-fill, minmax(6.1rem, 1fr));
-    padding: 0.34rem;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.12rem;
+    padding: 0.22rem;
   }
 
   .session-floating-menu-session-item {
-    min-width: min(100%, 6.1rem);
+    flex-basis: auto;
+    min-width: 0;
   }
 
   .session-floating-menu-session {
-    padding-block: 0.24rem;
+    gap: 0.08rem;
+    padding-block: 0.16rem;
   }
 
+  .session-floating-menu-session-name {
+    font-size: 0.58rem;
+  }
+
+  .session-floating-menu-session-meta {
+    font-size: 0.46rem;
+  }
+
+}
+
+@media (max-width: 1200px) {
   .terminal-status-bar {
     align-items: center;
     min-height: 42px;
@@ -3629,29 +3620,30 @@ select {
   .terminal-status-mobile-sheet {
     position: fixed;
     right: 0.55rem;
-    bottom: calc(42px + env(safe-area-inset-bottom));
-    left: 0.55rem;
+    bottom: calc(3rem + env(safe-area-inset-bottom));
+    left: auto;
     z-index: 75;
     display: grid;
-    gap: 0.5rem;
-    max-height: min(58dvh, 28rem);
+    gap: 0.26rem;
+    width: min(16rem, calc(100vw - 0.7rem));
+    max-height: min(40dvh, 18rem);
     overflow: auto;
     border: 1px solid rgba(217, 226, 234, 0.18);
-    border-radius: 6px 6px 0 0;
+    border-radius: 5px;
     background:
       linear-gradient(180deg, rgba(28, 36, 45, 0.98), rgba(8, 12, 16, 0.98));
-    box-shadow: 0 -18px 60px rgba(0, 0, 0, 0.44);
-    padding: 0.62rem;
+    box-shadow: 0 18px 60px rgba(0, 0, 0, 0.44);
+    padding: 0.32rem;
     white-space: normal;
   }
 
   .terminal-status-mobile-sheet .terminal-status-action-group {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.32rem;
+    gap: 0.22rem;
     border: 0;
     border-top: 1px solid rgba(217, 226, 234, 0.1);
-    padding: 0.48rem 0 0;
+    padding: 0.32rem 0 0;
   }
 
   .terminal-status-mobile-sheet .terminal-status-action-group:first-child {
@@ -3659,14 +3651,18 @@ select {
     padding-top: 0;
   }
 
-  .terminal-status-mobile-sheet .terminal-status-action {
-    min-height: 34px;
+  .terminal-status-mobile-sheet .terminal-status-action-group[data-group="kanban-groups"] {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.12rem;
   }
 
-  .terminal-status-mobile-sheet .terminal-status-kanban-label {
-    max-width: none;
-    white-space: nowrap;
-  }
+.terminal-status-mobile-sheet .terminal-status-action {
+  min-height: 32px;
+  padding: 0.24rem 0.45rem;
+  font-size: 0.78rem;
+  box-shadow: 0 0 0 1px rgba(217, 226, 234, 0.05) inset;
+}
 
   .terminal-status-mobile-sheet
     .terminal-status-action-group[data-group="soft-keys"] {
@@ -3676,7 +3672,7 @@ select {
 
   .terminal-status-mobile-sheet .terminal-status-soft-key {
     justify-content: center;
-    min-height: 36px;
+    min-height: 24px;
     border-color: rgba(255, 211, 122, 0.28);
     background:
       linear-gradient(180deg, rgba(255, 211, 122, 0.13), rgba(255, 255, 255, 0.055));
@@ -3684,19 +3680,6 @@ select {
     font-weight: 760;
     padding-right: 0.28rem;
     padding-left: 0.28rem;
-  }
-
-  .terminal-status-mobile-sheet .terminal-status-panes {
-    display: flex;
-    flex-wrap: wrap;
-    flex: 1 1 100%;
-    gap: 0.32rem;
-    min-width: 0;
-    overflow: visible;
-  }
-
-  .terminal-status-mobile-sheet .terminal-status-pane-button {
-    max-width: 9rem;
   }
 
   .terminal-status-action.is-mobile-primary {
@@ -3715,6 +3698,12 @@ select {
     width: calc(100vw - 1.5rem);
   }
 
+  .hook-event-toast {
+    right: 0.75rem;
+    bottom: calc(0.75rem + env(safe-area-inset-bottom));
+    width: calc(100vw - 1.5rem);
+  }
+
   .image-preview-backdrop {
     align-items: end;
     padding: 0.5rem;
@@ -3724,6 +3713,11 @@ select {
     width: calc(100vw - 1rem);
     max-height: calc(100dvh - 1rem);
     border-radius: 6px;
+  }
+
+  .image-preview-panel.has-image {
+    grid-template-rows: auto auto auto minmax(0, 1fr);
+    height: min(72dvh, 34rem);
   }
 
   .image-preview-header {
@@ -3743,147 +3737,118 @@ select {
   }
 }
 
-@media (max-width: 700px) {
-  .session-floating-menu-panel {
-    grid-template-columns: 1fr;
-    gap: 0.18rem;
-    width: min(26rem, calc(100vw - 0.55rem));
-    max-height: min(58dvh, 23rem);
-    padding: 0.18rem;
-  }
-
-  .session-floating-menu-actions-pane {
-    border-right: 0;
-    border-bottom: 1px solid rgba(217, 226, 234, 0.1);
-    padding-right: 0;
-    padding-bottom: 0.18rem;
-  }
-
-  .session-floating-menu-section {
-    gap: 0.12rem;
-  }
-
-  .session-floating-menu-section.session-floating-menu-actions {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-    gap: 0.08rem;
-  }
-
-  .session-floating-menu-section.session-floating-menu-soft-keys {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 0.08rem;
-  }
-
-  .session-floating-menu-panel button {
-    min-height: 17px;
-    padding: 0.08rem 0.08rem;
-    font-size: 0.48rem;
-  }
-
-  .session-floating-menu-create {
-    gap: 0.12rem;
-  }
-
-  .session-floating-menu-create input {
-    min-height: 22px;
-    font-size: 0.56rem;
-    padding: 0.12rem 0.2rem;
-  }
-
-  .session-floating-menu-create button {
-    min-height: 22px;
-    min-width: 2.1rem;
-    padding: 0.12rem 0.2rem;
-  }
-
-  .session-floating-menu-board {
-    grid-template-columns: repeat(auto-fit, minmax(6rem, 1fr));
-    padding: 0.26rem;
-  }
-}
-
 @media (max-width: 430px) {
-  .app-shell--sidebar .session-sidebar {
-    width: calc(100vw - 0.7rem);
-    max-width: none;
-  }
-
-  .app-shell--sidebar .session-sidebar,
-  .app-shell--sidebar .session-sidebar.is-collapsed {
-    padding: 0.42rem;
-  }
-
-  .session-sidebar-header {
-    padding-bottom: 0.42rem;
-  }
-
-  .session-sidebar-item {
-    padding: 0.36rem 0.42rem;
-  }
-
-  .session-sidebar-item-header {
-    gap: 0.32rem;
-  }
-
-  .session-sidebar-badges {
-    gap: 0.12rem;
-  }
-
-  .session-sidebar-badge {
-    font-size: 0.5rem;
-    padding: 0.1rem 0.16rem;
-  }
-
   .terminal-frame {
     padding: 0.18rem;
   }
 
+  .terminal-session-rail {
+    min-height: 28px;
+    padding: 0.2rem 2.8rem 0.2rem 0.34rem;
+  }
+
+  .terminal-session-rail-project {
+    max-width: 5.5rem;
+    font-size: 0.52rem;
+  }
+
+  .terminal-session-rail-session,
+  .terminal-session-rail-overflow {
+    max-width: 5.8rem;
+    font-size: 0.52rem;
+    padding: 0.17rem 0.26rem;
+  }
+
+  .terminal-session-rail-action {
+    min-height: 1.05rem;
+    font-size: 0.48rem;
+    padding: 0.12rem 0.28rem;
+  }
+
   .session-floating-menu {
-    top: 0.45rem;
-    right: max(0.3rem, env(safe-area-inset-right));
+    top: 0.34rem;
+    right: max(0.24rem, env(safe-area-inset-right));
+    gap: 0.14rem;
+  }
+
+  .session-floating-menu-toggle {
+    min-height: 22px;
+    padding: 0.12rem 0.34rem;
+    font-size: 0.55rem;
   }
 
   .session-floating-menu-panel {
-    grid-template-columns: 1fr;
-    gap: 0.16rem;
-    width: min(24rem, calc(100vw - 0.45rem));
-    max-height: min(54dvh, 19rem);
-    padding: 0.16rem;
+    grid-template-columns: minmax(5.6rem, 0.86fr) minmax(0, 1.64fr);
+    gap: 0.1rem;
+    width: min(96vw, calc(100vw - 0.45rem));
+    max-height: min(82dvh, 32rem);
+    padding: 0.14rem;
   }
 
   .session-floating-menu-actions-pane {
-    border-right: 0;
-    border-bottom: 1px solid rgba(217, 226, 234, 0.1);
-    padding-right: 0;
-    padding-bottom: 0.16rem;
+    border-right: 1px solid rgba(217, 226, 234, 0.1);
+    border-bottom: 0;
+    padding-right: 0.12rem;
+    padding-bottom: 0;
+  }
+
+  .session-floating-menu-actions-pane,
+  .session-floating-menu-sessions-pane {
+    gap: 0.11rem;
   }
 
   .session-floating-menu-section.session-floating-menu-actions {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-    gap: 0.08rem;
+    gap: 0.09rem;
   }
 
   .session-floating-menu-section.session-floating-menu-soft-keys {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-    gap: 0.08rem;
+    gap: 0.09rem;
   }
 
   .session-floating-menu-title {
-    font-size: 0.44rem;
+    font-size: 0.36rem;
   }
 
   .session-floating-menu-panel button {
-    min-height: 16px;
-    padding: 0.08rem 0.08rem;
-    font-size: 0.46rem;
+    min-height: 22px;
+    padding: 0.15rem 0.14rem;
+    font-size: 0.5rem;
+  }
+
+  .session-floating-menu-project-create {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .session-floating-menu-projects .kanban-create-form {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.18rem;
+  }
+
+  .session-floating-menu-project-move {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .session-floating-menu-board {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    padding: 0.22rem;
+    grid-template-columns: repeat(auto-fill, minmax(6.1rem, 1fr));
+    gap: 0.08rem;
+    padding: 0.12rem;
   }
 
   .session-floating-menu-session-item {
     min-width: 0;
+  }
+
+  .session-floating-menu-session {
+    gap: 0.06rem;
+    padding-block: 0.16rem;
+  }
+
+  .session-floating-menu-session-name {
+    font-size: 0.56rem;
+  }
+
+  .session-floating-menu-session-meta {
+    font-size: 0.48rem;
   }
 
   .terminal-status-bar {
@@ -3895,51 +3860,67 @@ select {
     font-size: 11px;
   }
 
-  .terminal-status-mobile-toggle {
-    min-height: 30px;
-    padding: 0.28rem 0.42rem;
-  }
-
   .terminal-status-mobile-sheet {
     right: 0.35rem;
-    left: 0.35rem;
-    gap: 0.42rem;
-    max-height: min(64dvh, 30rem);
-    padding: 0.46rem;
+    left: auto;
+    gap: 0.22rem;
+    width: min(15rem, calc(100vw - 0.7rem));
+    max-height: min(42dvh, 19rem);
+    padding: 0.24rem;
   }
 
   .terminal-status-mobile-sheet .terminal-status-action-group {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(4.8rem, 1fr));
-    gap: 0.26rem;
-    padding-top: 0.42rem;
+    grid-template-columns: repeat(auto-fit, minmax(3.2rem, 1fr));
+    gap: 0.14rem;
+    padding-top: 0.22rem;
   }
 
   .terminal-status-mobile-sheet .terminal-status-action {
     justify-content: center;
-    min-height: 32px;
-    padding: 0.28rem 0.22rem;
+    min-height: 26px;
+    padding: 0.18rem 0.18rem;
     text-align: center;
   }
 
-  .terminal-status-mobile-sheet .terminal-status-kanban-label {
-    grid-column: 1 / -1;
+  .terminal-status-mobile-sheet .terminal-status-action-group[data-group="kanban-groups"] {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .kanban-template-item {
+    padding: 0.34rem;
+  }
+
+  .kanban-template-item.is-compact {
+    padding: 0.28rem;
+  }
+
+  .kanban-template-item.is-compact .kanban-template-info strong {
+    font-size: 0.72rem;
+  }
+
+  .kanban-template-item.is-compact .kanban-template-info span,
+  .kanban-template-item.is-compact .kanban-template-info code {
+    font-size: 0.62rem;
+  }
+
+  .kanban-create-panel-content[data-ui-tier="phone"] .kanban-create-form label:nth-child(2),
+  .kanban-create-panel-content[data-ui-tier="pad"] .kanban-create-form label:nth-child(2) {
+    display: none;
   }
 
   .terminal-status-mobile-sheet
     .terminal-status-action-group[data-group="soft-keys"] {
-    grid-template-columns: repeat(auto-fit, minmax(3.25rem, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   .terminal-status-mobile-sheet .terminal-status-soft-key {
-    min-height: 34px;
-    padding-right: 0.12rem;
-    padding-left: 0.12rem;
+    min-height: 22px;
+    padding-right: 0.08rem;
+    padding-left: 0.08rem;
   }
 
-  .terminal-status-mobile-sheet .terminal-status-panes {
-    grid-column: 1 / -1;
-  }
 }
 
 .group-message-backdrop {
@@ -3949,23 +3930,23 @@ select {
 }
 
 .group-message-host {
-  width: min(34rem, calc(100vw - 1.7rem));
+  width: min(38rem, calc(100vw - 1.7rem));
 }
 
 .group-message-panel {
   display: grid;
-  gap: 0.65rem;
+  gap: 0.55rem;
   width: 100%;
   max-height: min(74dvh, 42rem);
   overflow: auto;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: var(--color-panel);
-  box-shadow: 0 18px 50px rgb(0 0 0 / 0.36);
+  border: 1px solid rgba(217, 226, 234, 0.14);
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, rgba(25, 33, 40, 0.97), rgba(7, 11, 15, 0.97));
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.4);
   padding: 0.72rem;
 }
 
-.group-message-header,
 .group-message-item-header {
   display: flex;
   align-items: center;
@@ -3973,16 +3954,126 @@ select {
   gap: 0.5rem;
 }
 
-.group-message-compose {
+.group-message-header {
   display: grid;
-  grid-template-columns: minmax(5rem, auto) minmax(7rem, 1fr) auto;
-  gap: 0.45rem;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.4rem;
 }
 
-.group-message-compose textarea {
-  grid-column: 1 / -1;
-  min-height: 5rem;
+.group-message-header strong {
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.group-message-project-badge {
+  min-width: 0;
+  border: 1px solid rgba(217, 226, 234, 0.16);
+  border-radius: 999px;
+  color: #ffe2a7;
+  font-size: 0.72rem;
+  font-weight: 760;
+  padding: 0.18rem 0.5rem;
+  justify-self: start;
+}
+
+.group-message-header button,
+.group-message-item-header button,
+.group-message-send {
+  min-height: 2rem;
+  border: 1px solid rgba(217, 226, 234, 0.14);
+  border-radius: 3px;
+  background: rgba(217, 226, 234, 0.055);
+  color: rgba(239, 246, 252, 0.86);
+  cursor: pointer;
+  font-size: 0.74rem;
+  line-height: 1;
+  padding: 0.24rem 0.52rem;
+}
+
+.group-message-send {
+  justify-self: end;
+  min-width: 4rem;
+  border-radius: 3px;
+}
+
+.group-message-header button:hover,
+.group-message-item-header button:hover,
+.group-message-send:hover {
+  border-color: rgba(143, 217, 255, 0.28);
+  background: rgba(91, 192, 255, 0.1);
+  color: #d8f3ff;
+}
+
+.group-message-compose {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.group-message-compose-card {
+  display: grid;
+  gap: 0.42rem;
+  border: 1px solid rgba(217, 226, 234, 0.12);
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(0, 0, 0, 0.06));
+  padding: 0.65rem;
+}
+
+.group-message-kind-select {
+  min-width: 5.5rem;
+  min-height: 2rem;
+  border: 1px solid rgba(217, 226, 234, 0.14);
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.18);
+  color: rgba(239, 246, 252, 0.88);
+  font-size: 0.74rem;
+  padding: 0.2rem 0.42rem;
+}
+
+.group-message-targets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.28rem;
+  min-width: 0;
+}
+
+.group-message-target-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.24rem;
+  border: 1px solid rgba(217, 226, 234, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.045);
+  color: rgba(239, 246, 252, 0.82);
+  cursor: pointer;
+  font-size: 0.72rem;
+  line-height: 1;
+  padding: 0.24rem 0.42rem;
+}
+
+.group-message-target-pill:has(input:checked) {
+  border-color: rgba(191, 255, 196, 0.38);
+  background: rgba(94, 255, 130, 0.12);
+  color: #d5ffd8;
+}
+
+.group-message-target-pill input {
+  margin: 0;
+}
+
+.group-message-body {
+  min-height: 6rem;
+  border: 1px solid rgba(217, 226, 234, 0.14);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.18);
+  color: rgba(239, 246, 252, 0.9);
+  font-size: 0.78rem;
+  line-height: 1.35;
   resize: vertical;
+  padding: 0.48rem 0.52rem;
 }
 
 .group-message-list {
@@ -4016,10 +4107,6 @@ select {
   border-left: 2px solid var(--color-accent);
   padding-left: 0.5rem;
   white-space: pre-wrap;
-}
-
-.terminal-session-rail-action {
-  flex: 0 0 auto;
 }
 
 @media (max-width: 640px) {

@@ -22,6 +22,11 @@ tmux-ui 是一个轻量的浏览器 tmux 控制台。它可以列出 tmux sessio
 - `npm run start` 运行已构建的服务端
 - `npm run test` 运行测试
 
+## API 参考
+
+第三方工具可以通过可信的 Tailscale/内网直接调用 tmux-ui。完整 HTTP 和
+WebSocket API 列表、请求体和返回数据结构见 [docs/api.md](docs/api.md)。
+
 ## 安装
 
 ```bash
@@ -236,6 +241,46 @@ ssh server-a
 打开 `/?view=kanban` 可以创建基于项目的 agent session。一个项目包含项目名、路径、可选 SSH 服务器，以及 `claude`、`codex`、`kiro` 等 agent。每个 agent 会得到稳定的 tmux session 名：`<project>-<agent>`。
 
 本机项目会直接在项目路径下创建 agent session，并按配置启动命令。远程项目会先在本机创建同名 wrapper session；这个 wrapper session 会 SSH 到远程服务器，并 attach 或创建远程同名 tmux session。这样浏览器仍然能从本机 tmux-ui 打开稳定 session，同时远程 agent 也有固定名称用于 resume。
+
+## Agent Hook 事件
+
+tmux-ui 支持接收 Codex、Claude 或其他 agent hook 主动上报的事件。相比扫描终端画面，hook 更适合上报等待确认、任务阻塞、命令失败等明确状态。
+
+来自 `127.0.0.1`、`::1` 或 Tailscale `100.64.0.0/10` 的 hook 请求可以免 token。其他来源需要 token；如果你希望所有环境都显式保护，仍建议设置 token：
+
+```bash
+export TMUX_UI_HOOK_TOKEN='change-me'
+tmux-ui restart
+```
+
+安装 Codex/Claude hook：
+
+```bash
+tmux-ui hooks-install
+```
+
+卸载 tmux-ui 安装的 hook：
+
+```bash
+tmux-ui hooks-uninstall
+```
+
+`hooks-install` 会合并写入 `~/.codex/hooks.json` 的 `PermissionRequest` 和 `~/.claude/settings.json` 的 `Notification(permission_prompt|idle_prompt)`，不会覆盖已有 hook。
+
+如果要手动在其他工具 hook 中调用：
+
+```bash
+echo "Approve file edit?" | \
+  TMUX_UI_HOOK_SOURCE=codex \
+  TMUX_UI_HOOK_EVENT_TYPE=approval-required \
+  TMUX_UI_HOOK_STATUS=waiting \
+  TMUX_UI_HOOK_TITLE='Need confirmation' \
+  ~/.tmux-ui/bin/tmux-ui-hook
+```
+
+脚本会优先从当前 tmux 环境推断 session 名，也可以显式传入 `TMUX_UI_SESSION_NAME=<session>`。服务端会写入 timeline，并通过全局 websocket 推送到 Action Center；`waiting`、`blocked`、`need-input`、`failed` 会作为重要 action 显示。
+
+如果服务没有监听 `127.0.0.1:3000`，在 hook 环境里额外设置 `TMUX_UI_HOOK_URL=http://100.x.y.z:3000/api/hooks/events`。
 
 ## tmux 恢复
 

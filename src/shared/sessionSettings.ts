@@ -6,10 +6,10 @@ export type SessionSettings = {
 };
 
 export const DEFAULT_SESSION_SETTINGS: SessionSettings = {
-  fontSize: 14,
+  fontSize: 13,
   fontFamily:
     "Iosevka Term, Menlo, PingFang SC, Hiragino Sans GB, Noto Sans Mono CJK SC, Microsoft YaHei UI, monospace",
-  lineHeight: 1.1,
+  lineHeight: 1,
   themeId: "graphite"
 };
 

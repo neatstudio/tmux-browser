@@ -47,7 +47,13 @@ describe("renderKanban", () => {
       onDeleteProject: vi.fn()
     });
 
-    expect(root.querySelector("h1")?.textContent).toBe("Kanban");
+    expect(root.querySelector("h1")?.textContent).toBe("Groups");
+    expect(
+      root.querySelector<HTMLDetailsElement>(".kanban-create-panel")
+    ).not.toBeNull();
+    expect(
+      root.querySelector<HTMLElement>(".kanban-create-summary")?.textContent
+    ).toContain("Create group");
     expect(root.textContent).toContain("xxvisa");
     expect(root.textContent).toContain("/srv/xxvisa");
     expect(root.textContent).toContain("tw1");
@@ -55,12 +61,8 @@ describe("renderKanban", () => {
     expect(root.textContent).toContain("claude --resume xxvisa");
 
     const name = root.querySelector<HTMLInputElement>("input[name='project-name']")!;
-    const path = root.querySelector<HTMLInputElement>("input[name='project-path']")!;
-
     name.value = "stake";
     name.dispatchEvent(new Event("input", { bubbles: true }));
-    path.value = "/srv/stake";
-    path.dispatchEvent(new Event("input", { bubbles: true }));
 
     const scratch = [...root.querySelectorAll<HTMLInputElement>(".kanban-template-item input")]
       .find((input) => input.parentElement?.textContent?.includes("scratch"))!;
@@ -72,6 +74,9 @@ describe("renderKanban", () => {
       ?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
 
     expect(root.textContent).toContain("Recommended sessions");
+    expect(root.querySelector<HTMLButtonElement>("button[type='submit']")?.textContent).toBe(
+      "Create group"
+    );
     expect(root.textContent).toContain("project-pm");
     expect(root.textContent).toContain("project-review");
     expect(root.textContent).toContain("project-codex");
@@ -80,7 +85,7 @@ describe("renderKanban", () => {
       { render: false }
     );
     expect(onDraftChange).toHaveBeenCalledWith(
-      expect.objectContaining({ path: "/srv/stake" }),
+      expect.objectContaining({ path: "~" }),
       { render: false }
     );
     expect(onDraftChange).toHaveBeenCalledWith(
@@ -88,6 +93,99 @@ describe("renderKanban", () => {
       { render: true }
     );
     expect(onCreateProject).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the create group panel collapsed until a draft is being edited", () => {
+    const root = document.createElement("div");
+
+    renderKanban(root, {
+      projects: [],
+      draft: {
+        name: "",
+        path: "~",
+        server: "",
+        selectedAgentNames: ["pm", "review", "codex"]
+      },
+      loading: false,
+      error: null,
+      availableSessions: [],
+      onDraftChange: vi.fn(),
+      onCreateProject: vi.fn(),
+      onOpenSession: vi.fn(),
+      onRemoveSession: vi.fn(),
+      onKillSession: vi.fn(),
+      onDeleteProject: vi.fn()
+    });
+
+    expect(root.querySelector<HTMLDetailsElement>(".kanban-create-panel")?.open).toBe(
+      false
+    );
+
+    renderKanban(root, {
+      projects: [],
+      draft: {
+        name: "xxvisa",
+        path: "~",
+        server: "",
+        selectedAgentNames: ["pm", "review", "codex"]
+      },
+      loading: false,
+      error: null,
+      availableSessions: [],
+      onDraftChange: vi.fn(),
+      onCreateProject: vi.fn(),
+      onOpenSession: vi.fn(),
+      onRemoveSession: vi.fn(),
+      onKillSession: vi.fn(),
+      onDeleteProject: vi.fn()
+    });
+
+    expect(root.querySelector<HTMLDetailsElement>(".kanban-create-panel")?.open).toBe(
+      true
+    );
+  });
+
+  it("puts the targeted project first in the kanban list", () => {
+    const root = document.createElement("div");
+
+    renderKanban(root, {
+      projects: [
+        {
+          name: "xxvisa",
+          path: "/srv/xxvisa",
+          server: null,
+          agents: []
+        },
+        {
+          name: "stake",
+          path: "/srv/stake",
+          server: null,
+          agents: []
+        }
+      ],
+      targetProjectName: "stake",
+      draft: {
+        name: "",
+        path: "~",
+        server: "",
+        selectedAgentNames: []
+      },
+      loading: false,
+      error: null,
+      availableSessions: [],
+      onDraftChange: vi.fn(),
+      onCreateProject: vi.fn(),
+      onOpenSession: vi.fn(),
+      onRemoveSession: vi.fn(),
+      onKillSession: vi.fn(),
+      onDeleteProject: vi.fn()
+    });
+
+    expect(
+      [
+        ...root.querySelectorAll<HTMLElement>(".kanban-project-card")
+      ].map((card) => card.dataset.projectName)
+    ).toEqual(["stake", "xxvisa"]);
   });
 
   it("updates text draft fields without requesting a full rerender", () => {
@@ -243,6 +341,57 @@ describe("renderKanban", () => {
     expect(onRemoveSession).toHaveBeenCalledWith("xxvisa", "local-ssh");
     expect(onKillSession).toHaveBeenCalledWith("xxvisa", "local-ssh");
     expect(onAddSession).toHaveBeenCalledWith("xxvisa", "build");
+  });
+
+  it("disables opening saved project sessions that are not currently running", () => {
+    const root = document.createElement("div");
+    const onOpenSession = vi.fn();
+
+    renderKanban(root, {
+      projects: [
+        {
+          name: "cc",
+          path: "~",
+          server: null,
+          agents: [
+            {
+              kind: "session",
+              name: "cc1-local",
+              command: null,
+              sessionName: "cc1-local"
+            }
+          ]
+        }
+      ],
+      sessions: [{ name: "cc1-remote" } as never],
+      draft: {
+        name: "",
+        path: "~",
+        server: "",
+        selectedAgentNames: []
+      },
+      loading: false,
+      error: null,
+      availableSessions: [],
+      onDraftChange: vi.fn(),
+      onCreateProject: vi.fn(),
+      onOpenSession,
+      onRemoveSession: vi.fn(),
+      onKillSession: vi.fn(),
+      onDeleteProject: vi.fn()
+    });
+
+    const openButton = root.querySelector<HTMLButtonElement>(".kanban-agent-open")!;
+
+    expect(openButton.disabled).toBe(true);
+    expect(root.querySelector(".kanban-agent-card")?.classList.contains("is-offline")).toBe(
+      true
+    );
+    expect(root.textContent).toContain("offline saved session");
+
+    openButton.click();
+
+    expect(onOpenSession).not.toHaveBeenCalled();
   });
 
   it("shows ungrouped sessions and adds them to a selected project", () => {

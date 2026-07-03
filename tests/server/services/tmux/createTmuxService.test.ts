@@ -2,6 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createTmuxService } from "../../../../src/server/services/tmux/createTmuxService";
 
+const PANE_FORMAT =
+  "#{session_name}\t#{pane_id}\t#{window_index}\t#{window_name}\t#{window_active}\t#{pane_index}\t#{pane_active}\t#{pane_current_command}\t#{pane_current_path}\t#{pane_dead}\t#{pane_dead_status}\t#{pane_pid}\t#{pane_left}\t#{pane_top}\t#{pane_width}\t#{pane_height}";
+
 describe("createTmuxService", () => {
   it("lists lightweight sessions without capturing pane previews by default", async () => {
     const getGitSummary = vi
@@ -30,6 +33,7 @@ describe("createTmuxService", () => {
         paneCount: 1,
         activeWindowName: "server",
         currentCommand: "npm",
+        runtimeKind: "unknown",
         currentPath: "/tmp/project",
         gitBranch: "main",
         gitDirty: true,
@@ -46,6 +50,7 @@ describe("createTmuxService", () => {
         paneCount: 1,
         activeWindowName: "zsh",
         currentCommand: "zsh",
+        runtimeKind: "shell",
         currentPath: "/tmp/ops",
         gitBranch: null,
         gitDirty: null,
@@ -62,7 +67,7 @@ describe("createTmuxService", () => {
     expect(run).toHaveBeenNthCalledWith(2, "list-panes", [
       "-a",
       "-F",
-      "#{session_name}\t#{pane_id}\t#{window_index}\t#{window_name}\t#{window_active}\t#{pane_index}\t#{pane_active}\t#{pane_current_command}\t#{pane_current_path}\t#{pane_dead}\t#{pane_dead_status}\t#{pane_pid}"
+      PANE_FORMAT
     ]);
     expect(run.mock.calls.filter(([command]) => command === "capture-pane")).toHaveLength(0);
     expect(getGitSummary).toHaveBeenNthCalledWith(1, "/tmp/project");
@@ -693,7 +698,7 @@ describe("createTmuxService", () => {
       "-t",
       "build",
       "-F",
-      "#{session_name}\t#{pane_id}\t#{window_index}\t#{window_name}\t#{window_active}\t#{pane_index}\t#{pane_active}\t#{pane_current_command}\t#{pane_current_path}\t#{pane_dead}\t#{pane_dead_status}\t#{pane_pid}"
+      PANE_FORMAT
     ]);
     expect(run.mock.calls.some(([command]) => command === "list-sessions")).toBe(false);
   });

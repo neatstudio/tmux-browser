@@ -103,6 +103,27 @@ describe("createTabState", () => {
     ]);
   });
 
+  it("restores the previously active session tab after rebuilding tab state", () => {
+    const state = createTabState();
+    state.openTab("build");
+    const logs = state.openTab("logs");
+
+    const restored = createTabState();
+
+    expect(restored.getActiveTabId()).toBe(logs.id);
+  });
+
+  it("persists the dashboard as the active surface after rebuilding tab state", () => {
+    const state = createTabState();
+    state.openTab("build");
+    state.setActiveTab(null);
+
+    const restored = createTabState();
+
+    expect(restored.getTabs()).toHaveLength(1);
+    expect(restored.getActiveTabId()).toBeNull();
+  });
+
   it("can start on the dashboard while preserving restored tabs", () => {
     localStorage.setItem(
       "browser-tmux-dashboard.tabs",
@@ -117,11 +138,54 @@ describe("createTabState", () => {
     expect(state.getActiveTabId()).toBeNull();
   });
 
+  it("can start with no active tab when restored session tabs exist", () => {
+    localStorage.setItem(
+      "browser-tmux-dashboard.tabs",
+      JSON.stringify([{ id: "tab-1", sessionName: "build", title: "build" }])
+    );
+    localStorage.setItem("browser-tmux-dashboard.active-tab-id", "");
+
+    const state = createTabState();
+
+    expect(state.getTabs()).toEqual([
+      { id: "tab-1", sessionName: "build", title: "build" }
+    ]);
+    expect(state.getActiveTabId()).toBeNull();
+  });
+
+  it("does not auto-select the first tab when the stored active tab is missing", () => {
+    localStorage.setItem(
+      "browser-tmux-dashboard.tabs",
+      JSON.stringify([{ id: "tab-1", sessionName: "build", title: "build" }])
+    );
+    localStorage.setItem("browser-tmux-dashboard.active-tab-id", "missing");
+
+    const state = createTabState();
+
+    expect(state.getTabs()).toHaveLength(1);
+    expect(state.getActiveTabId()).toBeNull();
+  });
+
   it("can start on a specific restored tab", () => {
     localStorage.setItem(
       "browser-tmux-dashboard.tabs",
       JSON.stringify([{ id: "tab-1", sessionName: "build", title: "build" }])
     );
+
+    const state = createTabState({ initialActiveTabId: "tab-1" });
+
+    expect(state.getActiveTabId()).toBe("tab-1");
+  });
+
+  it("lets an explicit initial active tab override the stored active tab", () => {
+    localStorage.setItem(
+      "browser-tmux-dashboard.tabs",
+      JSON.stringify([
+        { id: "tab-1", sessionName: "build", title: "build" },
+        { id: "tab-2", sessionName: "logs", title: "logs" }
+      ])
+    );
+    localStorage.setItem("browser-tmux-dashboard.active-tab-id", "tab-2");
 
     const state = createTabState({ initialActiveTabId: "tab-1" });
 

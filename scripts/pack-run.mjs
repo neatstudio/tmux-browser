@@ -27,6 +27,9 @@ const versionOutputFile = join(releaseDir, `${projectName}-${version}.run`);
 const releaseOutputFile = join(releaseDir, "release.run");
 const payloadMarker = "__TMUX_UI_PAYLOAD_BELOW__";
 const tmuxResurrectSource = join(rootDir, "scripts", "helpers", "tmux-resurrect.sh");
+const hookHelperSource = join(rootDir, "scripts", "tmux-ui-hook.sh");
+const agentHookSource = join(rootDir, "scripts", "tmux-ui-agent-hook.mjs");
+const installAgentHooksSource = join(rootDir, "scripts", "install-agent-hooks.mjs");
 const commit = spawnSync("git", ["rev-parse", "--short", "HEAD"], {
   cwd: rootDir,
   encoding: "utf8"
@@ -547,9 +550,12 @@ extract_payload() {
   mkdir -p "$APP_HOME"
   rm -rf "$APP_HOME/dist"
   rm -f "$APP_HOME/package.json" "$APP_HOME/package-lock.json"
-  rm -f "$APP_HOME/start.sh" "$APP_HOME/install.sh" "$APP_HOME/README_DEPLOY.md"
+  rm -f "$APP_HOME/start.sh" "$APP_HOME/install.sh" "$APP_HOME/tmux-ui-hook.sh" "$APP_HOME/tmux-ui-agent-hook.mjs" "$APP_HOME/install-agent-hooks.mjs" "$APP_HOME/README_DEPLOY.md"
   tail -n +"$line" "$0" | tar -xzf - -C "$APP_HOME"
-  chmod +x "$APP_HOME/start.sh" "$APP_HOME/install.sh" 2>/dev/null || true
+  chmod +x "$APP_HOME/start.sh" "$APP_HOME/install.sh" "$APP_HOME/tmux-ui-hook.sh" "$APP_HOME/tmux-ui-agent-hook.mjs" "$APP_HOME/install-agent-hooks.mjs" 2>/dev/null || true
+  mkdir -p "$APP_HOME/bin"
+  ln -sfn "$APP_HOME/tmux-ui-hook.sh" "$APP_HOME/bin/tmux-ui-hook"
+  ln -sfn "$APP_HOME/tmux-ui-agent-hook.mjs" "$APP_HOME/bin/tmux-ui-agent-hook"
 }
 
 path_contains_dir_in() {
@@ -849,6 +855,8 @@ Commands:
   service-status   Show systemd/launchd service status
   service-stop     Stop systemd/launchd service
   service-uninstall Stop and remove systemd/launchd service
+  hooks-install Install Codex/Claude hooks that report attention events
+  hooks-uninstall Remove tmux-ui Codex/Claude hooks
   tmux-install  Install tmux-resurrect and tmux-continuum
   tmux-status   Show tmux resurrection status
   tmux-save     Save tmux sessions now
@@ -1006,6 +1014,9 @@ UNIT
     if [[ -n "\${HOST:-}" ]]; then
       printf 'Environment=HOST=%s\\n' "$HOST"
     fi
+    if [[ -n "\${TMUX_UI_HOOK_TOKEN:-}" ]]; then
+      printf 'Environment=TMUX_UI_HOOK_TOKEN=%s\\n' "$TMUX_UI_HOOK_TOKEN"
+    fi
     cat <<UNIT
 ExecStart=$APP_HOME/start.sh
 Environment=PATH=$HOME/.local/bin:$HOME/.hermes/node/bin:$NVM_DIR/versions/node/v22/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
@@ -1057,6 +1068,13 @@ PLIST
     cat >> "$LAUNCHD_PLIST_PATH" <<PLIST
     <key>HOST</key>
     <string>$host_value</string>
+PLIST
+  fi
+
+  if [[ -n "\${TMUX_UI_HOOK_TOKEN:-}" ]]; then
+    cat >> "$LAUNCHD_PLIST_PATH" <<PLIST
+    <key>TMUX_UI_HOOK_TOKEN</key>
+    <string>$TMUX_UI_HOOK_TOKEN</string>
 PLIST
   fi
 
@@ -1332,7 +1350,7 @@ ensure_tmux_session() {
 
 start_server_in_tmux() {
   ensure_tmux_session
-  tmux respawn-pane -k -t "$APP_SESSION" -c "$APP_HOME" "HOST='\${HOST:-}' PORT='\${PORT:-3000}' ./start.sh"
+  tmux respawn-pane -k -t "$APP_SESSION" -c "$APP_HOME" "HOST='\${HOST:-}' PORT='\${PORT:-3000}' TMUX_UI_HOOK_TOKEN='\${TMUX_UI_HOOK_TOKEN:-}' ./start.sh"
   tmux ls
 }
 
@@ -1363,6 +1381,12 @@ restart_server() {
   stop_server
   restore_tmux_if_empty || true
   start_server_in_tmux
+}
+
+install_agent_hooks() {
+  extract_payload
+  install_cli_entrypoint
+  TMUX_UI_AGENT_HOOK="$APP_HOME/bin/tmux-ui-agent-hook" node "$APP_HOME/install-agent-hooks.mjs" "$@"
 }
 
 uninstall_server() {
@@ -1437,6 +1461,14 @@ case "$COMMAND" in
   service-uninstall)
     uninstall_service
     ;;
+  hooks-install)
+    shift || true
+    install_agent_hooks "$@"
+    ;;
+  hooks-uninstall)
+    shift || true
+    install_agent_hooks --uninstall "$@"
+    ;;
   tmux-install)
     install_tmux_resurrection
     ;;
@@ -1498,11 +1530,17 @@ try {
     throw new Error(`Missing tmux resurrection helper: ${tmuxResurrectSource}`);
   }
   cpSync(tmuxResurrectSource, join(payloadDir, "tmux-resurrect.sh"));
+  cpSync(hookHelperSource, join(payloadDir, "tmux-ui-hook.sh"));
+  cpSync(agentHookSource, join(payloadDir, "tmux-ui-agent-hook.mjs"));
+  cpSync(installAgentHooksSource, join(payloadDir, "install-agent-hooks.mjs"));
   stripMacExtendedAttributes(payloadDir);
 
   writeExecutable(join(payloadDir, "install.sh"), createInstallScript());
   writeExecutable(join(payloadDir, "start.sh"), createStartScript());
   chmodSync(join(payloadDir, "tmux-resurrect.sh"), 0o755);
+  chmodSync(join(payloadDir, "tmux-ui-hook.sh"), 0o755);
+  chmodSync(join(payloadDir, "tmux-ui-agent-hook.mjs"), 0o755);
+  chmodSync(join(payloadDir, "install-agent-hooks.mjs"), 0o755);
   writeFileSync(join(payloadDir, "README_DEPLOY.md"), createDeployReadme());
 
   run("tar", ["--format", "ustar", "-czf", payloadArchive, "-C", payloadDir, "."], {

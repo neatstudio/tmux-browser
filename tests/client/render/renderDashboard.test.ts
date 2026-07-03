@@ -262,6 +262,79 @@ describe("renderDashboard", () => {
     expect(status.textContent).toContain("up 1h 1m");
   });
 
+  it("opens a session group menu from a dashboard session row", () => {
+    const root = document.createElement("div");
+    const onMoveKanbanSession = vi.fn();
+    const onKillSession = vi.fn();
+
+    renderDashboard(
+      root,
+      {
+        sessions: [
+          { name: "build", windows: 1, status: "attached" },
+          { name: "scratch", windows: 1, status: "detached" }
+        ],
+        kanbanProjects: [
+          {
+            name: "xxvisa",
+            path: "/srv/xxvisa",
+            server: "tw1",
+            agents: [
+              {
+                kind: "session",
+                name: "pm",
+                command: null,
+                sessionName: "xxvisa-pm"
+              }
+            ]
+          }
+        ],
+        loading: false,
+        error: null
+      },
+      {
+        onCreateSession: vi.fn(),
+        onOpenSession: vi.fn(),
+        onKillSession: vi.fn(),
+        onRenameSession: vi.fn(),
+        getSessionSettings: vi.fn(() => SESSION_SETTINGS),
+        onSessionFontSizeChange: vi.fn(),
+        onSessionFontFamilyChange: vi.fn(),
+        onSessionLineHeightChange: vi.fn(),
+        onSessionThemeChange: vi.fn(),
+        activeConfigSessionName: null,
+        onOpenSessionConfig: vi.fn(),
+        onCloseSessionConfig: vi.fn(),
+        draftSessionName: "",
+        onDraftChange: vi.fn(),
+        themes: THEMES,
+        activeThemeId: THEMES[0]!.id,
+        onThemeChange: vi.fn(),
+        onOpenKanban: vi.fn(),
+        onMoveKanbanSession,
+        onKillSession
+      }
+    );
+
+    const sessionHeader = root.querySelector<HTMLElement>(".session-name-header")!;
+    sessionHeader.dispatchEvent(
+      new MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true
+      })
+    );
+
+    expect(root.querySelector(".session-floating-menu-session-actions")).not.toBeNull();
+    root
+      .querySelector<HTMLButtonElement>(
+      ".session-floating-menu-session-actions [data-project-name='xxvisa']"
+    )
+      ?.click();
+
+    expect(onMoveKanbanSession).toHaveBeenCalledWith(null, "xxvisa", "build");
+    expect(onKillSession).not.toHaveBeenCalled();
+  });
+
   it("opens per-session configuration from a compact row action", () => {
     const root = document.createElement("div");
     const onOpenSessionConfig = vi.fn();

@@ -20,23 +20,23 @@ function sanitizeBody(body: string) {
 export function formatGroupMessage(input: FormatGroupMessageInput) {
   const body = sanitizeBody(input.body);
 
-  return [
-    `[tmux-ui:${input.kind}]`,
-    `id: ${input.id}`,
-    `project: ${input.projectName}`,
-    `from: ${input.fromSession}`,
-    `to: ${input.toSession}`,
-    "",
-    body,
-    "",
-    "Reply with:",
-    "[tmux-ui:reply]",
-    `id: ${input.id}`,
-    `from: ${input.toSession}`,
-    "status: done|blocked|need-input|ack",
-    "body:",
-    "...",
-    "[/tmux-ui:reply]",
-    `[/tmux-ui:${input.kind}]`
-  ].join("\n");
+  return JSON.stringify(
+    {
+      type: `tmux-ui.${input.kind}`,
+      id: input.id,
+      project: input.projectName,
+      from: input.fromSession,
+      to: input.toSession,
+      body,
+      reply_with: {
+        type: "tmux-ui.reply",
+        id: input.id,
+        from: input.toSession,
+        status: "done|blocked|need-input|ack",
+        body: "..."
+      }
+    },
+    null,
+    2
+  );
 }

@@ -1,7 +1,11 @@
+import type { KanbanProject } from "../api/sessionApi";
 import type { DashboardState } from "../state/dashboardStore";
 import { renderSessionConfigModal } from "./sessionConfigModal";
 import type { SessionSettings } from "../state/sessionSettings";
 import type { AppTheme } from "../theme/themeState";
+import { getKanbanAgentSessionName } from "./renderKanban";
+import { openSessionGroupMenu } from "./sessionGroupMenu";
+import type { ResponsiveUiTier } from "../responsiveUiTier";
 
 function formatPercent(value: number | null | undefined) {
   return typeof value === "number" ? `${value}%` : "n/a";
@@ -167,6 +171,28 @@ function appendMetaItem(
   parent.append(item);
 }
 
+function getProjectNames(projects: KanbanProject[]) {
+  return [...projects]
+    .filter((project) => project.name !== "ungrouped")
+    .map((project) => project.name)
+    .sort((left, right) => left.localeCompare(right));
+}
+
+function getProjectNameForSession(
+  sessionName: string,
+  projects: KanbanProject[]
+) {
+  return (
+    projects.find((project) =>
+      project.agents.some(
+        (agent) =>
+          (agent.sessionName ??
+            getKanbanAgentSessionName(project.name, agent.name)) === sessionName
+      )
+    )?.name ?? null
+  );
+}
+
 type BrowserSessionTabState = {
   sessionName: string;
   active: boolean;
@@ -179,7 +205,13 @@ export function renderDashboard(
     onCreateSession: (name: string) => void;
     onOpenSession: (name: string) => void;
     onOpenSessionPane?: (name: string, paneId: string) => void;
+    onOpenKanban?: () => void;
     onKillSession: (name: string) => void;
+    onMoveKanbanSession?: (
+      fromProjectName: string | null,
+      toProjectName: string,
+      sessionName: string
+    ) => void;
     onRenameSession: (fromName: string, toName: string) => void;
     getSessionSettings: (name: string) => SessionSettings;
     onSessionFontSizeChange: (name: string, fontSize: number) => void;
@@ -195,6 +227,7 @@ export function renderDashboard(
     activeThemeId: string;
     onThemeChange: (themeId: string) => void;
     onRefreshDashboard?: () => void;
+    uiTier?: ResponsiveUiTier;
     browserTabs?: BrowserSessionTabState[];
   }
 ) {
@@ -204,6 +237,11 @@ export function renderDashboard(
   const shouldRestoreFocus = previousInput === document.activeElement;
   const previousSelectionStart = previousInput?.selectionStart ?? null;
   const previousSelectionEnd = previousInput?.selectionEnd ?? null;
+  const existingCleanupEvent = root.dataset.cleanupSessionGroupMenu;
+
+  if (existingCleanupEvent) {
+    document.dispatchEvent(new CustomEvent(existingCleanupEvent));
+  }
 
   root.innerHTML = "";
 
@@ -430,6 +468,61 @@ export function renderDashboard(
     const sessionNameHeader = document.createElement("div");
     sessionNameHeader.className = "session-name-header";
     sessionNameHeader.append(sessionTitleCluster, sessionHeaderActions);
+
+    const openSessionGroupMenuForSession = () => {
+      openSessionGroupMenu(
+        root,
+        sessionNameHeader,
+        {
+          currentSessionName: session.name,
+          currentProjectName: getProjectNameForSession(
+            session.name,
+            state.kanbanProjects
+          ),
+          projectNames: getProjectNames(state.kanbanProjects),
+          onOpenKanban: () => actions.onOpenKanban?.(),
+          onMoveKanbanSession: actions.onMoveKanbanSession,
+          onKillSession: actions.onKillSession,
+          uiTier: actions.uiTier
+        },
+        session.name
+      );
+    };
+
+    sessionNameHeader.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      openSessionGroupMenuForSession();
+    });
+
+    let longPressTimer: number | null = null;
+    sessionNameHeader.addEventListener("pointerdown", (event) => {
+      if (event.pointerType !== "touch") {
+        return;
+      }
+
+      longPressTimer = window.setTimeout(() => {
+        longPressTimer = null;
+        openSessionGroupMenuForSession();
+      }, 600);
+    });
+    sessionNameHeader.addEventListener("pointerup", () => {
+      if (longPressTimer !== null) {
+        window.clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+    });
+    sessionNameHeader.addEventListener("pointercancel", () => {
+      if (longPressTimer !== null) {
+        window.clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+    });
+    sessionNameHeader.addEventListener("pointermove", () => {
+      if (longPressTimer !== null) {
+        window.clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+    });
 
     const sessionPath = document.createElement("div");
     sessionPath.className = "session-path";

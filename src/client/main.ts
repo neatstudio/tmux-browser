@@ -1,6 +1,8 @@
 import { createSessionApi } from "./api/sessionApi";
 import { deriveActionCenterItems } from "./actionCenter";
+import type { ActionCenterHookEventItem } from "./actionCenter";
 import { renderActionCenterPanel } from "./render/actionCenter";
+import { renderHookEventToast } from "./render/hookEventToast";
 import { renderInputPromptToast } from "./render/inputPromptToast";
 import { renderDashboard } from "./render/renderDashboard";
 import {
@@ -9,30 +11,36 @@ import {
   type KanbanDraft
 } from "./render/renderKanban";
 import { createAnimationFrameScheduler } from "./render/renderScheduler";
-import { renderSessionSidebar } from "./render/renderSessionSidebar";
 import { renderGroupMessagePanel } from "./render/groupMessagePanel";
 import { renderSessionConfigModal } from "./render/sessionConfigModal";
 import { renderSessionFloatingMenu } from "./render/sessionFloatingMenu";
 import { renderSessionGroupRail } from "./render/sessionGroupRail";
 import { renderSessionStatusBar } from "./render/sessionStatusBar";
-import { renderTabs, updateActiveTabItem } from "./render/renderTabs";
 import { createDashboardStore } from "./state/dashboardStore";
 import { createInputPromptRegistry } from "./state/inputPromptRegistry";
 import { createMutedSessionsStore } from "./state/mutedSessions";
+import { createSessionListCache } from "./state/sessionListCache";
 import { createSidebarFavoritesStore } from "./state/sidebarFavorites";
 import { createSessionSettingsStore } from "./state/sessionSettings";
 import { createTabState, type BrowserTab } from "./state/tabState";
 import { createInactiveTerminalPruner } from "./terminal/inactiveTerminalPruner";
+import { findPaneAtTerminalPoint } from "./terminal/paneHitTest";
 import {
   detectTerminalInputPrompt,
   type TerminalInputPrompt
 } from "./terminal/inputPromptDetector";
 import { syncTerminalPanelVisibility } from "./terminal/panelVisibility";
 import { getVisibleImagePaths } from "./imagePreviewPaths";
+import {
+  applyImagePreviewOpenFocus,
+  focusImagePreviewPathInput
+} from "./imagePreviewFocus";
 import { getCompactPageTitle } from "./pageTitle";
+import { getResponsiveSessionDefaults } from "./responsiveSessionSettings";
 import { createAppEventRefreshScheduler } from "./events/appEventRefreshScheduler";
 import { createAppEventSocket } from "./events/appEventSocket";
 import { createPageActivityController } from "./events/pageActivityController";
+import { fetchAppHealth, isServerVersionNewer } from "./appVersion";
 import {
   applyTheme,
   getTheme,
@@ -45,8 +53,21 @@ import {
   getImageFileFromFiles,
   uploadImageForSession
 } from "./imageUpload";
-import { buildViewUrl, getAppView, getLayoutMode, type AppView } from "./layoutMode";
+import { getResponsiveUiTier } from "./responsiveUiTier";
+import {
+  buildViewUrl,
+  getAppShellClasses,
+  getInitialAppView,
+  getRequestedAppView,
+  shouldPromoteActiveTabToTerminal,
+  type AppView
+} from "./layoutMode";
 import { isPageVisible } from "./pageVisibility";
+import {
+  createKanbanStatusProjectsCache,
+  getKanbanStatusProject as resolveKanbanStatusProject,
+  getKanbanStatusProjects as resolveKanbanStatusProjects
+} from "./kanbanStatusProjects";
 import {
   getDefaultKanbanSelectedSessionNames
 } from "../shared/kanbanTemplates";
@@ -62,6 +83,7 @@ type MountedTerminal = {
   clear: () => void;
   redraw: () => void;
   reconnect: () => void;
+  focus: () => void;
   chooseImage: () => void;
   captureImage: () => void;
   scrollPage: (direction: "back" | "forward") => void;
@@ -83,25 +105,26 @@ if (!app) {
   throw new Error("App root not found");
 }
 
-const layoutMode = getLayoutMode();
-let appView: AppView = getAppView();
-const isSidebarLayout = layoutMode === "sidebar";
+const appRoot = app;
+const requestedAppView = getRequestedAppView();
+const tabState = createTabState({
+  initialActiveTabId: requestedAppView === "kanban" ? null : undefined
+});
+let appView: AppView = getInitialAppView(requestedAppView, tabState.getActiveTabId());
+const shellLayoutMode = "none";
 
-app.innerHTML = `
-  <div class="app-shell${isSidebarLayout ? " app-shell--sidebar" : ""}">
-    <div class="tabs-root"></div>
+appRoot.innerHTML = `
+  <div class="${getAppShellClasses(shellLayoutMode, appView)}">
     <div class="content-root">
-      <div class="session-sidebar-root"></div>
       <div class="dashboard-root"></div>
       <div class="panels-root"></div>
     </div>
   </div>
 `;
 
-const tabsRoot = app.querySelector<HTMLElement>(".tabs-root")!;
-const sessionSidebarRoot = app.querySelector<HTMLElement>(".session-sidebar-root")!;
-const dashboardRoot = app.querySelector<HTMLElement>(".dashboard-root")!;
-const panelsRoot = app.querySelector<HTMLElement>(".panels-root")!;
+const dashboardRoot = appRoot.querySelector<HTMLElement>(".dashboard-root")!;
+const panelsRoot = appRoot.querySelector<HTMLElement>(".panels-root")!;
+appRoot.querySelector<HTMLElement>(".app-shell")?.style.setProperty("grid-template-rows", "1fr");
 
 document.title = getCompactPageTitle(
   window.location.hostname,
@@ -122,7 +145,9 @@ let activeSwitchSessionName: string | null = null;
 let draftSendTargetName = "";
 let draftSendCommand = "";
 let activeKanbanProjectName: string | null =
-  new URLSearchParams(window.location.search).get("project");
+  requestedAppView === "kanban"
+    ? new URLSearchParams(window.location.search).get("project")
+    : null;
 let activeGroupMessagePanel: {
   projectName: string;
   sessionName: string;
@@ -131,31 +156,25 @@ let activeGroupMessagePanel: {
   error: string | null;
 } | null = null;
 let currentActionCount = 0;
-const tabState = createTabState({
-  initialActiveTabId: appView === "kanban" ? null : undefined
-});
 const api = createSessionApi();
 const inputPrompts = createInputPromptRegistry();
-const sessionSettings = createSessionSettingsStore(window.localStorage, api);
+const sessionSettings = createSessionSettingsStore(
+  window.localStorage,
+  api,
+  getResponsiveSessionDefaults(window.innerWidth)
+);
 const mutedSessions = createMutedSessionsStore(window.localStorage, api);
+const sessionListCache = createSessionListCache(window.localStorage);
 const sidebarFavorites = createSidebarFavoritesStore(api);
 const store = createDashboardStore({
   api,
   pollMs: 10_000,
   pruneTabs: (validSessionNames) => tabState.pruneTabs(validSessionNames),
-  shouldIncludePreview: () =>
-    isSidebarLayout || tabState.getActiveTabId() === null,
+  shouldIncludePreview: () => tabState.getActiveTabId() === null && appView !== "kanban",
   shouldIncludePanes: () => tabState.getActiveTabId() !== null,
-  getDashboardPollOptions: () =>
-    isSidebarLayout
-      ? {
-          includePreview: false,
-          includePanes: true,
-          includeServerStatus: false,
-          preferActiveSessionStatus: false
-        }
-      : null,
+  getDashboardPollOptions: () => null,
   preferActiveSessionStatus: true,
+  sessionListCache,
   isActiveSessionBusy: () => {
     const activeTabId = tabState.getActiveTabId();
 
@@ -170,6 +189,12 @@ const store = createDashboardStore({
   },
   getMutedSessionNames: () => mutedSessions.getMutedSessionNames()
 });
+const kanbanStatusProjectsCache = createKanbanStatusProjectsCache(
+  window.localStorage
+);
+let cachedKanbanStatusProjects = kanbanStatusProjectsCache.read();
+let hasResolvedKanbanStatusProjectsCache = cachedKanbanStatusProjects.length > 0;
+let lastKanbanStatusProjectsCacheSignature = "";
 const mountedTerminals = new Map<string, MountedTerminal>();
 const pendingTerminalMounts = new Set<string>();
 const inactiveTerminalPruner = createInactiveTerminalPruner({
@@ -178,21 +203,82 @@ const inactiveTerminalPruner = createInactiveTerminalPruner({
 const activeOutputTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const busyTerminalTabIds = new Set<string>();
 const terminalPromptSignatures = new Map<string, string>();
+let versionReloadCheckInFlight = false;
+function refreshCurrentViewState(options: { includeTimeline?: boolean } = {}) {
+  const refreshPromise =
+    appView === "kanban"
+      ? store.refreshSessionList()
+      : store
+          .refresh({
+            includePreview: false,
+            includePanes: true,
+            includeServerStatus: false,
+            preferActiveSessionStatus: false
+          })
+          .then(() =>
+            options.includeTimeline === false
+              ? Promise.resolve()
+              : store.refreshTimeline()
+          );
+
+  return refreshPromise.then(() => {
+    scheduleRender();
+  });
+}
+
 const appEventRefreshScheduler = createAppEventRefreshScheduler(() => {
-  void store
-    .refresh({
-      includePreview: false,
-      includePanes: true,
-      includeServerStatus: false,
-      preferActiveSessionStatus: false
-    })
-    .then(() => store.refreshTimeline())
-    .then(() => scheduleRender());
+  void store.syncSessionAndKanbanState().then(() => scheduleRender());
 });
+
+function shouldOpenActionCenterForHookEvent(event: {
+  status?: string;
+  eventType?: string;
+}) {
+  return (
+    event.status === "waiting" ||
+    event.status === "blocked" ||
+    event.status === "need-input" ||
+    event.status === "failed" ||
+    event.eventType === "approval-required"
+  );
+}
+
+async function reloadIfServerVersionIsNewerAfterReconnect() {
+  if (versionReloadCheckInFlight) {
+    return;
+  }
+
+  versionReloadCheckInFlight = true;
+
+  try {
+    const health = await fetchAppHealth();
+
+    if (isServerVersionNewer(health.version, __TMUX_UI_CLIENT_VERSION__)) {
+      window.location.reload();
+    }
+  } catch {
+    // A reconnect should not break the current terminal if health is transient.
+  } finally {
+    versionReloadCheckInFlight = false;
+  }
+}
+
 const appEventSocket = createAppEventSocket({
+  onReconnect: () => {
+    void reloadIfServerVersionIsNewerAfterReconnect();
+  },
   onEvent: (event) => {
     if (event.type === "sessions-invalidated") {
       appEventRefreshScheduler.schedule();
+      return;
+    }
+
+    if (event.type === "hook-event") {
+      if (shouldOpenActionCenterForHookEvent(event)) {
+        dismissedHookEventToastIds.delete(`hook:${event.id}`);
+      }
+
+      void store.refreshTimeline().then(() => scheduleRender());
     }
   }
 });
@@ -206,28 +292,14 @@ const pageActivityController = createPageActivityController({
     connect: () => appEventSocket.connect(),
     close: () => appEventSocket.close()
   },
-  refresh: () => {
-    void store
-      .refresh({
-        includePreview: false,
-        includePanes: true,
-        includeServerStatus: false,
-        preferActiveSessionStatus: false
-      })
-      .then(() => store.refreshTimeline())
-      .then(() => scheduleRender());
-  }
+  refresh: refreshCurrentViewState
 });
-const SIDEBAR_COLLAPSED_STORAGE_KEY = "browser-tmux-dashboard.sidebar-collapsed";
 let activeImageSessionName: string | null = null;
 let isActionCenterOpen = false;
-let isMobileSidebarOpen = false;
+const dismissedHookEventToastIds = new Set<string>();
 let imagePreviewScanToken = 0;
-let lastRenderedTabListSignature = "";
-let lastRenderedActiveTabId: string | null | undefined;
 let visibleTerminalPanelId: string | null = null;
 let lastDashboardActive = tabState.getActiveTabId() === null;
-let isSidebarCollapsed = getStoredBoolean(SIDEBAR_COLLAPSED_STORAGE_KEY);
 
 applyTheme(activeTheme);
 
@@ -235,52 +307,6 @@ const renderScheduler = createAnimationFrameScheduler(render);
 
 function scheduleRender() {
   renderScheduler.schedule();
-}
-
-function getStoredBoolean(key: string) {
-  try {
-    return window.localStorage.getItem(key) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function setStoredBoolean(key: string, value: boolean) {
-  try {
-    window.localStorage.setItem(key, value ? "1" : "0");
-  } catch {
-    // Storage is optional; keep the current in-memory UI state.
-  }
-}
-
-function setSidebarCollapsed(collapsed: boolean) {
-  isSidebarCollapsed = collapsed;
-  setStoredBoolean(SIDEBAR_COLLAPSED_STORAGE_KEY, collapsed);
-  app
-    .querySelector(".app-shell")
-    ?.classList.toggle("is-sidebar-collapsed", collapsed);
-  scheduleRender();
-}
-
-function isMobileViewport() {
-  return window.matchMedia("(max-width: 720px)").matches;
-}
-
-function setMobileSidebarOpen(open: boolean) {
-  isMobileSidebarOpen = open;
-  app
-    .querySelector(".app-shell")
-    ?.classList.toggle("is-mobile-sidebar-open", open);
-  scheduleRender();
-}
-
-function toggleResponsiveSidebar() {
-  if (isMobileViewport()) {
-    setMobileSidebarOpen(!isMobileSidebarOpen);
-    return;
-  }
-
-  setSidebarCollapsed(!isSidebarCollapsed);
 }
 
 function setAppView(view: AppView, options: { projectName?: string | null } = {}) {
@@ -300,14 +326,12 @@ function setAppView(view: AppView, options: { projectName?: string | null } = {}
 
 function openDashboardView() {
   tabState.setActiveTab(null);
-  setMobileSidebarOpen(false);
   setAppView("kanban");
   scheduleRender();
 }
 
 function openKanbanView(projectName?: string | null) {
   tabState.setActiveTab(null);
-  setMobileSidebarOpen(false);
   setAppView("kanban", { projectName });
   scheduleRender();
 }
@@ -324,12 +348,17 @@ function scrollTargetKanbanProjectIntoView() {
 }
 
 function syncAppViewFromUrl() {
-  appView = getAppView();
+  const requestedView = getRequestedAppView();
+
+  if (requestedView === "kanban") {
+    tabState.setActiveTab(null);
+  }
+
+  appView = getInitialAppView(requestedView, tabState.getActiveTabId());
   activeKanbanProjectName =
-    appView === "kanban"
+    requestedView === "kanban"
       ? new URLSearchParams(window.location.search).get("project")
       : null;
-  tabState.setActiveTab(null);
   scheduleRender();
 }
 
@@ -342,9 +371,9 @@ function setActionCenterOpen(open: boolean) {
 
 function createKanbanProject() {
   const name = kanbanDraft.name.trim();
-  const path = kanbanDraft.path.trim() || "~";
+  const path = "~";
 
-  if (!name || !path) {
+  if (!name) {
     return;
   }
 
@@ -366,6 +395,34 @@ function createKanbanProject() {
     });
 }
 
+function createKanbanProjectFromSession(
+  project: { name: string; path: string; server: string | null },
+  sessionName: string
+) {
+  void store
+    .createKanbanProject({
+      ...project,
+      selectedAgentNames: []
+    })
+    .then(() => store.addKanbanSession(project.name, sessionName))
+    .then(() => {
+      openKanbanView(project.name);
+      scheduleRender();
+    });
+}
+
+function moveKanbanSession(
+  fromProjectName: string | null,
+  toProjectName: string,
+  sessionName: string
+) {
+  void store
+    .moveKanbanSession(fromProjectName, toProjectName, sessionName)
+    .then(() => {
+      scheduleRender();
+    });
+}
+
 function toggleActionCenter() {
   setActionCenterOpen(!isActionCenterOpen);
 }
@@ -376,12 +433,21 @@ function getOrOpenTab(sessionName: string) {
     .find((tab) => tab.sessionName === sessionName);
 
   if (existing) {
-    tabState.setActiveTab(existing.id);
+    activateTab(existing.id);
     scheduleRender();
     return existing;
   }
 
-  return tabState.openTab(sessionName);
+  const tab = tabState.openTab(sessionName);
+  setAppView("terminal");
+  scheduleRender();
+
+  return tab;
+}
+
+function activateTab(tabId: string) {
+  tabState.setActiveTab(tabId);
+  setAppView("terminal");
 }
 
 function getTabForSession(sessionName: string) {
@@ -420,70 +486,59 @@ function getKanbanConfiguredSessionName(
   return sessionName;
 }
 
-function getKanbanStatusProject(sessionName: string) {
-  const existingSessionNames = new Set(
-    store.getState().sessions.map((session) => session.name)
+function getLiveKanbanStatusProject(sessionName: string) {
+  return resolveKanbanStatusProject(
+    sessionName,
+    store.getState().sessions,
+    store.getState().kanbanProjects
   );
-
-  for (const project of store.getState().kanbanProjects) {
-    const projectSessions = project.agents
-      .map((agent) => {
-        const name = getKanbanConfiguredSessionName(project.name, agent);
-
-        return {
-          name,
-          label: agent.name || name
-        };
-      })
-      .filter((projectSession) => projectSession.name);
-    const currentSessionInProject = projectSessions.some(
-      (projectSession) => projectSession.name === sessionName
-    );
-
-    if (!currentSessionInProject) {
-      continue;
-    }
-
-    const availableSessions = projectSessions.filter((projectSession) =>
-      existingSessionNames.has(projectSession.name) || projectSession.name === sessionName
-    );
-
-    return {
-      name: project.name,
-      sessions: availableSessions.length > 0 ? availableSessions : projectSessions
-    };
-  }
-
-  return null;
 }
 
-function getKanbanStatusProjects() {
-  const existingSessionNames = new Set(
-    store.getState().sessions.map((session) => session.name)
+function getLiveKanbanStatusProjects() {
+  return resolveKanbanStatusProjects(
+    store.getState().sessions,
+    store.getState().kanbanProjects
+  );
+}
+
+function refreshKanbanStatusProjectsCache() {
+  const state = store.getState();
+  const signature = JSON.stringify({
+    sessions: state.sessions.map((session) => session.name),
+    kanbanProjects: state.kanbanProjects
+  });
+
+  if (signature === lastKanbanStatusProjectsCacheSignature) {
+    return cachedKanbanStatusProjects;
+  }
+
+  lastKanbanStatusProjectsCacheSignature = signature;
+  const projects = resolveKanbanStatusProjects(
+    state.sessions,
+    state.kanbanProjects
   );
 
-  return store
-    .getState()
-    .kanbanProjects.map((project) => {
-      const sessions = project.agents
-        .map((agent) => {
-          const name = getKanbanConfiguredSessionName(project.name, agent);
+  cachedKanbanStatusProjects = projects;
+  hasResolvedKanbanStatusProjectsCache = true;
+  kanbanStatusProjectsCache.write(projects);
 
-          return {
-            name,
-            label: agent.name || name
-          };
-        })
-        .filter((projectSession) => {
-          return projectSession.name && existingSessionNames.has(projectSession.name);
-        });
+  return projects;
+}
 
-      return {
-        name: project.name,
-        sessions
-      };
-    })
-    .filter((project) => project.sessions.length > 0);
+function getDisplayKanbanStatusProjects() {
+  if (hasResolvedKanbanStatusProjectsCache) {
+    return cachedKanbanStatusProjects;
+  }
+
+  return refreshKanbanStatusProjectsCache();
+}
+
+function getDisplayKanbanStatusProject(sessionName: string) {
+  return (
+    getDisplayKanbanStatusProjects().find((project) =>
+      project.sessions.some((session) => session.name === sessionName)
+    ) ?? null
+  );
 }
 
 function getAvailableKanbanSessionNames() {
@@ -647,11 +702,7 @@ function handleTerminalOutput(tabId: string, _data: string, visibleText: string)
         return;
       }
 
-      void store.refresh({
-        includePreview: false,
-        includePanes: true,
-        includeServerStatus: false
-      });
+      refreshCurrentViewState();
     }, 1500)
   );
 }
@@ -678,6 +729,7 @@ function ensureTerminal(tab: BrowserTab) {
     clear: () => {},
     redraw: () => {},
     reconnect: () => {},
+    focus: () => {},
     chooseImage: () => {},
     captureImage: () => {},
     scrollPage: () => {},
@@ -697,7 +749,7 @@ function ensureTerminal(tab: BrowserTab) {
     createSessionStatusActions(tab, loadingTerminal)
   );
   renderSessionTopRail(panel, tab);
-  renderSessionMenu(panel, tab);
+  renderSessionMenu(panel, tab, loadingTerminal);
   panel.style.background = getTheme(
     sessionSettings.get(tab.sessionName).themeId
   ).terminalTheme.background;
@@ -718,15 +770,12 @@ function ensureTerminal(tab: BrowserTab) {
       lineHeight: settings.lineHeight,
       terminalTheme: getTheme(settings.themeId).terminalTheme,
       onOutput: (data, visibleText) => handleTerminalOutput(tab.id, data, visibleText),
+      onPaneClick: (event) => selectPaneAtTerminalPoint(tab.sessionName, event),
+      getPaneSummaries: () =>
+        store.getState().sessions.find((session) => session.name === tab.sessionName)?.panes ?? [],
       onClosed: () => {
         closeTab(tab.id, { force: true });
-        const isDashboardActive = tabState.getActiveTabId() === null;
-
-        void store.refresh({
-          includePreview: isDashboardActive,
-          includePanes: !isDashboardActive,
-          preferActiveSessionStatus: false
-        });
+        refreshCurrentViewState();
       }
     });
     const mountedTerminal: MountedTerminal = {
@@ -751,7 +800,7 @@ function ensureTerminal(tab: BrowserTab) {
       createSessionStatusActions(tab, mountedTerminal)
     );
     renderSessionTopRail(panel, tab);
-    renderSessionMenu(panel, tab);
+    renderSessionMenu(panel, tab, mountedTerminal);
   });
 }
 
@@ -759,8 +808,9 @@ function renderSessionTopRail(panel: HTMLElement, tab: BrowserTab) {
   renderSessionGroupRail(
     panel,
     tab.sessionName,
-    getKanbanStatusProject(tab.sessionName),
+    getDisplayKanbanStatusProject(tab.sessionName),
     {
+      uiTier: getResponsiveUiTier(window.innerWidth),
       onOpenSession: (sessionName) => {
         getOrOpenTab(sessionName);
         scheduleRender();
@@ -770,22 +820,21 @@ function renderSessionTopRail(panel: HTMLElement, tab: BrowserTab) {
   );
 }
 
-function renderSessionMenu(panel: HTMLElement, tab: BrowserTab) {
+function renderSessionMenu(
+  panel: HTMLElement,
+  tab: BrowserTab,
+  mountedTerminal: MountedTerminal
+) {
   const dashboardState = store.getState();
   renderSessionFloatingMenu(panel, {
     currentSessionName: tab.sessionName,
     sessions: getSessionNames(),
     sessionSummaries: dashboardState.sessions,
     homeDirectory: dashboardState.serverStatus?.homeDirectory ?? null,
-    kanbanProject: getKanbanStatusProject(tab.sessionName),
-    boards: getKanbanStatusProjects(),
-    pinnedSessionNames: getPinnedSessionNames(),
-    mutedSessionNames: new Set(mutedSessions.getMutedSessionNames()),
-    timelineEvents: dashboardState.timelineEvents ?? [],
+    kanbanProject: getDisplayKanbanStatusProject(tab.sessionName),
+    boards: getDisplayKanbanStatusProjects(),
     actionCount: currentActionCount,
     actionCenterOpen: isActionCenterOpen,
-    isPinned: getPinnedSessionNames().has(tab.sessionName),
-    isMuted: mutedSessions.isMuted(tab.sessionName),
     onOpenDashboard: openDashboardView,
     onOpenKanban: () => openKanbanView(),
     onOpenKanbanProject: (projectName) => openKanbanView(projectName),
@@ -806,24 +855,29 @@ function renderSessionMenu(panel: HTMLElement, tab: BrowserTab) {
     onChooseImage: () => mountedTerminal.chooseImage(),
     onCaptureImage: () => mountedTerminal.captureImage(),
     onKill: () => killSession(tab.sessionName, { confirm: true }),
-    onTogglePinned: () => togglePinnedSession(tab.sessionName),
-    onToggleMuted: () => toggleMutedSession(tab.sessionName),
+    onKillSession: (sessionName) => killSession(sessionName, { confirm: true }),
+    onSendSoftKey: (sequence) => mountedTerminal.sendInput(sequence),
     onToggleActionCenter: toggleActionCenter,
-    onRefreshMuted: () => {
-      void store
-        .refreshMuted(mutedSessions.getMutedSessionNames())
-        .then(() => scheduleRender());
-    },
     onRefresh: () => {
       void store
-        .refresh({
-          includePreview: false,
-          includePanes: true,
-          includeServerStatus: true,
-          preferActiveSessionStatus: false
-        })
+        .syncSessionAndKanbanState()
         .then(() => scheduleRender());
     },
+    kanbanDraft,
+    onKanbanDraftChange: (draft, options) => {
+      kanbanDraft = draft;
+      if (options?.render !== false) {
+        scheduleRender();
+      }
+    },
+    onCreateKanbanProject: createKanbanProject,
+    onCreateKanbanProjectFromSession: createKanbanProjectFromSession,
+    onAddKanbanSession: (projectName, sessionName) => {
+      void store.addKanbanSession(projectName, sessionName).then(() => {
+        scheduleRender();
+      });
+    },
+    onMoveKanbanSession: moveKanbanSession,
     onCreateSession: (sessionName) => {
       void store.createSession(sessionName).then(() => {
         draftSessionName = "";
@@ -852,7 +906,7 @@ function syncTerminalStatusBars() {
       createSessionStatusActions(tab, mounted)
     );
     renderSessionTopRail(mounted.panel, tab);
-    renderSessionMenu(mounted.panel, tab);
+    renderSessionMenu(mounted.panel, tab, mounted);
   });
 }
 
@@ -1052,6 +1106,7 @@ function getImagePreviewInfoUrl(imagePath: string, basePath: string) {
 }
 
 function openImagePreviewPanel(sessionName: string) {
+  applyImagePreviewOpenFocus(getResponsiveUiTier(window.innerWidth));
   activeImageSessionName = sessionName;
   scheduleRender();
 }
@@ -1357,8 +1412,7 @@ function renderImagePreviewPanel() {
   backdrop.append(panel);
   mounted.panel.append(backdrop);
 
-  input.focus();
-  input.select();
+  focusImagePreviewPathInput(input, getResponsiveUiTier(window.innerWidth));
 }
 
 function openSendCommandPanel(currentSessionName: string) {
@@ -1379,7 +1433,7 @@ function closeSendCommandPanel() {
 }
 
 function openGroupMessagePanel(sessionName: string) {
-  const project = getKanbanStatusProject(sessionName);
+  const project = getLiveKanbanStatusProject(sessionName);
 
   if (!project) {
     return;
@@ -1571,9 +1625,9 @@ function renderGroupMessageOverlay() {
     return;
   }
 
-  const project = getKanbanStatusProjects().find(
+  const project = getLiveKanbanStatusProjects().find(
     (candidate) => candidate.name === activeGroupMessagePanel?.projectName
-  ) ?? getKanbanStatusProject(activeGroupMessagePanel.sessionName);
+  ) ?? getLiveKanbanStatusProject(activeGroupMessagePanel.sessionName);
 
   if (!project) {
     closeGroupMessagePanel();
@@ -1692,7 +1746,7 @@ async function sendInputPromptAction(key: string, input: string) {
         : item.sessionName === prompt.sessionName
     ) ?? getOrOpenTab(prompt.sessionName);
 
-  tabState.setActiveTab(tab.id);
+  activateTab(tab.id);
   ensureTerminal(tab);
   scheduleRender();
 
@@ -1724,10 +1778,57 @@ function openInputPromptTab(key: string) {
       : getOrOpenTab(prompt.sessionName);
 
   if (tab) {
-    tabState.setActiveTab(tab.id);
+    activateTab(tab.id);
   }
 
   scheduleRender();
+}
+
+function getHookEventToastItem(id: string) {
+  return deriveActionCenterItems({
+    prompts: inputPrompts.getPrompts(),
+    sessions: store.getState().sessions,
+    timelineEvents: store.getState().timelineEvents
+  }).find(
+    (item): item is ActionCenterHookEventItem =>
+      item.type === "hook-event" && item.id === id
+  );
+}
+
+function dismissHookEventToast(id: string) {
+  dismissedHookEventToastIds.add(id);
+  scheduleRender();
+}
+
+function openHookEventSession(id: string) {
+  const item = getHookEventToastItem(id);
+
+  if (!item || !item.sessionName) {
+    return;
+  }
+
+  dismissHookEventToast(id);
+  openActionCenterSession(item.sessionName);
+}
+
+function openHookEventActions(id: string) {
+  dismissedHookEventToastIds.add(id);
+  setActionCenterOpen(true);
+}
+
+async function sendHookEventEnter(id: string) {
+  const item = getHookEventToastItem(id);
+
+  if (!item || !item.sessionName) {
+    return;
+  }
+
+  try {
+    await api.sendInput(item.sessionName, "\r");
+    dismissHookEventToast(id);
+  } catch (error) {
+    console.warn("Failed to send hook event Enter", error);
+  }
 }
 
 function openActionCenterSession(sessionName: string) {
@@ -1741,6 +1842,37 @@ function splitPane(sessionName: string, direction: "horizontal" | "vertical") {
   });
 }
 
+function selectPaneAtTerminalPoint(
+  sessionName: string,
+  event: {
+    clientX: number;
+    clientY: number;
+    rect: Pick<DOMRect, "left" | "top" | "width" | "height">;
+    cols: number;
+    rows: number;
+  }
+) {
+  const session = store
+    .getState()
+    .sessions.find((candidate) => candidate.name === sessionName);
+  const paneId = findPaneAtTerminalPoint({
+    panes: session?.panes ?? [],
+    clientX: event.clientX,
+    clientY: event.clientY,
+    rect: event.rect,
+    cols: event.cols,
+    rows: event.rows
+  });
+
+  if (!paneId) {
+    return;
+  }
+
+  void store.selectPane(sessionName, paneId).then(() => {
+    scheduleRender();
+  });
+}
+
 function openSessionPane(sessionName: string, paneId: string) {
   void store.selectPane(sessionName, paneId).then(() => {
     getOrOpenTab(sessionName);
@@ -1748,51 +1880,26 @@ function openSessionPane(sessionName: string, paneId: string) {
   });
 }
 
-function selectPane(sessionName: string, paneId: string) {
-  void store.selectPane(sessionName, paneId).then(() => {
-    void store.refresh({
-      includePreview: false,
-      includePanes: true
-    });
-    scheduleRender();
-  });
-}
-
-function killPane(sessionName: string, paneId: string) {
-  const confirmed = window.confirm(`Close pane ${paneId} in "${sessionName}"?`);
-
-  if (!confirmed) {
-    return;
-  }
-
-  void store.killPane(sessionName, paneId).then(() => {
-    scheduleRender();
-  });
-}
-
 function refreshDashboard(options: { includeServerStatus?: boolean } = {}) {
-  void store
-    .refresh({
-      includePreview: true,
-      includePanes: true,
-      includeServerStatus: options.includeServerStatus ?? false
-    })
-    .then(() => {
-      scheduleRender();
-    });
+  const isKanbanView = appView === "kanban";
+  const refreshPromise = isKanbanView
+    ? store.refreshSessionList()
+    : store.refresh({
+        includePreview: true,
+        includePanes: true,
+        includeServerStatus: options.includeServerStatus ?? false
+      });
+
+  void refreshPromise.then(() => {
+    scheduleRender();
+  });
 }
 
 function createSessionStatusActions(tab: BrowserTab, mounted: MountedTerminal) {
   return {
-    kanbanProject: getKanbanStatusProject(tab.sessionName),
-    showKanbanSwitches: isMobileViewport(),
+    onRestoreFocus: () => mounted.focus(),
     onRefresh: () => {
-      const isDashboardActive = tabState.getActiveTabId() === null;
-
-      void store.refresh({
-        includePreview: isDashboardActive,
-        includePanes: !isDashboardActive
-      });
+      refreshCurrentViewState();
     },
     onClear: () => {
       mounted.clear();
@@ -1824,19 +1931,19 @@ function createSessionStatusActions(tab: BrowserTab, mounted: MountedTerminal) {
     onRename: () => promptRenameSession(tab.sessionName),
     onSendCommand: () => openSendCommandPanel(tab.sessionName),
     onSwitchSession: () => openSwitchSessionPanel(tab.sessionName),
-    onOpenKanbanSession: (sessionName: string) => {
-      getOrOpenTab(sessionName);
-      setMobileSidebarOpen(false);
-      scheduleRender();
-    },
     onPreviewImage: () => openImagePreviewPanel(tab.sessionName),
     onChooseImage: () => mounted.chooseImage(),
     onCaptureImage: () => mounted.captureImage(),
     onSplitHorizontal: () => splitPane(tab.sessionName, "horizontal"),
     onSplitVertical: () => splitPane(tab.sessionName, "vertical"),
-    onSelectPane: selectPane,
-    onKillPane: killPane,
-    onKill: () => killSession(tab.sessionName, { confirm: true })
+    onKill: () => killSession(tab.sessionName, { confirm: true }),
+    onKillSession: (sessionName) => killSession(sessionName, { confirm: true }),
+    uiTier: getResponsiveUiTier(window.innerWidth),
+    kanbanProject: getDisplayKanbanStatusProject(tab.sessionName),
+    kanbanProjects: getDisplayKanbanStatusProjects(),
+    onOpenKanbanProject: (projectName: string) => openKanbanView(projectName),
+    onMoveKanbanSession: moveKanbanSession,
+    onOpenKanban: () => openKanbanView()
   };
 }
 
@@ -1844,42 +1951,26 @@ function render() {
   rememberSessionInputPrompts();
   const tabs = tabState.getTabs();
   const activeTabId = tabState.getActiveTabId();
+  const uiTier = getResponsiveUiTier(window.innerWidth);
+  if (shouldPromoteActiveTabToTerminal(appView, activeTabId, requestedAppView)) {
+    setAppView("terminal");
+  }
   const isDashboardActive = activeTabId === null;
   const actionCenterItems = deriveActionCenterItems({
     prompts: inputPrompts.getPrompts(),
-    sessions: store.getState().sessions
+    sessions: store.getState().sessions,
+    timelineEvents: store.getState().timelineEvents
   });
+  const hookEventToastItems = actionCenterItems.filter(
+    (item): item is ActionCenterHookEventItem =>
+      item.type === "hook-event" && !dismissedHookEventToastIds.has(item.id)
+  );
   currentActionCount = actionCenterItems.length;
-  app
-    .querySelector(".app-shell")
-    ?.classList.toggle("app-shell--kanban-view", appView === "kanban");
-  const tabListSignature = tabs
-    .map((tab) => `${tab.id}:${tab.title}:${tab.pinned ? "pinned" : "free"}`)
-    .join("|");
-
-  if (tabListSignature !== lastRenderedTabListSignature) {
-    renderTabs(tabsRoot, tabs, activeTabId, {
-      onSelectTab: (tabId) => {
-        if (tabId === "__dashboard__") {
-          openDashboardView();
-          return;
-        }
-
-        tabState.setActiveTab(tabId);
-        scheduleRender();
-      },
-      onCloseTab: (tabId) => closeTab(tabId),
-      onTogglePin: (tabId) => {
-        tabState.togglePinned(tabId);
-        scheduleRender();
-      }
-    });
-    lastRenderedTabListSignature = tabListSignature;
-    lastRenderedActiveTabId = activeTabId;
-  } else if (activeTabId !== lastRenderedActiveTabId) {
-    updateActiveTabItem(tabsRoot, activeTabId);
-    lastRenderedActiveTabId = activeTabId;
+  const appShell = appRoot.querySelector(".app-shell");
+  if (appShell instanceof HTMLElement) {
+    appShell.dataset.uiTier = uiTier;
   }
+  appShell?.classList.toggle("app-shell--kanban-view", appView === "kanban");
 
   if (isDashboardActive !== lastDashboardActive) {
     lastDashboardActive = isDashboardActive;
@@ -1896,6 +1987,7 @@ function render() {
         sessions: store.getState().sessions,
         targetProjectName: activeKanbanProjectName,
         draft: kanbanDraft,
+        uiTier,
         availableSessions: getAvailableKanbanSessionNames(),
         loading: store.getState().loading,
         error: store.getState().error,
@@ -1908,7 +2000,6 @@ function render() {
         onCreateProject: createKanbanProject,
         onOpenSession: (name) => {
           getOrOpenTab(name);
-          scheduleRender();
         },
         onRemoveSession: (projectName, agentName) => {
           void store
@@ -1946,31 +2037,33 @@ function render() {
       onKillSession: (name) => {
         killSession(name);
       },
-      onRenameSession: (fromName, toName) => {
-        void renameSession(fromName, toName);
-      },
-      getSessionSettings: (name) => sessionSettings.get(name),
-      onSessionFontSizeChange: setSessionFontSize,
+    onRenameSession: (fromName, toName) => {
+      void renameSession(fromName, toName);
+    },
+    getSessionSettings: (name) => sessionSettings.get(name),
+    onSessionFontSizeChange: setSessionFontSize,
       onSessionFontFamilyChange: setSessionFontFamily,
       onSessionLineHeightChange: setSessionLineHeight,
       onSessionThemeChange: setSessionTheme,
       activeConfigSessionName,
-      onOpenSessionConfig: (name) => {
-        activeConfigSessionName = name;
-        scheduleRender();
-      },
+    onOpenSessionConfig: (name) => {
+      activeConfigSessionName = name;
+      scheduleRender();
+    },
       onCloseSessionConfig: () => {
         activeConfigSessionName = null;
         scheduleRender();
       },
       draftSessionName,
-      onDraftChange: (value) => {
-        draftSessionName = value;
-      },
-      themes: THEMES,
+    onDraftChange: (value) => {
+      draftSessionName = value;
+    },
+    themes: THEMES,
       activeThemeId: activeTheme.id,
       onThemeChange: setActiveTheme,
       onRefreshDashboard: () => refreshDashboard({ includeServerStatus: true }),
+      onMoveKanbanSession: moveKanbanSession,
+      uiTier,
       browserTabs: tabs.map((tab) => ({
         sessionName: tab.sessionName,
         active: tab.id === activeTabId
@@ -1979,72 +2072,19 @@ function render() {
     }
   }
 
-  if (isSidebarLayout) {
-    app
-      .querySelector(".app-shell")
-      ?.classList.toggle("is-sidebar-collapsed", isSidebarCollapsed);
-    app
-      .querySelector(".app-shell")
-      ?.classList.toggle("is-mobile-sidebar-open", isMobileSidebarOpen);
-    const activeSessionName =
-      tabs.find((tab) => tab.id === activeTabId)?.sessionName ?? null;
-
-    renderSessionSidebar(sessionSidebarRoot, store.getState(), {
-      activeSessionName,
-      collapsed: isSidebarCollapsed,
-      draftSessionName,
-      browserTabs: tabs.map((tab) => ({
-        sessionName: tab.sessionName,
-        active: tab.id === activeTabId
-      })),
-      pinnedSessionNames: getPinnedSessionNames(),
-      mutedSessionNames: new Set(mutedSessions.getMutedSessionNames()),
-      hiddenSessionNames: getKanbanSessionNames(),
-      kanbanProjects: store.getState().kanbanProjects,
-      timelineEvents: store.getState().timelineEvents ?? [],
-      actionCount: actionCenterItems.length,
-      actionCenterOpen: isActionCenterOpen,
-      activeView: appView === "kanban" ? "kanban" : "dashboard",
-      onCreateSession: (name) => {
-        void store.createSession(name).then(() => {
-          draftSessionName = "";
-          getOrOpenTab(name);
-          scheduleRender();
-        });
-      },
-      onDraftChange: (value) => {
-        draftSessionName = value;
-      },
-      onOpenDashboard: openDashboardView,
-      onOpenKanban: openKanbanView,
-      onOpenKanbanProject: (name) => openKanbanView(name),
-      onOpenSession: (name) => {
-        getOrOpenTab(name);
-        setMobileSidebarOpen(false);
-        scheduleRender();
-      },
-      onTogglePinned: togglePinnedSession,
-      onToggleMuted: toggleMutedSession,
-      onToggleActionCenter: toggleActionCenter,
-      onRefresh: () =>
-        void store
-          .refresh({
-            includePreview: false,
-            includePanes: true,
-            includeServerStatus: true,
-            preferActiveSessionStatus: false
-          })
-          .then(() => scheduleRender()),
-      onRefreshMuted: () =>
-        void store
-          .refreshMuted(mutedSessions.getMutedSessionNames())
-          .then(() => scheduleRender()),
-      onToggleCollapsed: toggleResponsiveSidebar
-    });
-  } else {
-    sessionSidebarRoot.innerHTML = "";
-  }
-
+  appShell?.classList.remove("is-sidebar-collapsed", "is-mobile-sidebar-open");
+  appRoot
+    .querySelectorAll(
+      [
+        ".session-sidebar-root",
+        ".session-sidebar",
+        ".mobile-sidebar-launcher",
+        ".terminal-status-action-group[data-group='kanban-sessions']",
+        ".terminal-status-kanban-label",
+        "[data-action='switch-kanban-session']"
+      ].join(",")
+    )
+    .forEach((node) => node.remove());
   dashboardRoot.style.display = activeTabId === null ? "block" : "none";
   panelsRoot.style.display = activeTabId === null ? "none" : "block";
   syncPanels();
@@ -2053,7 +2093,7 @@ function render() {
   renderSendCommandPanel();
   renderGroupMessageOverlay();
   renderSwitchSessionPanel();
-  renderActionCenterPanel(app, {
+  renderActionCenterPanel(appRoot, {
     open: isActionCenterOpen,
     items: actionCenterItems,
     onClose: () => setActionCenterOpen(false),
@@ -2061,10 +2101,18 @@ function render() {
     onDismissPrompt: closeInputPrompt,
     onSendPrompt: sendInputPromptAction
   });
-  renderInputPromptToast(app, inputPrompts.getPrompts(), {
+  renderInputPromptToast(appRoot, inputPrompts.getPrompts(), {
     onDismiss: closeInputPrompt,
     onOpen: openInputPromptTab,
     onSend: sendInputPromptAction
+  });
+  renderHookEventToast(appRoot, hookEventToastItems, {
+    onDismiss: dismissHookEventToast,
+    onOpenSession: openHookEventSession,
+    onOpenActions: openHookEventActions,
+    onSendEnter: (id) => {
+      void sendHookEventEnter(id);
+    }
   });
 
   if (activeTabId !== null && activeConfigSessionName) {
@@ -2092,26 +2140,25 @@ function render() {
 }
 
 store.subscribe(() => {
+  refreshKanbanStatusProjectsCache();
   scheduleRender();
 });
 
+window.addEventListener("resize", scheduleRender);
+
 {
-  const isDashboardActive = tabState.getActiveTabId() === null;
+  const initialViewRefresh = refreshCurrentViewState({ includeTimeline: false });
 
   void Promise.all([
     sidebarFavorites.load(),
     mutedSessions.load(),
     sessionSettings.load(),
-    store.refresh({
-      includePreview: isSidebarLayout ? false : isDashboardActive,
-      includePanes: isSidebarLayout ? true : !isDashboardActive,
-      includeServerStatus: isSidebarLayout ? false : undefined,
-      preferActiveSessionStatus: isSidebarLayout ? false : undefined
-    }),
+    initialViewRefresh,
     store.refreshKanbanProjects(),
     store.refreshTimeline()
   ])
     .then(() => {
+      refreshKanbanStatusProjectsCache();
       scheduleRender();
       pageActivityController.start();
     });

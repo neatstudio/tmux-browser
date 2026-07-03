@@ -15,6 +15,12 @@ const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
 const packScript = readFileSync("scripts/pack-run.mjs", "utf8");
 const publishScript = readFileSync("scripts/publish-run.mjs", "utf8");
 const releaseNotesScript = readFileSync("scripts/generate-release-notes.mjs", "utf8");
+const hookHelperScript = readFileSync("scripts/tmux-ui-hook.sh", "utf8");
+const agentHookScript = readFileSync("scripts/tmux-ui-agent-hook.mjs", "utf8");
+const installAgentHooksScript = readFileSync(
+  "scripts/install-agent-hooks.mjs",
+  "utf8"
+);
 const workflow = readFileSync(".github/workflows/release.yml", "utf8");
 const readme = readFileSync("README.md", "utf8");
 const readmeZh = readFileSync("README.zh-CN.md", "utf8");
@@ -28,6 +34,39 @@ describe("run release scripts", () => {
 
     expect(result.stderr).toBe("");
     expect(result.status).toBe(0);
+  });
+
+  it("ships the tmux-ui hook helper for agent event reporting", () => {
+    const result = spawnSync("bash", ["-n", "scripts/tmux-ui-hook.sh"], {
+      encoding: "utf8"
+    });
+
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+    expect(hookHelperScript).toContain("tmux display-message -p '#S'");
+    expect(hookHelperScript).toContain("/api/hooks/events");
+    expect(hookHelperScript).toContain('if [[ -n "$token" ]]');
+    expect(hookHelperScript).toContain("Authorization: Bearer $token");
+    expect(agentHookScript).toContain("codex-permission");
+    expect(agentHookScript).toContain("claude-notification");
+    expect(installAgentHooksScript).toContain("PermissionRequest");
+    expect(installAgentHooksScript).toContain("permission_prompt|idle_prompt");
+    expect(installAgentHooksScript).toContain("--uninstall");
+    expect(packScript).toContain("scripts\", \"tmux-ui-hook.sh");
+    expect(packScript).toContain("scripts\", \"tmux-ui-agent-hook.mjs");
+    expect(packScript).toContain("scripts\", \"install-agent-hooks.mjs");
+    expect(packScript).toContain('"$APP_HOME/tmux-ui-hook.sh"');
+    expect(packScript).toContain('"$APP_HOME/tmux-ui-agent-hook.mjs"');
+    expect(packScript).toContain('"$APP_HOME/install-agent-hooks.mjs"');
+    expect(packScript).toContain('ln -sfn "$APP_HOME/tmux-ui-hook.sh" "$APP_HOME/bin/tmux-ui-hook"');
+    expect(packScript).toContain('ln -sfn "$APP_HOME/tmux-ui-agent-hook.mjs" "$APP_HOME/bin/tmux-ui-agent-hook"');
+    expect(packScript).toContain("hooks-install Install Codex/Claude hooks");
+    expect(packScript).toContain("hooks-uninstall Remove tmux-ui Codex/Claude hooks");
+    expect(packScript).toContain('node "$APP_HOME/install-agent-hooks.mjs"');
+    expect(packScript).toContain("install_agent_hooks --uninstall");
+    expect(packScript).toContain("TMUX_UI_HOOK_TOKEN='\\${TMUX_UI_HOOK_TOKEN:-}' ./start.sh");
+    expect(packScript).toContain("Environment=TMUX_UI_HOOK_TOKEN=%s");
+    expect(packScript).toContain("<key>TMUX_UI_HOOK_TOKEN</key>");
   });
 
   it("uses tmux-ui as the public package identity", () => {
@@ -101,7 +140,9 @@ describe("run release scripts", () => {
     expect(packScript).toContain(
       'tmux respawn-pane -k -t "$APP_SESSION" -c "$APP_HOME"'
     );
-    expect(packScript).toContain('HOST=\'\\${HOST:-}\' PORT=\'\\${PORT:-3000}\' ./start.sh');
+    expect(packScript).toContain(
+      'HOST=\'\\${HOST:-}\' PORT=\'\\${PORT:-3000}\' TMUX_UI_HOOK_TOKEN=\'\\${TMUX_UI_HOOK_TOKEN:-}\' ./start.sh'
+    );
     expect(packScript).not.toContain("cd '$APP_HOME' && PORT=");
   });
 

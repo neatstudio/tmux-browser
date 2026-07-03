@@ -15,17 +15,22 @@ describe("sessionGroupRail", () => {
     frame.className = "terminal-frame";
     root.append(frame);
 
-    renderSessionGroupRail(root, "xxvisa-pm", {
-      name: "xxvisa",
-      sessions: [
-        { name: "xxvisa-pm", label: "pm" },
-        { name: "xxvisa-review", label: "review" },
-        { name: "xxvisa-codex", label: "codex" }
-      ]
-    }, {
-      onOpenSession,
-      onOpenGroupTask
-    });
+    renderSessionGroupRail(
+      root,
+      "xxvisa-pm",
+      {
+        name: "xxvisa",
+        sessions: [
+          { name: "xxvisa-pm", label: "pm" },
+          { name: "xxvisa-review", label: "review" },
+          { name: "xxvisa-codex", label: "codex" }
+        ]
+      },
+      {
+        onOpenSession,
+        onOpenGroupTask
+      }
+    );
 
     const rail = root.querySelector<HTMLElement>(".terminal-session-rail")!;
     const buttons = [
@@ -61,19 +66,24 @@ describe("sessionGroupRail", () => {
   it("keeps group session order stable while still highlighting the current session", () => {
     const root = document.createElement("div");
 
-    renderSessionGroupRail(root, "s5", {
-      name: "big",
-      sessions: [
-        { name: "s1", label: "one" },
-        { name: "s2", label: "two" },
-        { name: "s3", label: "three" },
-        { name: "s4", label: "four" },
-        { name: "s5", label: "five" }
-      ]
-    }, {
-      maxVisibleSessions: 3,
-      onOpenSession: vi.fn()
-    });
+    renderSessionGroupRail(
+      root,
+      "s5",
+      {
+        name: "big",
+        sessions: [
+          { name: "s1", label: "one" },
+          { name: "s2", label: "two" },
+          { name: "s3", label: "three" },
+          { name: "s4", label: "four" },
+          { name: "s5", label: "five" }
+        ]
+      },
+      {
+        maxVisibleSessions: 3,
+        onOpenSession: vi.fn()
+      }
+    );
 
     const rail = root.querySelector<HTMLElement>(".terminal-session-rail")!;
     const buttons = [
@@ -96,6 +106,35 @@ describe("sessionGroupRail", () => {
     expect(overflow.title).toContain("four");
   });
 
+  it("disables switching to saved group sessions that are not currently live", () => {
+    const root = document.createElement("div");
+    const onOpenSession = vi.fn();
+
+    renderSessionGroupRail(
+      root,
+      "cc1-remote",
+      {
+        name: "cc",
+        sessions: [
+          { name: "cc1-local", label: "cc1-local", live: false },
+          { name: "cc1-remote", label: "cc1-remote", live: true }
+        ]
+      },
+      { onOpenSession }
+    );
+
+    const offline = root.querySelector<HTMLButtonElement>(
+      "[data-session-name='cc1-local']"
+    )!;
+
+    expect(offline.disabled).toBe(true);
+    expect(offline.classList.contains("is-offline")).toBe(true);
+
+    offline.click();
+
+    expect(onOpenSession).not.toHaveBeenCalled();
+  });
+
   it("removes the top rail when the current session is not in a group", () => {
     const root = document.createElement("div");
 
@@ -113,5 +152,28 @@ describe("sessionGroupRail", () => {
 
     expect(root.querySelector(".terminal-session-rail")).toBeNull();
     expect(root.classList.contains("has-session-rail")).toBe(false);
+  });
+
+  it("renders the top rail on desktop sized screens", () => {
+    const root = document.createElement("div");
+
+    renderSessionGroupRail(
+      root,
+      "xxvisa-pm",
+      {
+        name: "xxvisa",
+        sessions: [
+          { name: "xxvisa-pm", label: "pm" },
+          { name: "xxvisa-review", label: "review" }
+        ]
+      },
+      {
+        uiTier: "desktop",
+        onOpenSession: vi.fn()
+      }
+    );
+
+    expect(root.querySelector(".terminal-session-rail")).not.toBeNull();
+    expect(root.classList.contains("has-session-rail")).toBe(true);
   });
 });

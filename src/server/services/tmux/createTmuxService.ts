@@ -41,6 +41,7 @@ export type CreateProjectSessionsOptions = {
 
 export type TmuxService = {
   listSessions: (options?: ListSessionsOptions) => Promise<TmuxSessionSummary[]>;
+  listSessionNames?: () => Promise<string[]>;
   getSessionStatus: (name: string) => Promise<TmuxSessionSummary>;
   createSession: (name: string) => Promise<void>;
   createProjectSessions: (options: CreateProjectSessionsOptions) => Promise<string[]>;
@@ -232,7 +233,7 @@ export function createTmuxService(deps: {
     }
   >();
   const paneFormat =
-    "#{session_name}\t#{pane_id}\t#{window_index}\t#{window_name}\t#{window_active}\t#{pane_index}\t#{pane_active}\t#{pane_current_command}\t#{pane_current_path}\t#{pane_dead}\t#{pane_dead_status}\t#{pane_pid}";
+    "#{session_name}\t#{pane_id}\t#{window_index}\t#{window_name}\t#{window_active}\t#{pane_index}\t#{pane_active}\t#{pane_current_command}\t#{pane_current_path}\t#{pane_dead}\t#{pane_dead_status}\t#{pane_pid}\t#{pane_left}\t#{pane_top}\t#{pane_width}\t#{pane_height}";
   const sessionFormat =
     "#{session_name}\t#{session_windows}\t#{session_attached}\t#{session_activity}";
 
@@ -441,6 +442,25 @@ export function createTmuxService(deps: {
             };
           })
         );
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          /no server running|failed to connect/i.test(error.message)
+        ) {
+          return [];
+        }
+
+        throw error;
+      }
+    },
+    async listSessionNames() {
+      try {
+        const sessionResult = await run("list-sessions", ["-F", "#{session_name}"]);
+
+        return sessionResult.stdout
+          .split("\n")
+          .map((name) => name.trim())
+          .filter(Boolean);
       } catch (error) {
         if (
           error instanceof Error &&

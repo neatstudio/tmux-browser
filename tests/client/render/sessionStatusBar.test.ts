@@ -224,126 +224,64 @@ describe("sessionStatusBar", () => {
     expect(onSwitchSession).toHaveBeenCalledOnce();
   });
 
-  it("shows same-kanban-project sessions as one-click status bar switches", () => {
+  it("does not render kanban session switches as a status-bar tab strip", () => {
     const root = document.createElement("div");
-    const onOpenKanbanSession = vi.fn();
 
-    renderSessionStatusBar(root, {
-      ...SESSION,
-      name: "xxvisa-pm"
-    }, {
+    renderSessionStatusBar(root, { ...SESSION, name: "xxvisa-pm" });
+
+    expect(root.querySelector("[data-group='kanban-sessions']")).toBeNull();
+    expect(root.querySelector(".terminal-status-kanban-label")).toBeNull();
+    expect(root.querySelector("[data-action='switch-kanban-session']")).toBeNull();
+  });
+
+  it("renders only group switching on pad sized screens", () => {
+    const root = document.createElement("div");
+    const onPreviewImage = vi.fn();
+    const onChooseImage = vi.fn();
+    const onCaptureImage = vi.fn();
+    const onSplitHorizontal = vi.fn();
+    const onSplitVertical = vi.fn();
+
+    renderSessionStatusBar(root, SESSION, {
+      uiTier: "pad",
       kanbanProject: {
         name: "xxvisa",
         sessions: [
           { name: "xxvisa-pm", label: "pm" },
-          { name: "xxvisa-review", label: "review" },
-          { name: "xxvisa-codex", label: "codex" }
+          { name: "xxvisa-review", label: "review" }
         ]
       },
-      onOpenKanbanSession
-    });
-
-    const group = root.querySelector<HTMLElement>(
-      "[data-group='kanban-sessions']"
-    )!;
-    const label = group.querySelector<HTMLElement>(
-      ".terminal-status-kanban-label"
-    )!;
-    const buttons = [
-      ...group.querySelectorAll<HTMLButtonElement>(
-        "[data-action='switch-kanban-session']"
-      )
-    ];
-
-    expect(label.textContent).toBe("xxvisa");
-    expect(buttons.map((button) => button.textContent)).toEqual([
-      "pm",
-      "review",
-      "codex"
-    ]);
-    expect(buttons[0].getAttribute("aria-current")).toBe("true");
-    expect(buttons[0].classList.contains("is-active")).toBe(true);
-
-    buttons[1].click();
-
-    expect(onOpenKanbanSession).toHaveBeenCalledWith("xxvisa-review");
-  });
-
-  it("marks switch as the primary mobile navigation action", () => {
-    const root = document.createElement("div");
-
-    renderSessionStatusBar(root, SESSION, {
-      onSwitchSession: vi.fn()
-    });
-
-    const switchButton = root.querySelector<HTMLButtonElement>(
-      "[data-action='switch-session']"
-    )!;
-
-    expect(switchButton.classList.contains("is-mobile-primary")).toBe(true);
-  });
-
-  it("toggles a compact mobile action sheet from the status bar", () => {
-    const root = document.createElement("div");
-    const onClear = vi.fn();
-    const onReconnect = vi.fn();
-    const onConfig = vi.fn();
-    const onRename = vi.fn();
-    const onPreviewImage = vi.fn();
-    const onChooseImage = vi.fn();
-    const onCaptureImage = vi.fn();
-    const onSendCommand = vi.fn();
-
-    renderSessionStatusBar(root, SESSION, {
-      onClear,
-      onReconnect,
-      onConfig,
-      onRename,
+      kanbanProjects: [
+        {
+          name: "xxvisa",
+          sessions: [
+            { name: "xxvisa-pm", label: "pm" },
+            { name: "xxvisa-review", label: "review" }
+          ]
+        },
+        {
+          name: "local",
+          sessions: [{ name: "build", label: "build" }]
+        }
+      ],
+      onOpenKanbanProject: vi.fn(),
+      onMoveKanbanSession: vi.fn(),
+      onOpenKanban: vi.fn(),
       onPreviewImage,
       onChooseImage,
       onCaptureImage,
-      onSendCommand
+      onSwitchSession: vi.fn(),
+      onSendCommand: vi.fn(),
+      onSplitHorizontal,
+      onSplitVertical,
+      onToggleBrowserScroll: vi.fn()
     });
 
-    const toggle = root.querySelector<HTMLButtonElement>(
-      "[data-action='toggle-mobile-status-actions']"
-    )!;
-
-    expect(toggle).not.toBeNull();
-    expect(toggle.textContent).toBe("Actions");
-    expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    expect(root.querySelector(".terminal-status-mobile-sheet")).toBeNull();
-
-    toggle.click();
-
-    expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    expect(root.querySelector(".terminal-status-mobile-sheet")).not.toBeNull();
-    expect(root.querySelector(".terminal-status-mobile-sheet [data-action='send']")).not.toBeNull();
-    expect(root.querySelector(".terminal-status-mobile-sheet [data-action='switch-session']")).not.toBeNull();
-    expect(root.querySelector(".terminal-status-mobile-sheet [data-action='clear']")).toBeNull();
-    expect(root.querySelector(".terminal-status-mobile-sheet [data-action='reconnect']")).toBeNull();
-    expect(root.querySelector(".terminal-status-mobile-sheet [data-action='config']")).toBeNull();
-    expect(root.querySelector(".terminal-status-mobile-sheet [data-action='preview-image']")).toBeNull();
-
-    root
-      .querySelector<HTMLButtonElement>(
-        ".terminal-status-mobile-sheet [data-action='send']"
-      )
-      ?.click();
-
-    expect(onClear).not.toHaveBeenCalled();
-    expect(onSendCommand).toHaveBeenCalledOnce();
-    expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    expect(root.querySelector(".terminal-status-mobile-sheet")).toBeNull();
-  });
-
-  it("renders mobile soft keys and sends their control sequences", () => {
-    const root = document.createElement("div");
-    const onSendSoftKey = vi.fn();
-
-    renderSessionStatusBar(root, SESSION, {
-      onSendSoftKey
-    });
+    expect(root.querySelector("[data-action='toggle-mobile-status-actions']")).not.toBeNull();
+    expect(root.querySelector("[data-action='switch-session']")).toBeNull();
+    expect(root.querySelector("[data-group='view']")).toBeNull();
+    expect(root.querySelector("[data-group='routing']")).toBeNull();
+    expect(root.querySelector("[data-group='panes']")).toBeNull();
 
     const toggle = root.querySelector<HTMLButtonElement>(
       "[data-action='toggle-mobile-status-actions']"
@@ -351,59 +289,30 @@ describe("sessionStatusBar", () => {
 
     toggle.click();
 
-    const sheet = root.querySelector<HTMLElement>(".terminal-status-mobile-sheet")!;
-    const keyButtons = sheet.querySelectorAll<HTMLButtonElement>(
-      ".terminal-status-soft-key"
-    );
-
-    expect([...keyButtons].map((button) => button.textContent)).toEqual([
-      "Esc",
-      "Tab",
-      "Ctrl-C",
-      "Ctrl-D",
-      "Ctrl-L",
-      "Ctrl-R",
-      "Ctrl-A",
-      "Ctrl-E",
-      "Alt-B",
-      "Alt-F",
-      "↑",
-      "↓",
-      "←",
-      "→",
-      "PgUp",
-      "PgDn"
-    ]);
-
-    sheet.querySelector<HTMLButtonElement>("[data-action='soft-key-esc']")?.click();
-    sheet.querySelector<HTMLButtonElement>("[data-action='soft-key-tab']")?.click();
-    sheet.querySelector<HTMLButtonElement>("[data-action='soft-key-ctrl-c']")?.click();
-
-    expect(onSendSoftKey).toHaveBeenNthCalledWith(1, "\x1b");
-    expect(onSendSoftKey).toHaveBeenNthCalledWith(2, "\t");
-    expect(onSendSoftKey).toHaveBeenNthCalledWith(3, "\x03");
-  });
-
-  it("keeps the mobile action sheet open after soft key taps", () => {
-    const root = document.createElement("div");
-
-    renderSessionStatusBar(root, SESSION, {
-      onSendSoftKey: vi.fn()
-    });
-
-    const toggle = root.querySelector<HTMLButtonElement>(
-      "[data-action='toggle-mobile-status-actions']"
-    )!;
+    expect(root.querySelector("[data-group='kanban-groups']")).not.toBeNull();
+    expect(root.querySelector("[data-group='mobile-panes']")).not.toBeNull();
+    root.querySelector<HTMLButtonElement>("[data-action='split-horizontal']")?.click();
+    toggle.click();
+    root.querySelector<HTMLButtonElement>("[data-action='split-vertical']")?.click();
+    expect(onSplitHorizontal).toHaveBeenCalledOnce();
+    expect(onSplitVertical).toHaveBeenCalledOnce();
 
     toggle.click();
-    root
-      .querySelector<HTMLButtonElement>(
-        ".terminal-status-mobile-sheet [data-action='soft-key-up']"
-      )
-      ?.click();
-
-    expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    expect(root.querySelector(".terminal-status-mobile-sheet")).not.toBeNull();
+    expect(root.querySelector("[data-group='media']")).not.toBeNull();
+    root.querySelector<HTMLButtonElement>("[data-action='preview-image']")?.click();
+    toggle.click();
+    root.querySelector<HTMLButtonElement>("[data-action='choose-image']")?.click();
+    toggle.click();
+    root.querySelector<HTMLButtonElement>("[data-action='capture-image']")?.click();
+    expect(onPreviewImage).toHaveBeenCalledOnce();
+    expect(onChooseImage).toHaveBeenCalledOnce();
+    expect(onCaptureImage).toHaveBeenCalledOnce();
+    toggle.click();
+    expect(
+      root
+        .querySelector(".terminal-status-mobile-sheet")
+        ?.querySelectorAll("[data-action='switch-group']")
+    ).not.toHaveLength(0);
   });
 
   it("uses readable compact labels for status bar actions", () => {
@@ -436,7 +345,6 @@ describe("sessionStatusBar", () => {
     ).toEqual([
       "Split",
       "Stack",
-      "Actions",
       "Page",
       "Live",
       "Hist",
@@ -465,9 +373,7 @@ describe("sessionStatusBar", () => {
       onSplitVertical: vi.fn(),
       onToggleBrowserScroll: vi.fn(),
       onScrollHistoryBack: vi.fn(),
-      onScrollHistoryForward: vi.fn(),
-      onSelectPane: vi.fn(),
-      onKillPane: vi.fn()
+      onScrollHistoryForward: vi.fn()
     });
 
     expect(
@@ -476,7 +382,7 @@ describe("sessionStatusBar", () => {
           group: group.dataset.group,
           actions: [
             ...group.querySelectorAll<HTMLButtonElement>(
-              ".terminal-status-action, .terminal-status-pane-button"
+              ".terminal-status-action"
             )
           ].map((button) => button.dataset.action ?? button.textContent)
         })
@@ -484,7 +390,7 @@ describe("sessionStatusBar", () => {
     ).toEqual([
       {
         group: "panes",
-        actions: ["split-horizontal", "split-vertical", "select-pane", "select-pane"]
+        actions: ["split-horizontal", "split-vertical"]
       },
       {
         group: "view",
@@ -495,6 +401,221 @@ describe("sessionStatusBar", () => {
         actions: ["send", "switch-session"]
       }
     ]);
+  });
+
+  it("opens the group switcher on phone sized screens", () => {
+    const root = document.createElement("div");
+    const onMoveKanbanSession = vi.fn();
+
+    renderSessionStatusBar(root, SESSION, {
+      uiTier: "phone",
+      kanbanProject: {
+        name: "local",
+        sessions: [{ name: "build", label: "build" }]
+      },
+      kanbanProjects: [
+        {
+          name: "local",
+          sessions: [{ name: "build", label: "build" }]
+        },
+        {
+          name: "xxvisa",
+          sessions: [{ name: "xxvisa-pm", label: "pm" }]
+        }
+      ],
+      onOpenKanbanProject: vi.fn(),
+      onMoveKanbanSession,
+      onOpenKanban: vi.fn()
+    });
+
+    root.querySelector<HTMLButtonElement>("[data-action='toggle-mobile-status-actions']")?.click();
+
+    expect(root.querySelector("[data-group='kanban-groups']")).not.toBeNull();
+    expect(
+      [...root.querySelectorAll<HTMLButtonElement>("[data-action='switch-group']")].map(
+        (button) => button.textContent
+      )
+    ).toEqual(["local", "xxvisa", "ungrouped"]);
+    expect(root.querySelector("[data-action='open-kanban']")).toBeNull();
+    root
+      .querySelectorAll<HTMLButtonElement>("[data-action='switch-group']")[1]
+      ?.click();
+    expect(onMoveKanbanSession).toHaveBeenCalledWith("local", "xxvisa", "build");
+  });
+
+  it("moves the current session out to ungrouped from the phone group switcher", () => {
+    const root = document.createElement("div");
+    const onMoveKanbanSession = vi.fn();
+
+    renderSessionStatusBar(root, SESSION, {
+      uiTier: "phone",
+      kanbanProject: {
+        name: "local",
+        sessions: [{ name: "build", label: "build" }]
+      },
+      kanbanProjects: [
+        {
+          name: "local",
+          sessions: [{ name: "build", label: "build" }]
+        }
+      ],
+      onMoveKanbanSession
+    });
+
+    root.querySelector<HTMLButtonElement>("[data-action='toggle-mobile-status-actions']")?.click();
+
+    root
+      .querySelector<HTMLButtonElement>(
+        "[data-action='switch-group'][data-project-name='ungrouped']"
+      )
+      ?.click();
+
+    expect(onMoveKanbanSession).toHaveBeenCalledWith("local", "ungrouped", "build");
+  });
+
+  it("keeps the mobile groups toggle as a clear button", () => {
+    const root = document.createElement("div");
+
+    renderSessionStatusBar(root, SESSION, {
+      uiTier: "phone",
+      kanbanProject: {
+        name: "local",
+        sessions: [{ name: "build", label: "build" }]
+      },
+      kanbanProjects: [
+        {
+          name: "local",
+          sessions: [{ name: "build", label: "build" }]
+        }
+      ],
+      onOpenKanbanProject: vi.fn(),
+      onMoveKanbanSession: vi.fn(),
+      onOpenKanban: vi.fn()
+    });
+
+    const toggle = root.querySelector<HTMLButtonElement>(
+      "[data-action='toggle-mobile-status-actions']"
+    )!;
+
+    expect(toggle.tagName).toBe("BUTTON");
+    expect(toggle.textContent).toBe("Groups");
+    expect(toggle.className).toContain("terminal-status-mobile-toggle");
+  });
+
+  it("reopens the mobile group switcher with one click after an outside close", () => {
+    const root = document.createElement("div");
+
+    renderSessionStatusBar(root, SESSION, {
+      uiTier: "phone",
+      kanbanProject: {
+        name: "local",
+        sessions: [{ name: "build", label: "build" }]
+      },
+      kanbanProjects: [
+        {
+          name: "local",
+          sessions: [{ name: "build", label: "build" }]
+        },
+        {
+          name: "xxvisa",
+          sessions: [{ name: "xxvisa-pm", label: "pm" }]
+        }
+      ],
+      onMoveKanbanSession: vi.fn()
+    });
+
+    const toggle = root.querySelector<HTMLButtonElement>(
+      "[data-action='toggle-mobile-status-actions']"
+    )!;
+
+    toggle.click();
+    expect(root.querySelector(".terminal-status-mobile-sheet")).not.toBeNull();
+
+    document.body.dispatchEvent(
+      new PointerEvent("pointerdown", { bubbles: true })
+    );
+    expect(root.querySelector(".terminal-status-mobile-sheet")).toBeNull();
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+
+    toggle.click();
+    expect(root.querySelector(".terminal-status-mobile-sheet")).not.toBeNull();
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("opens the mobile group switcher again when the sheet was removed externally", () => {
+    const root = document.createElement("div");
+
+    renderSessionStatusBar(root, SESSION, {
+      uiTier: "phone",
+      kanbanProject: {
+        name: "local",
+        sessions: [{ name: "build", label: "build" }]
+      },
+      kanbanProjects: [
+        {
+          name: "local",
+          sessions: [{ name: "build", label: "build" }]
+        },
+        {
+          name: "xxvisa",
+          sessions: [{ name: "xxvisa-pm", label: "pm" }]
+        }
+      ],
+      onMoveKanbanSession: vi.fn()
+    });
+
+    const toggle = root.querySelector<HTMLButtonElement>(
+      "[data-action='toggle-mobile-status-actions']"
+    )!;
+
+    toggle.click();
+    const sheet = root.querySelector(".terminal-status-mobile-sheet");
+    expect(sheet).not.toBeNull();
+    sheet?.remove();
+
+    toggle.click();
+    expect(root.querySelector(".terminal-status-mobile-sheet")).not.toBeNull();
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("keeps the mobile group switcher open across a status bar rerender", () => {
+    const root = document.createElement("div");
+    const actions = {
+      uiTier: "phone" as const,
+      kanbanProject: {
+        name: "local",
+        sessions: [{ name: "build", label: "build" }]
+      },
+      kanbanProjects: [
+        {
+          name: "local",
+          sessions: [{ name: "build", label: "build" }]
+        },
+        {
+          name: "xxvisa",
+          sessions: [{ name: "xxvisa-pm", label: "pm" }]
+        }
+      ],
+      onMoveKanbanSession: vi.fn()
+    };
+
+    renderSessionStatusBar(root, SESSION, actions);
+
+    root
+      .querySelector<HTMLButtonElement>("[data-action='toggle-mobile-status-actions']")
+      ?.click();
+
+    expect(root.querySelector(".terminal-status-mobile-sheet")).not.toBeNull();
+
+    renderSessionStatusBar(root, SESSION, actions);
+
+    const toggle = root.querySelector<HTMLButtonElement>(
+      "[data-action='toggle-mobile-status-actions']"
+    )!;
+
+    expect(root.querySelector(".terminal-status-mobile-sheet")).not.toBeNull();
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(root.querySelector("[data-group='kanban-groups']")).not.toBeNull();
   });
 
   it("places pane/tools groups before the path and recovery on the far right", () => {
@@ -517,9 +638,7 @@ describe("sessionStatusBar", () => {
       onSplitVertical: vi.fn(),
       onToggleBrowserScroll: vi.fn(),
       onScrollHistoryBack: vi.fn(),
-      onScrollHistoryForward: vi.fn(),
-      onSelectPane: vi.fn(),
-      onKillPane: vi.fn()
+      onScrollHistoryForward: vi.fn()
     });
 
     expect(
@@ -531,7 +650,6 @@ describe("sessionStatusBar", () => {
     ).toEqual([
       "panes",
       "terminal-status-main",
-      "terminal-status-mobile-toggle terminal-status-action",
       "view",
       "routing"
     ]);
@@ -554,38 +672,14 @@ describe("sessionStatusBar", () => {
     expect(button.classList.contains("is-active")).toBe(true);
   });
 
-  it("renders pane quick switches and pane close actions in the status bar", () => {
+  it("does not render pane quick switches or pane close actions in the status bar", () => {
     const root = document.createElement("div");
-    const onSelectPane = vi.fn();
-    const onKillPane = vi.fn();
 
-    renderSessionStatusBar(root, { ...SESSION, windows: 1 }, {
-      onSelectPane,
-      onKillPane
-    });
+    renderSessionStatusBar(root, { ...SESSION, windows: 1 });
 
-    const paneButtons = root.querySelectorAll<HTMLButtonElement>(
-      ".terminal-status-pane-button"
-    );
-    const closeButtons = root.querySelectorAll<HTMLButtonElement>(
-      ".terminal-status-pane-kill"
-    );
-
-    expect([...paneButtons].map((button) => button.textContent)).toEqual([
-      "#0 zsh",
-      "#1 npm"
-    ]);
-    expect(paneButtons[1]?.classList.contains("is-active")).toBe(true);
-    expect([...closeButtons].map((button) => button.textContent)).toEqual([
-      "×",
-      "×"
-    ]);
-
-    paneButtons[0]?.click();
-    closeButtons[1]?.click();
-
-    expect(onSelectPane).toHaveBeenCalledWith("build", "%1");
-    expect(onKillPane).toHaveBeenCalledWith("build", "%2");
+    expect(root.querySelector(".terminal-status-panes")).toBeNull();
+    expect(root.querySelector(".terminal-status-pane-button")).toBeNull();
+    expect(root.querySelector(".terminal-status-pane-kill")).toBeNull();
   });
 
   it("disables session management actions when handlers are missing", () => {
@@ -625,20 +719,6 @@ describe("sessionStatusBar", () => {
       root.querySelector<HTMLButtonElement>("[data-action='browser-scroll']")?.disabled
     ).toBe(true);
 
-    root
-      .querySelector<HTMLButtonElement>(
-        "[data-action='toggle-mobile-status-actions']"
-      )
-      ?.click();
-
-    expect(
-      root.querySelector(".terminal-status-mobile-sheet [data-action='reconnect']")
-    ).toBeNull();
-    expect(
-      root.querySelector(".terminal-status-mobile-sheet [data-action='config']")
-    ).toBeNull();
-    expect(
-      root.querySelector(".terminal-status-mobile-sheet [data-action='preview-image']")
-    ).toBeNull();
+    expect(root.querySelector("[data-action='toggle-mobile-status-actions']")).toBeNull();
   });
 });

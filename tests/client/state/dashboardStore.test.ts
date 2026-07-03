@@ -19,6 +19,92 @@ describe("createDashboardStore", () => {
     vi.useRealTimers();
   });
 
+  it("hydrates sessions from a cached session list before any network refresh", () => {
+    const api = {
+      getServerStatus: vi.fn(),
+      listSessions: vi.fn(),
+      listPaneSessions: vi.fn(),
+      listDashboardSessions: vi.fn()
+    };
+    const sessionListCache = {
+      read: vi.fn().mockReturnValue([
+        {
+          name: "cached",
+          windows: 1,
+          status: "detached",
+          lastActivityAt: null,
+          paneCount: 1,
+          activeWindowName: "zsh",
+          currentCommand: "zsh",
+          currentPath: "/tmp/cached",
+          gitBranch: null,
+          gitDirty: null,
+          paneDead: false,
+          paneDeadStatus: null,
+          preview: null,
+          inputPrompt: null
+        }
+      ]),
+      write: vi.fn()
+    };
+
+    const store = createDashboardStore({
+      api,
+      pollMs: 3000,
+      sessionListCache: sessionListCache as never
+    } as never);
+
+    expect(store.getState().sessions.map((session) => session.name)).toEqual([
+      "cached"
+    ]);
+  });
+
+  it("can refresh the lightweight session list without requesting server status", async () => {
+    const api = {
+      getServerStatus: vi.fn().mockResolvedValue(SERVER_STATUS),
+      listSessions: vi.fn().mockResolvedValue([
+        {
+          name: "build",
+          windows: 2,
+          status: "detached",
+          lastActivityAt: null,
+          paneCount: 1,
+          activeWindowName: "zsh",
+          currentCommand: "zsh",
+          currentPath: "/tmp/build",
+          gitBranch: null,
+          gitDirty: null,
+          paneDead: false,
+          paneDeadStatus: null,
+          preview: null,
+          inputPrompt: null
+        }
+      ]),
+      listPaneSessions: vi.fn(),
+      listDashboardSessions: vi.fn()
+    };
+    const sessionListCache = {
+      read: vi.fn().mockReturnValue([]),
+      write: vi.fn()
+    };
+    const store = createDashboardStore({
+      api,
+      pollMs: 3000,
+      sessionListCache: sessionListCache as never
+    } as never);
+
+    await (store as unknown as { refreshSessionList: () => Promise<void> }).refreshSessionList();
+
+    expect(api.listSessions).toHaveBeenCalledTimes(1);
+    expect(api.getServerStatus).not.toHaveBeenCalled();
+    expect(sessionListCache.write).toHaveBeenCalledWith([
+      expect.objectContaining({ name: "build" })
+    ]);
+    expect(store.getState().sessions.map((session) => session.name)).toEqual([
+      "build"
+    ]);
+  });
+
   it("loads sessions from the api and exposes them to the renderer", async () => {
     const api = {
       getServerStatus: vi.fn().mockResolvedValue(SERVER_STATUS),
@@ -204,10 +290,9 @@ describe("createDashboardStore", () => {
   it("renames a session through the api and refreshes session state", async () => {
     const api = {
       getServerStatus: vi.fn().mockResolvedValue(SERVER_STATUS),
-      listDashboardSessions: vi
+      listSessions: vi
         .fn()
-        .mockResolvedValueOnce([{ name: "build", windows: 1 }])
-        .mockResolvedValueOnce([{ name: "build-test", windows: 1 }]),
+        .mockResolvedValue([{ name: "build-test", windows: 1 }]),
       renameSession: vi.fn().mockResolvedValue(undefined)
     };
     const store = createDashboardStore({ api, pollMs: 3000 });
@@ -216,6 +301,7 @@ describe("createDashboardStore", () => {
     await store.renameSession("build", "build-test");
 
     expect(api.renameSession).toHaveBeenCalledWith("build", "build-test");
+    expect(api.listSessions).toHaveBeenCalledTimes(1);
     expect(store.getState().sessions).toEqual([
       { name: "build-test", windows: 1 }
     ]);
@@ -277,11 +363,14 @@ describe("createDashboardStore", () => {
     ]);
   });
 
-  it("selects a pane through the api without forcing a dashboard refresh", async () => {
+  it("selects a pane through the api and refreshes pane state", async () => {
     const api = {
       getServerStatus: vi.fn().mockResolvedValue(SERVER_STATUS),
       listDashboardSessions: vi.fn().mockResolvedValue([
         { name: "build", windows: 1, paneCount: 2 }
+      ]),
+      listPaneSessions: vi.fn().mockResolvedValue([
+        { name: "build", windows: 1, paneCount: 2, panes: [{ paneId: "%2" }] }
       ]),
       selectPane: vi.fn().mockResolvedValue(undefined)
     };
@@ -292,6 +381,7 @@ describe("createDashboardStore", () => {
 
     expect(api.selectPane).toHaveBeenCalledWith("build", "%2");
     expect(api.listDashboardSessions).toHaveBeenCalledTimes(1);
+    expect(api.listPaneSessions).toHaveBeenCalledTimes(1);
   });
 
   it("kills a pane through the api and refreshes pane state", async () => {
@@ -703,8 +793,6 @@ describe("createDashboardStore", () => {
       server: null,
       selectedAgentNames: ["codex"]
     });
-    expect(api.listPaneSessions).toHaveBeenCalledOnce();
-    expect(api.listDashboardSessions).not.toHaveBeenCalled();
     expect(store.getState().kanbanProjects).toEqual([
       {
         name: "xxvisa",
@@ -719,9 +807,7 @@ describe("createDashboardStore", () => {
         agents: [{ kind: "codex", name: "codex", command: null }]
       }
     ]);
-    expect(store.getState().sessions).toEqual([
-      { name: "stake-codex", panes: [] }
-    ]);
+    expect(store.getState().sessions).toEqual([]);
   });
 
   it("refreshes kanban projects and sessions after kanban removals", async () => {
@@ -750,7 +836,6 @@ describe("createDashboardStore", () => {
     });
     expect(api.deleteKanbanProject).toHaveBeenCalledWith("xxvisa");
     expect(api.listKanbanProjects).toHaveBeenCalledTimes(2);
-    expect(api.listPaneSessions).toHaveBeenCalledTimes(2);
     expect(api.listDashboardSessions).not.toHaveBeenCalled();
     expect(store.getState().kanbanProjects).toEqual([
       {
@@ -790,12 +875,164 @@ describe("createDashboardStore", () => {
 
     expect(api.addKanbanSession).toHaveBeenCalledWith("xxvisa", "local-ssh");
     expect(api.listKanbanProjects).toHaveBeenCalledOnce();
-    expect(api.listPaneSessions).toHaveBeenCalledOnce();
     expect(store.getState().kanbanProjects[0]?.agents[0]).toEqual({
       kind: "session",
       name: "local-ssh",
       command: null,
       sessionName: "local-ssh"
     });
+  });
+
+  it("refreshes kanban projects after renaming a grouped session", async () => {
+    const api = {
+      getServerStatus: vi.fn().mockResolvedValue(SERVER_STATUS),
+      renameSession: vi.fn().mockResolvedValue(undefined),
+      listSessions: vi.fn().mockResolvedValue([
+        { name: "cc1-remote", windows: 1, status: "detached" }
+      ]),
+      listKanbanProjects: vi.fn().mockResolvedValue([
+        {
+          name: "cc",
+          path: "~",
+          server: null,
+          agents: [
+            {
+              kind: "session",
+              name: "cc1-remote",
+              command: null,
+              sessionName: "cc1-remote"
+            }
+          ]
+        }
+      ]),
+      listPaneSessions: vi.fn(),
+      listDashboardSessions: vi.fn()
+    };
+    const store = createDashboardStore({ api, pollMs: 3000 });
+
+    await store.renameSession("cc1-local", "cc1-remote");
+
+    expect(api.renameSession).toHaveBeenCalledWith("cc1-local", "cc1-remote");
+    expect(api.listSessions).toHaveBeenCalledOnce();
+    expect(api.listKanbanProjects).toHaveBeenCalledOnce();
+    expect(store.getState().kanbanProjects[0]?.agents[0]).toEqual({
+      kind: "session",
+      name: "cc1-remote",
+      command: null,
+      sessionName: "cc1-remote"
+    });
+  });
+
+  it("manually syncs live sessions and kanban projects for group status", async () => {
+    const api = {
+      getServerStatus: vi.fn().mockResolvedValue(SERVER_STATUS),
+      listPaneSessions: vi.fn().mockResolvedValue([
+        {
+          name: "cc1-local",
+          windows: 1,
+          status: "detached",
+          panes: []
+        }
+      ]),
+      listKanbanProjects: vi.fn().mockResolvedValue([
+        {
+          name: "cc",
+          path: "~",
+          server: null,
+          agents: [
+            {
+              kind: "session",
+              name: "cc1-local",
+              command: null,
+              sessionName: "cc1-local"
+            }
+          ]
+        }
+      ]),
+      listSessions: vi.fn(),
+      listDashboardSessions: vi.fn()
+    };
+    const store = createDashboardStore({ api, pollMs: 3000 });
+
+    await (
+      store as unknown as { syncSessionAndKanbanState: () => Promise<void> }
+    ).syncSessionAndKanbanState();
+
+    expect(api.listPaneSessions).toHaveBeenCalledOnce();
+    expect(api.getServerStatus).toHaveBeenCalledOnce();
+    expect(api.listKanbanProjects).toHaveBeenCalledOnce();
+    expect(store.getState().sessions).toEqual([
+      {
+        name: "cc1-local",
+        windows: 1,
+        status: "detached",
+        panes: []
+      }
+    ]);
+    expect(store.getState().kanbanProjects[0]?.name).toBe("cc");
+  });
+
+  it("moves a kanban session by removing it from the current project before adding it to the target project", async () => {
+    const api = {
+      getServerStatus: vi.fn().mockResolvedValue(SERVER_STATUS),
+      listKanbanProjects: vi.fn().mockResolvedValue([
+        {
+          name: "stake",
+          path: "/srv/stake",
+          server: null,
+          agents: [
+            { kind: "session", name: "build", command: null, sessionName: "build" }
+          ]
+        },
+        {
+          name: "xxvisa",
+          path: "/srv/xxvisa",
+          server: null,
+          agents: []
+        }
+      ]),
+      addKanbanSession: vi.fn().mockResolvedValue(undefined),
+      removeKanbanSession: vi.fn().mockResolvedValue(undefined),
+      listPaneSessions: vi.fn().mockResolvedValue([{ name: "build", panes: [] }]),
+      listDashboardSessions: vi.fn()
+    };
+    const store = createDashboardStore({ api, pollMs: 3000 });
+
+    await store.moveKanbanSession("stake", "xxvisa", "build");
+
+    expect(api.removeKanbanSession).toHaveBeenCalledWith("stake", "build", {
+      kill: false
+    });
+    expect(api.addKanbanSession).toHaveBeenCalledWith("xxvisa", "build");
+    expect(api.listKanbanProjects).toHaveBeenCalledTimes(1);
+  });
+
+  it("moves a kanban session to ungrouped by only removing it from the current project", async () => {
+    const api = {
+      getServerStatus: vi.fn().mockResolvedValue(SERVER_STATUS),
+      listKanbanProjects: vi.fn().mockResolvedValue([
+        {
+          name: "stake",
+          path: "/srv/stake",
+          server: null,
+          agents: [
+            { kind: "session", name: "build", command: null, sessionName: "build" }
+          ]
+        }
+      ]),
+      addKanbanSession: vi.fn().mockResolvedValue(undefined),
+      removeKanbanSession: vi.fn().mockResolvedValue(undefined),
+      listPaneSessions: vi.fn().mockResolvedValue([{ name: "build", panes: [] }]),
+      listDashboardSessions: vi.fn()
+    };
+    const store = createDashboardStore({ api, pollMs: 3000 });
+
+    await store.moveKanbanSession("stake", "ungrouped", "build");
+
+    expect(api.removeKanbanSession).toHaveBeenCalledWith("stake", "build", {
+      kill: false
+    });
+    expect(api.addKanbanSession).not.toHaveBeenCalled();
+    expect(api.listKanbanProjects).toHaveBeenCalledTimes(1);
   });
 });

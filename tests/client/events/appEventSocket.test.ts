@@ -75,17 +75,57 @@ describe("createAppEventSocket", () => {
     );
   });
 
+  it("forwards hook events from the global app event socket", () => {
+    FakeWebSocket.instances = [];
+    const onEvent = vi.fn();
+    const socket = createAppEventSocket({
+      WebSocketCtor: FakeWebSocket as unknown as typeof WebSocket,
+      location: { protocol: "http:", host: "127.0.0.1:3000" },
+      onEvent
+    });
+
+    socket.connect();
+    FakeWebSocket.instances[0]?.emitMessage({
+      type: "hook-event",
+      source: "codex",
+      sessionName: "local-pets",
+      eventType: "approval-required",
+      status: "waiting",
+      title: "Need confirmation",
+      body: "Approve file edit?",
+      cwd: "/tmp/project",
+      taskId: "task-1",
+      severity: "warning",
+      id: "evt-2",
+      createdAt: "2026-06-29T10:00:00.000Z"
+    });
+
+    expect(onEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "hook-event",
+        source: "codex",
+        sessionName: "local-pets",
+        status: "waiting"
+      })
+    );
+  });
+
   it("reconnects after a close while enabled", () => {
     vi.useFakeTimers();
     FakeWebSocket.instances = [];
+    const onReconnect = vi.fn();
     const socket = createAppEventSocket({
       WebSocketCtor: FakeWebSocket as unknown as typeof WebSocket,
       location: { protocol: "https:", host: "tmux.local" },
       onEvent: vi.fn(),
-      reconnectMs: 250
+      reconnectMs: 250,
+      onReconnect
     });
 
     socket.connect();
+    FakeWebSocket.instances[0]?.listeners
+      .get("open")
+      ?.forEach((listener) => listener(new Event("open")));
     FakeWebSocket.instances[0]?.emitClose();
     vi.advanceTimersByTime(249);
     expect(FakeWebSocket.instances).toHaveLength(1);
@@ -93,6 +133,55 @@ describe("createAppEventSocket", () => {
     vi.advanceTimersByTime(1);
     expect(FakeWebSocket.instances).toHaveLength(2);
     expect(FakeWebSocket.instances[1]?.url).toBe("wss://tmux.local/ws/events");
+    FakeWebSocket.instances[1]?.listeners
+      .get("open")
+      ?.forEach((listener) => listener(new Event("open")));
+    expect(onReconnect).toHaveBeenCalledOnce();
+
+    socket.close();
+    vi.useRealTimers();
+  });
+
+  it("does not treat the initial open as a reconnect", () => {
+    FakeWebSocket.instances = [];
+    const onReconnect = vi.fn();
+    const socket = createAppEventSocket({
+      WebSocketCtor: FakeWebSocket as unknown as typeof WebSocket,
+      location: { protocol: "https:", host: "tmux.local" },
+      onEvent: vi.fn(),
+      onReconnect
+    });
+
+    socket.connect();
+    FakeWebSocket.instances[0]?.listeners
+      .get("open")
+      ?.forEach((listener) => listener(new Event("open")));
+
+    expect(onReconnect).not.toHaveBeenCalled();
+
+    socket.close();
+  });
+
+  it("does not treat the first successful open after startup failures as a reconnect", () => {
+    vi.useFakeTimers();
+    FakeWebSocket.instances = [];
+    const onReconnect = vi.fn();
+    const socket = createAppEventSocket({
+      WebSocketCtor: FakeWebSocket as unknown as typeof WebSocket,
+      location: { protocol: "https:", host: "tmux.local" },
+      onEvent: vi.fn(),
+      reconnectMs: 250,
+      onReconnect
+    });
+
+    socket.connect();
+    FakeWebSocket.instances[0]?.emitClose();
+    vi.advanceTimersByTime(250);
+    FakeWebSocket.instances[1]?.listeners
+      .get("open")
+      ?.forEach((listener) => listener(new Event("open")));
+
+    expect(onReconnect).not.toHaveBeenCalled();
 
     socket.close();
     vi.useRealTimers();
