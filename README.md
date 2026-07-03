@@ -24,6 +24,12 @@ sessions from the UI.
 - `npm run test` runs the test suite
 - `npm run test:watch` runs tests in watch mode
 
+## API Reference
+
+Third-party tools can call tmux-ui over the trusted Tailscale/private network.
+See [docs/api.md](docs/api.md) for the complete HTTP and WebSocket API list,
+request bodies, and response data structures.
+
 ## Install
 
 ```bash

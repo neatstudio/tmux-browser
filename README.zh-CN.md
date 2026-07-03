@@ -22,6 +22,11 @@ tmux-ui 是一个轻量的浏览器 tmux 控制台。它可以列出 tmux sessio
 - `npm run start` 运行已构建的服务端
 - `npm run test` 运行测试
 
+## API 参考
+
+第三方工具可以通过可信的 Tailscale/内网直接调用 tmux-ui。完整 HTTP 和
+WebSocket API 列表、请求体和返回数据结构见 [docs/api.md](docs/api.md)。
+
 ## 安装
 
 ```bash
