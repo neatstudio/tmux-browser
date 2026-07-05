@@ -160,6 +160,9 @@ describe("run release scripts", () => {
     expect(packScript).toContain(
       'SYSTEMD_UNIT_PATH="\\${TMUX_UI_SYSTEMD_UNIT:-/etc/systemd/system/$SERVICE_NAME.service}"'
     );
+    expect(packScript).toContain(
+      'SYSTEMD_USER_UNIT_PATH="\\${TMUX_UI_SYSTEMD_USER_UNIT:-$HOME/.config/systemd/user/$SERVICE_NAME.service}"'
+    );
     expect(packScript).toContain("service-install  Install systemd/launchd service");
     expect(packScript).toContain("service-start    Start systemd/launchd service");
     expect(packScript).toContain("service-restart  Restart systemd/launchd service");
@@ -173,10 +176,20 @@ describe("run release scripts", () => {
     expect(packScript).toContain("systemctl daemon-reload");
     expect(packScript).toContain('systemctl enable "$SERVICE_NAME.service"');
     expect(packScript).toContain('systemctl restart "$SERVICE_NAME.service"');
+    expect(packScript).toContain("write_systemd_user_unit()");
+    expect(packScript).toContain('systemctl --user daemon-reload');
+    expect(packScript).toContain('systemctl --user enable "$SERVICE_NAME.service"');
+    expect(packScript).toContain('systemctl --user restart "$SERVICE_NAME.service"');
     expect(packScript).toContain("wait_for_systemd_active()");
+    expect(packScript).toContain("wait_for_systemd_user_active()");
     expect(packScript).toContain('systemctl is-active --quiet "$SERVICE_NAME.service"');
+    expect(packScript).toContain('systemctl --user is-active --quiet "$SERVICE_NAME.service"');
     expect(packScript).toContain("wait_for_http_health_once()");
     expect(packScript).toContain('rm -f "$SYSTEMD_UNIT_PATH"');
+    expect(packScript).toContain('rm -f "$SYSTEMD_USER_UNIT_PATH"');
+    expect(packScript).toContain("restart_installed_service_if_present()");
+    expect(packScript).toContain("if restart_installed_service_if_present; then");
+    expect(packScript).toContain("install_systemd_user_service");
   });
 
   it("supports macOS launchd service mode for local installs", () => {

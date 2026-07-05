@@ -520,6 +520,7 @@ APP_HOME="\${TMUX_UI_HOME:-$HOME/.tmux-ui}"
 APP_SESSION="\${TMUX_UI_SESSION:-tmux-ui}"
 SERVICE_NAME="\${TMUX_UI_SERVICE_NAME:-tmux-ui}"
 SYSTEMD_UNIT_PATH="\${TMUX_UI_SYSTEMD_UNIT:-/etc/systemd/system/$SERVICE_NAME.service}"
+SYSTEMD_USER_UNIT_PATH="\${TMUX_UI_SYSTEMD_USER_UNIT:-$HOME/.config/systemd/user/$SERVICE_NAME.service}"
 LAUNCHD_LABEL="\${TMUX_UI_LAUNCHD_LABEL:-com.neatstudio.$SERVICE_NAME}"
 LAUNCHD_PLIST_PATH="\${TMUX_UI_LAUNCHD_PLIST:-$HOME/Library/LaunchAgents/$LAUNCHD_LABEL.plist}"
 PID_FILE="\${APP_HOME}/tmux-ui.pid"
@@ -872,6 +873,7 @@ Environment:
   TMUX_UI_SESSION   tmux session for restart/stop, default: tmux-ui
   TMUX_UI_SERVICE_NAME systemd service name, default: tmux-ui
   TMUX_UI_SYSTEMD_UNIT systemd unit path, default: /etc/systemd/system/$SERVICE_NAME.service
+  TMUX_UI_SYSTEMD_USER_UNIT user systemd unit path, default: ~/.config/systemd/user/$SERVICE_NAME.service
   TMUX_UI_LAUNCHD_LABEL macOS launchd label, default: com.neatstudio.$SERVICE_NAME
   TMUX_UI_LAUNCHD_PLIST macOS launchd plist path, default: ~/Library/LaunchAgents/$LAUNCHD_LABEL.plist
   TMUX_UI_TMUX_AUTO_RESTORE set to 0 to disable automatic restore when tmux is empty
@@ -975,6 +977,40 @@ stop_systemd_service_if_present() {
   fi
 }
 
+systemd_user_available() {
+  command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1
+}
+
+should_use_systemd_user_service() {
+  if is_macos; then
+    return 1
+  fi
+
+  if [[ -n "\${TMUX_UI_SYSTEMD_USER:-}" ]]; then
+    return 0
+  fi
+
+  if [[ -f "$SYSTEMD_USER_UNIT_PATH" ]]; then
+    return 0
+  fi
+
+  if [[ -f "$SYSTEMD_UNIT_PATH" ]]; then
+    return 1
+  fi
+
+  [[ "\${EUID:-$(id -u)}" -ne 0 && -z "\${TMUX_UI_SYSTEMD_UNIT:-}" ]]
+}
+
+stop_systemd_user_service_if_present() {
+  if ! systemd_user_available; then
+    return
+  fi
+
+  if [[ -f "$SYSTEMD_USER_UNIT_PATH" ]]; then
+    systemctl --user stop "$SERVICE_NAME.service" 2>/dev/null || true
+  fi
+}
+
 is_macos() {
   [[ "$(uname -s)" == "Darwin" ]]
 }
@@ -1030,6 +1066,49 @@ UNIT
   } > "$SYSTEMD_UNIT_PATH"
 
   systemctl daemon-reload
+}
+
+write_systemd_user_unit() {
+  require_command systemctl
+
+  local unit_dir port_value
+  unit_dir="$(dirname "$SYSTEMD_USER_UNIT_PATH")"
+  port_value="\${PORT:-3000}"
+  mkdir -p "$unit_dir"
+
+  {
+    cat <<UNIT
+[Unit]
+Description=tmux-ui browser dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=$APP_HOME
+Environment=HOME=$HOME
+Environment=NVM_DIR=$NVM_DIR
+Environment=PORT=$port_value
+UNIT
+    if [[ -n "\${HOST:-}" ]]; then
+      printf 'Environment=HOST=%s\\n' "$HOST"
+    fi
+    if [[ -n "\${TMUX_UI_HOOK_TOKEN:-}" ]]; then
+      printf 'Environment=TMUX_UI_HOOK_TOKEN=%s\\n' "$TMUX_UI_HOOK_TOKEN"
+    fi
+    cat <<UNIT
+ExecStart=$APP_HOME/start.sh
+Environment=PATH=$HOME/.local/bin:$HOME/.hermes/node/bin:$NVM_DIR/versions/node/v22/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Restart=always
+RestartSec=2
+KillSignal=SIGINT
+
+[Install]
+WantedBy=default.target
+UNIT
+  } > "$SYSTEMD_USER_UNIT_PATH"
+
+  systemctl --user daemon-reload
 }
 
 write_launchd_plist() {
@@ -1106,6 +1185,22 @@ wait_for_systemd_active() {
 
   systemctl status "$SERVICE_NAME.service" --no-pager || true
   journalctl -u "$SERVICE_NAME.service" -n 80 --no-pager || true
+  exit 1
+}
+
+wait_for_systemd_user_active() {
+  local attempt
+
+  for attempt in 1 2 3 4 5 6 7 8 9 10; do
+    if systemctl --user is-active --quiet "$SERVICE_NAME.service" && wait_for_http_health_once; then
+      systemctl --user status "$SERVICE_NAME.service" --no-pager
+      return
+    fi
+    sleep 1
+  done
+
+  systemctl --user status "$SERVICE_NAME.service" --no-pager || true
+  journalctl --user -u "$SERVICE_NAME.service" -n 80 --no-pager || true
   exit 1
 }
 
@@ -1265,14 +1360,81 @@ upgrade_server() {
     return
   fi
 
+  if command -v systemctl >/dev/null 2>&1 && [[ -f "$SYSTEMD_USER_UNIT_PATH" ]]; then
+    "$upgrade_file" service-install
+    rm -f "$upgrade_file"
+    return
+  fi
+
   "$upgrade_file" install
   "$upgrade_file" restart
   rm -f "$upgrade_file"
 }
 
+install_systemd_user_service() {
+  load_node_runtime
+  require_command node
+  require_command npm
+  require_command systemctl
+  extract_payload
+  install_cli_entrypoint
+
+  if [[ ! -d "$APP_HOME/node_modules" ]]; then
+    "$APP_HOME/install.sh"
+  fi
+
+  if ! systemd_user_available; then
+    echo "systemctl --user is not available for this login session." >&2
+    echo "Start a user systemd session or install with root-level service mode." >&2
+    exit 1
+  fi
+
+  stop_server
+  write_systemd_user_unit
+  systemctl --user enable "$SERVICE_NAME.service"
+  systemctl --user restart "$SERVICE_NAME.service"
+  wait_for_systemd_user_active
+}
+
+start_systemd_user_service() {
+  require_command systemctl
+  if [[ ! -f "$SYSTEMD_USER_UNIT_PATH" ]]; then
+    echo "user systemd unit not found: $SYSTEMD_USER_UNIT_PATH" >&2
+    echo "Run service-install first." >&2
+    exit 1
+  fi
+
+  systemctl --user start "$SERVICE_NAME.service"
+  wait_for_systemd_user_active
+}
+
+stop_systemd_user_service() {
+  require_command systemctl
+  systemctl --user stop "$SERVICE_NAME.service"
+}
+
+status_systemd_user_service() {
+  require_command systemctl
+  systemctl --user status "$SERVICE_NAME.service" --no-pager
+}
+
+uninstall_systemd_user_service() {
+  require_command systemctl
+  systemctl --user stop "$SERVICE_NAME.service" 2>/dev/null || true
+  systemctl --user disable "$SERVICE_NAME.service" 2>/dev/null || true
+  rm -f "$SYSTEMD_USER_UNIT_PATH"
+  systemctl --user daemon-reload
+  echo "Removed $SYSTEMD_USER_UNIT_PATH"
+}
+
 install_service() {
   if is_macos; then
     install_launchd_service
+    return
+  fi
+
+  if should_use_systemd_user_service; then
+    install_systemd_user_service
     return
   fi
 
@@ -1301,6 +1463,11 @@ start_service() {
     return
   fi
 
+  if should_use_systemd_user_service; then
+    start_systemd_user_service
+    return
+  fi
+
   require_command systemctl
   systemctl start "$SERVICE_NAME.service"
   wait_for_systemd_active
@@ -1309,6 +1476,11 @@ start_service() {
 stop_service() {
   if is_macos; then
     stop_launchd_service
+    return
+  fi
+
+  if should_use_systemd_user_service; then
+    stop_systemd_user_service
     return
   fi
 
@@ -1322,6 +1494,11 @@ status_service() {
     return
   fi
 
+  if should_use_systemd_user_service; then
+    status_systemd_user_service
+    return
+  fi
+
   require_command systemctl
   systemctl status "$SERVICE_NAME.service" --no-pager
 }
@@ -1329,6 +1506,11 @@ status_service() {
 uninstall_service() {
   if is_macos; then
     uninstall_launchd_service
+    return
+  fi
+
+  if should_use_systemd_user_service; then
+    uninstall_systemd_user_service
     return
   fi
 
@@ -1354,12 +1536,32 @@ start_server_in_tmux() {
   tmux ls
 }
 
+restart_installed_service_if_present() {
+  if is_macos && [[ -f "$LAUNCHD_PLIST_PATH" ]]; then
+    install_launchd_service
+    return 0
+  fi
+
+  if command -v systemctl >/dev/null 2>&1 && [[ -f "$SYSTEMD_UNIT_PATH" ]]; then
+    install_service
+    return 0
+  fi
+
+  if command -v systemctl >/dev/null 2>&1 && [[ -f "$SYSTEMD_USER_UNIT_PATH" ]]; then
+    install_systemd_user_service
+    return 0
+  fi
+
+  return 1
+}
+
 stop_server() {
   stop_systemd_service_if_present
+  stop_systemd_user_service_if_present
   stop_launchd_service_if_present
 
   if command -v tmux >/dev/null 2>&1 && tmux has-session -t "$APP_SESSION" 2>/dev/null; then
-    tmux send-keys -t "$APP_SESSION" C-c
+    tmux kill-session -t "$APP_SESSION" 2>/dev/null || true
   fi
 
   stop_pid_file_process
@@ -1371,8 +1573,13 @@ stop_server() {
 restart_server() {
   require_command node
   require_command npm
-  ensure_tmux_available
   extract_payload
+
+  if restart_installed_service_if_present; then
+    return
+  fi
+
+  ensure_tmux_available
 
   if [[ ! -d "$APP_HOME/node_modules" ]]; then
     "$APP_HOME/install.sh"
