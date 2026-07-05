@@ -1221,17 +1221,41 @@ wait_for_launchd_running() {
   exit 1
 }
 
+detect_tailscale_health_host() {
+  if command -v ip >/dev/null 2>&1; then
+    ip -o -4 addr show 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | awk '/^100\\./ { print; exit }'
+    return
+  fi
+
+  if command -v ifconfig >/dev/null 2>&1; then
+    ifconfig 2>/dev/null | awk '/inet / { print $2 }' | awk '/^100\\./ { print; exit }'
+  fi
+}
+
+health_check_hosts() {
+  if [[ -n "\${HOST:-}" ]]; then
+    echo "$HOST"
+    return
+  fi
+
+  echo "127.0.0.1"
+  detect_tailscale_health_host
+}
+
 wait_for_http_health_once() {
   local host port
-  host="\${HOST:-}"
   port="\${PORT:-3000}"
 
-  [[ "$host" == "0.0.0.0" ]] && host="127.0.0.1"
-  [[ -n "$host" ]] || host="127.0.0.1"
-
   if command -v curl >/dev/null 2>&1; then
-    curl -fsS "http://$host:$port/api/health" >/dev/null 2>&1
-    return
+    for host in $(health_check_hosts); do
+      [[ "$host" == "0.0.0.0" ]] && host="127.0.0.1"
+
+      if curl -fsS "http://$host:$port/api/health" >/dev/null 2>&1; then
+        return
+      fi
+    done
+
+    return 1
   fi
 
   return 0

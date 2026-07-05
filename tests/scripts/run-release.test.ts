@@ -185,6 +185,9 @@ describe("run release scripts", () => {
     expect(packScript).toContain('systemctl is-active --quiet "$SERVICE_NAME.service"');
     expect(packScript).toContain('systemctl --user is-active --quiet "$SERVICE_NAME.service"');
     expect(packScript).toContain("wait_for_http_health_once()");
+    expect(packScript).toContain("health_check_hosts()");
+    expect(packScript).toContain("detect_tailscale_health_host()");
+    expect(packScript).toContain("for host in $(health_check_hosts); do");
     expect(packScript).toContain('rm -f "$SYSTEMD_UNIT_PATH"');
     expect(packScript).toContain('rm -f "$SYSTEMD_USER_UNIT_PATH"');
     expect(packScript).toContain("restart_installed_service_if_present()");
