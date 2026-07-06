@@ -176,17 +176,34 @@ Session names must match `^[A-Za-z0-9._-]+$`.
 | `PATCH` | `/api/preferences/muted-sessions/:name` | `{ muted: boolean }` | `{ ok: true }` |
 | `PATCH` | `/api/preferences/session-settings/:name` | `{ settings: SessionSettings }` | `{ ok: true }` |
 
-## Kanban Projects
+## Kanban Projects (Project APIs)
 
-`ungrouped` is a reserved virtual project name.
+Kanban projects are tmux-ui's project-scoped agent groups. A project stores a
+name, a working path, an optional SSH server name, and agent definitions. The UI
+uses the same API as third-party tools.
+
+Direct API callers should send `agents` explicitly. The browser client fills in
+recommended agents before calling the API, but the server itself does not invent
+agents when `agents` is omitted.
+
+Session names are stable. Unless an agent provides `sessionName`, the server uses
+`<normalized-project>-<normalized-agent>`, where names are lowercased and
+non-session characters become `-`.
+
+For local projects, selected agents are created in `path`. For remote projects,
+`server` is an SSH host name; tmux-ui creates a local wrapper session that SSHes
+to that host and attaches to or creates the same named tmux session remotely.
+
+`ungrouped` is a reserved virtual project name. You cannot create or delete it,
+but group-message APIs can target `ungrouped` live sessions.
 
 | Method | Path | Request | Response |
 | --- | --- | --- | --- |
-| `GET` | `/api/kanban/projects` | none | `{ projects: KanbanProject[] }` after pruning sessions missing from live tmux |
-| `POST` | `/api/kanban/projects` | `CreateKanbanProjectRequest` | `{ ok: true, sessions: string[], preferences: Preferences }` |
-| `DELETE` | `/api/kanban/projects/:name` | none | `204 No Content` |
-| `POST` | `/api/kanban/projects/:name/sessions` | `{ sessionName: string }` | `{ ok: true, preferences: Preferences }` |
-| `DELETE` | `/api/kanban/projects/:name/sessions/:agent?kill=false` | optional `kill=true` query | `{ ok: true, preferences: Preferences }` |
+| `GET` | `/api/kanban/projects` | none | `200 { projects: KanbanProject[] }` after pruning saved sessions missing from live tmux |
+| `POST` | `/api/kanban/projects` | `CreateKanbanProjectRequest` | `201 { ok: true, sessions: string[], preferences: Preferences }` |
+| `DELETE` | `/api/kanban/projects/:name` | none | `204 No Content`; also deletes stored group messages for that project |
+| `POST` | `/api/kanban/projects/:name/sessions` | `{ sessionName: string }` | `200 { ok: true, preferences: Preferences }` |
+| `DELETE` | `/api/kanban/projects/:name/sessions/:agent?kill=false` | optional `kill=true` query | `200 { ok: true, preferences: Preferences }` |
 
 ```ts
 type CreateKanbanProjectRequest = {
@@ -197,6 +214,100 @@ type CreateKanbanProjectRequest = {
   selectedAgentNames?: string[];
 };
 ```
+
+### `CreateKanbanProjectRequest`
+
+- `name` is required and must not be `ungrouped`.
+- `path` is required. Use a local path for local projects or the remote working
+  directory when `server` is set.
+- `server` is `null` for local projects or an SSH host name such as `"m9"`.
+- `agents` are persisted on the project. Each agent needs `kind` and `name`;
+  `command` may be `null`; `sessionName` is optional when you need a custom
+  tmux session name.
+- `selectedAgentNames` controls which agents should be created immediately. If
+  it is omitted, the server selects the default names `pm`, `review`, and
+  `codex` when matching agents exist. Use `[]` to save the project without
+  creating sessions.
+
+### Create a local project and start selected sessions
+
+```http
+POST /api/kanban/projects
+Content-Type: application/json
+
+{
+  "name": "xxvisa",
+  "path": "/srv/xxvisa",
+  "server": null,
+  "selectedAgentNames": ["pm", "codex"],
+  "agents": [
+    { "kind": "pm", "name": "pm", "command": null },
+    { "kind": "review", "name": "review", "command": null },
+    { "kind": "codex", "name": "codex", "command": "codex" }
+  ]
+}
+```
+
+Response:
+
+```json
+{
+  "ok": true,
+  "sessions": ["xxvisa-pm", "xxvisa-codex"],
+  "preferences": {
+    "pinnedSessionNames": [],
+    "mutedSessionNames": ["tmux-ui"],
+    "sessionSettings": {},
+    "kanbanProjects": [
+      {
+        "name": "xxvisa",
+        "path": "/srv/xxvisa",
+        "server": null,
+        "agents": [
+          { "kind": "pm", "name": "pm", "command": null },
+          { "kind": "review", "name": "review", "command": null },
+          { "kind": "codex", "name": "codex", "command": "codex" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### Create a remote project
+
+```json
+{
+  "name": "m9-tools",
+  "path": "/home/gouki/work/m9-tools",
+  "server": "m9",
+  "selectedAgentNames": ["codex"],
+  "agents": [
+    { "kind": "codex", "name": "codex", "command": "codex" },
+    { "kind": "scratch", "name": "scratch", "command": null }
+  ]
+}
+```
+
+The created local session is a wrapper named `m9-tools-codex`. It SSHes to
+`m9`, changes to `/home/gouki/work/m9-tools`, and attaches to or creates the
+remote tmux session with the same stable name.
+
+### Attach or remove an existing session
+
+```http
+POST /api/kanban/projects/xxvisa/sessions
+Content-Type: application/json
+
+{ "sessionName": "local-ssh" }
+```
+
+```http
+DELETE /api/kanban/projects/xxvisa/sessions/local-ssh?kill=false
+```
+
+`kill=false` removes the session from the project only. `kill=true` also kills
+the tmux session before removing it from the project.
 
 ## Group Messages
 
@@ -247,6 +358,52 @@ type GroupMessage = {
 | `GET` | `/api/kanban/projects/:name/messages` | none | `{ messages: GroupMessage[] }` |
 | `POST` | `/api/kanban/projects/:name/messages` | `{ fromSession: string, kind: "task" \| "report", target: GroupMessageTarget, body: string }` | `{ ok: true, message: GroupMessage }` |
 | `POST` | `/api/kanban/projects/:name/messages/:messageId/scan` | none | `{ ok: true, message: GroupMessage }` |
+
+`:name` can be a configured project name or the virtual `ungrouped` project.
+`target.type` controls delivery:
+
+- `session` sends to one explicit live session.
+- `others` sends to all other live sessions in the same project.
+- `role` matches an agent `name`, `kind`, or session suffix such as `codex`.
+
+Example:
+
+```http
+POST /api/kanban/projects/xxvisa/messages
+Content-Type: application/json
+
+{
+  "fromSession": "xxvisa-pm",
+  "kind": "task",
+  "target": { "type": "role", "role": "codex" },
+  "body": "Run the checkout API tests and report failures."
+}
+```
+
+Response:
+
+```json
+{
+  "ok": true,
+  "message": {
+    "id": "gm-20260707-0001",
+    "projectName": "xxvisa",
+    "fromSession": "xxvisa-pm",
+    "toSessions": ["xxvisa-codex"],
+    "kind": "task",
+    "status": "pending",
+    "body": "Run the checkout API tests and report failures.",
+    "createdAt": "2026-07-07T06:00:00.000Z",
+    "updatedAt": "2026-07-07T06:00:00.000Z",
+    "expiresAt": null,
+    "deliveries": [
+      { "sessionName": "xxvisa-codex", "status": "sent", "mode": "agent-input" }
+    ],
+    "replies": [],
+    "warnings": []
+  }
+}
+```
 
 ## Hook Events
 

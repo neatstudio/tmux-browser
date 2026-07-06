@@ -30,6 +30,16 @@ Third-party tools can call tmux-ui over the trusted Tailscale/private network.
 See [docs/api.md](docs/api.md) for the complete HTTP and WebSocket API list,
 request bodies, and response data structures.
 
+Common project API entry points:
+
+- `GET /api/kanban/projects` lists configured project groups.
+- `POST /api/kanban/projects` creates or updates a project and optionally starts
+  selected agent sessions.
+- `POST /api/kanban/projects/:name/sessions` adds an existing tmux session to a
+  project.
+- `POST /api/kanban/projects/:name/messages` sends a task or report to project
+  sessions.
+
 ## Install
 
 ```bash
@@ -262,6 +272,14 @@ local wrapper session with the same stable name; that wrapper SSHes to the
 server and attaches to or creates the same named tmux session on the remote
 host. This keeps browser tabs openable from the local tmux-ui while still giving
 remote agents a predictable resume name.
+
+The same project model is available to third-party tools through the API. Use
+`POST /api/kanban/projects` to create a project. Use
+`POST /api/kanban/projects/:name/sessions` to attach an existing session. Use
+`POST /api/kanban/projects/:name/messages` to send project-scoped tasks or
+reports.
+See [docs/api.md#kanban-projects-project-apis](docs/api.md#kanban-projects-project-apis)
+for request and response shapes.
 
 ## Agent Hook Events
 

@@ -27,6 +27,14 @@ tmux-ui 是一个轻量的浏览器 tmux 控制台。它可以列出 tmux sessio
 第三方工具可以通过可信的 Tailscale/内网直接调用 tmux-ui。完整 HTTP 和
 WebSocket API 列表、请求体和返回数据结构见 [docs/api.md](docs/api.md)。
 
+常用 project API 入口：
+
+- `GET /api/kanban/projects` 列出已配置的项目组。
+- `POST /api/kanban/projects` 创建或更新项目，并可启动选中的 agent session。
+- `POST /api/kanban/projects/:name/sessions` 把已有 tmux session 加入项目。
+- `POST /api/kanban/projects/:name/messages` 向项目内 session 发送 task 或
+  report。
+
 ## 安装
 
 ```bash
@@ -241,6 +249,11 @@ ssh server-a
 打开 `/?view=kanban` 可以创建基于项目的 agent session。一个项目包含项目名、路径、可选 SSH 服务器，以及 `claude`、`codex`、`kiro` 等 agent。每个 agent 会得到稳定的 tmux session 名：`<project>-<agent>`。
 
 本机项目会直接在项目路径下创建 agent session，并按配置启动命令。远程项目会先在本机创建同名 wrapper session；这个 wrapper session 会 SSH 到远程服务器，并 attach 或创建远程同名 tmux session。这样浏览器仍然能从本机 tmux-ui 打开稳定 session，同时远程 agent 也有固定名称用于 resume。
+
+第三方工具也可以直接调用同一套 project API：用 `POST /api/kanban/projects`
+创建项目，用 `POST /api/kanban/projects/:name/sessions` 绑定已有 session，
+用 `POST /api/kanban/projects/:name/messages` 发送项目级 task 或 report。
+请求体和返回结构见 [docs/api.md#kanban-projects-project-apis](docs/api.md#kanban-projects-project-apis)。
 
 ## Agent Hook 事件
 
