@@ -6,6 +6,9 @@ import type { AppTheme } from "../theme/themeState";
 import { getKanbanAgentSessionName } from "./renderKanban";
 import { openSessionGroupMenu } from "./sessionGroupMenu";
 import type { ResponsiveUiTier } from "../responsiveUiTier";
+import { formatDisplayPath } from "../pathDisplay";
+
+export { formatDisplayPath } from "../pathDisplay";
 
 function formatPercent(value: number | null | undefined) {
   return typeof value === "number" ? `${value}%` : "n/a";
@@ -125,34 +128,6 @@ export function formatDashboardSessionActivity(
   return relativeActivity
     ? `${relativeActivity} · ${activityDateTime}`
     : activityDateTime;
-}
-
-export function formatDisplayPath(
-  path: string | null | undefined,
-  homeDirectory: string | null | undefined
-) {
-  if (!path) {
-    return "path unavailable";
-  }
-
-  if (!homeDirectory || homeDirectory === "/") {
-    return path;
-  }
-
-  const normalizedHome =
-    homeDirectory.endsWith("/") && homeDirectory !== "/"
-      ? homeDirectory.slice(0, -1)
-      : homeDirectory;
-
-  if (path === normalizedHome) {
-    return "~";
-  }
-
-  if (path.startsWith(`${normalizedHome}/`)) {
-    return `~${path.slice(normalizedHome.length)}`;
-  }
-
-  return path;
 }
 
 function appendMetaItem(

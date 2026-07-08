@@ -62,6 +62,18 @@ describe("sessionStatusBar", () => {
     ]);
   });
 
+  it("shortens terminal status paths under the server home directory", () => {
+    expect(
+      formatSessionStatusBar(
+        {
+          ...SESSION,
+          currentPath: "/home/gouki/server/wwwroot/gemm4"
+        },
+        "/home/gouki"
+      )
+    ).toEqual(["~/server/wwwroot/gemm4"]);
+  });
+
   it("shows failed pane state in the terminal page status bar", () => {
     expect(
       formatSessionStatusBar({
@@ -366,6 +378,64 @@ describe("sessionStatusBar", () => {
     expect(onSendSoftKey).toHaveBeenNthCalledWith(2, "\x1b[C");
     expect(onSendSoftKey).toHaveBeenNthCalledWith(3, "\x1b[13;2u");
     expect(root.querySelector(".terminal-status-mobile-sheet")).toBeNull();
+  });
+
+  it("keeps mobile soft keys visible on a second toolbar row", () => {
+    const root = document.createElement("div");
+    const onSendSoftKey = vi.fn();
+
+    renderSessionStatusBar(root, SESSION, {
+      uiTier: "phone",
+      onSendSoftKey,
+      kanbanProjects: [
+        {
+          name: "local",
+          sessions: [{ name: "build", label: "build" }]
+        }
+      ],
+      onMoveKanbanSession: vi.fn()
+    });
+
+    const inlineSoftKeys = root.querySelector<HTMLElement>(
+      ".terminal-status-inline-soft-keys[data-group='soft-keys']"
+    );
+
+    expect(inlineSoftKeys).not.toBeNull();
+    expect(
+      [...inlineSoftKeys!.querySelectorAll<HTMLButtonElement>("[data-action]")]
+        .map((button) => button.textContent)
+    ).toEqual([
+      "Esc",
+      "Tab",
+      "^C",
+      "^D",
+      "^L",
+      "^R",
+      "^A",
+      "^E",
+      "M-B",
+      "M-F"
+    ]);
+
+    inlineSoftKeys
+      ?.querySelector<HTMLButtonElement>("[data-action='soft-key-esc']")
+      ?.click();
+    inlineSoftKeys
+      ?.querySelector<HTMLButtonElement>("[data-action='soft-key-ctrl-c']")
+      ?.click();
+
+    expect(onSendSoftKey).toHaveBeenNthCalledWith(1, "\x1b");
+    expect(onSendSoftKey).toHaveBeenNthCalledWith(2, "\x03");
+
+    root
+      .querySelector<HTMLButtonElement>("[data-action='toggle-mobile-status-actions']")
+      ?.click();
+
+    expect(
+      root
+        .querySelector(".terminal-status-mobile-sheet")
+        ?.querySelector("[data-group='soft-keys']")
+    ).toBeNull();
   });
 
   it("keeps focused mobile text input active when pressing cursor keys", () => {

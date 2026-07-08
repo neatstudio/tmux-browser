@@ -339,7 +339,7 @@ function renderCurrentSessionSection(
 }
 
 function renderSoftKeysSection(state: SessionFloatingMenuState) {
-  if (!state.onSendSoftKey) {
+  if (!state.onSendSoftKey || (state.uiTier && state.uiTier !== "desktop")) {
     return null;
   }
 

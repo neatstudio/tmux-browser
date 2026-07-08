@@ -600,6 +600,32 @@ describe("sessionFloatingMenu", () => {
     expect(root.querySelector("[data-action='toggle-action-center']")).not.toBeNull();
   });
 
+  it("does not duplicate soft keys inside the phone floating menu", () => {
+    const root = document.createElement("div");
+
+    renderSessionFloatingMenu(root, {
+      currentSessionName: "build",
+      sessions: ["build"],
+      uiTier: "phone",
+      onOpenDashboard: vi.fn(),
+      onOpenKanban: vi.fn(),
+      onOpenSession: vi.fn(),
+      onConfig: vi.fn(),
+      onRename: vi.fn(),
+      onSendCommand: vi.fn(),
+      onSendSoftKey: vi.fn(),
+      onRefresh: vi.fn(),
+      onCreateSession: vi.fn()
+    });
+
+    root
+      .querySelector<HTMLButtonElement>("[data-action='toggle-session-floating-menu']")
+      ?.click();
+
+    expect(root.querySelector(".session-floating-menu-soft-keys")).toBeNull();
+    expect(root.querySelector("[data-action='soft-key-ctrl-c']")).toBeNull();
+  });
+
   it("exposes current session group switching in the primary actions", () => {
     const root = document.createElement("div");
     const onMoveKanbanSession = vi.fn();

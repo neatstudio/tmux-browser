@@ -1,6 +1,12 @@
 import type { SessionSummary } from "../api/sessionApi";
 import type { ResponsiveUiTier } from "../responsiveUiTier";
+import { formatDisplayPath } from "../pathDisplay";
 import { MOBILE_EDITING_KEYS, MOBILE_SOFT_KEYS } from "../terminal/softKeys";
+
+const MOBILE_EDITING_KEY_IDS = new Set(MOBILE_EDITING_KEYS.map((key) => key.id));
+const MOBILE_INLINE_SOFT_KEYS = MOBILE_SOFT_KEYS.filter(
+  (key) => !MOBILE_EDITING_KEY_IDS.has(key.id)
+);
 
 const mobileSheetCleanupByStatusBar = new WeakMap<HTMLElement, () => void>();
 
@@ -49,12 +55,16 @@ export type SessionStatusBarActions = {
   hideMobileActionToggle?: boolean;
   uiTier?: ResponsiveUiTier;
   onRestoreFocus?: () => void;
+  homeDirectory?: string | null;
 };
 
 export function formatSessionStatusBar(
-  session: SessionSummary
+  session: SessionSummary,
+  homeDirectory?: string | null
 ) {
-  return [session.currentPath].filter((item): item is string => Boolean(item));
+  return [session.currentPath]
+    .filter((item): item is string => Boolean(item))
+    .map((item) => formatDisplayPath(item, homeDirectory));
 }
 
 function createActionButton(
@@ -413,11 +423,13 @@ function renderRightStatusActions(
 
 function renderSoftKeyActions(
   actions: SessionStatusBarActions,
-  afterClick?: () => void
+  afterClick?: () => void,
+  className?: string,
+  keys = MOBILE_SOFT_KEYS
 ) {
-  return createActionGroup(
+  const group = createActionGroup(
     "soft-keys",
-    MOBILE_SOFT_KEYS.map((key) => {
+    keys.map((key) => {
       const button = createActionButton(
         `soft-key-${key.id}`,
         key.label,
@@ -433,6 +445,12 @@ function renderSoftKeyActions(
       return button;
     })
   );
+
+  if (className) {
+    group.classList.add(className);
+  }
+
+  return group;
 }
 
 function renderMobileCursorKeyActions(
@@ -556,7 +574,9 @@ export function renderSessionStatusBar(
   mobileSheetCleanupByStatusBar.delete(statusBar);
   statusBar.innerHTML = "";
 
-  const items = session ? formatSessionStatusBar(session) : [];
+  const items = session
+    ? formatSessionStatusBar(session, actions.homeDirectory)
+    : [];
   const main = document.createElement("div");
   main.className = "terminal-status-main";
 
@@ -573,11 +593,21 @@ export function renderSessionStatusBar(
       actions.uiTier && actions.uiTier !== "desktop"
         ? renderMobileCursorKeyActions(actions)
         : null;
+    const inlineSoftKeys =
+      actions.uiTier && actions.uiTier !== "desktop" && actions.onSendSoftKey
+        ? renderSoftKeyActions(
+            actions,
+            undefined,
+            "terminal-status-inline-soft-keys",
+            MOBILE_INLINE_SOFT_KEYS
+          )
+        : null;
     statusBar.append(
       ...renderLeftStatusActions(session, actions),
       main,
       ...(mobileCursorKeys ? [mobileCursorKeys] : []),
       ...(mobileToggle ? [mobileToggle] : []),
+      ...(inlineSoftKeys ? [inlineSoftKeys] : []),
       ...renderRightStatusActions(session, actions)
     );
     if (shouldRestoreMobileSheet && mobileToggle) {
@@ -603,12 +633,22 @@ export function renderSessionStatusBar(
     actions.uiTier && actions.uiTier !== "desktop"
       ? renderMobileCursorKeyActions(actions)
       : null;
+  const inlineSoftKeys =
+    actions.uiTier && actions.uiTier !== "desktop" && actions.onSendSoftKey
+      ? renderSoftKeyActions(
+          actions,
+          undefined,
+          "terminal-status-inline-soft-keys",
+          MOBILE_INLINE_SOFT_KEYS
+        )
+      : null;
   const rightActions = renderRightStatusActions(session, actions);
   statusBar.append(
     ...renderLeftStatusActions(session, actions),
     main,
     ...(mobileCursorKeys ? [mobileCursorKeys] : []),
     ...(mobileToggle ? [mobileToggle] : []),
+    ...(inlineSoftKeys ? [inlineSoftKeys] : []),
     ...rightActions
   );
   if (shouldRestoreMobileSheet && mobileToggle) {

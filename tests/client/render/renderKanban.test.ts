@@ -95,6 +95,65 @@ describe("renderKanban", () => {
     expect(onCreateProject).toHaveBeenCalledOnce();
   });
 
+  it("shortens kanban project and session paths under the server home directory", () => {
+    const root = document.createElement("div");
+
+    renderKanban(root, {
+      projects: [
+        {
+          name: "gemm4",
+          path: "/home/gouki/server/wwwroot/gemm4",
+          server: "m9",
+          agents: []
+        }
+      ],
+      sessions: [
+        {
+          name: "shell",
+          windows: 1,
+          status: "attached",
+          lastActivityAt: null,
+          paneCount: 1,
+          activeWindowName: "zsh",
+          currentCommand: "zsh",
+          currentPath: "/home/gouki/server/wwwroot/gemm4",
+          gitBranch: null,
+          gitDirty: null,
+          paneDead: false,
+          paneDeadStatus: null,
+          preview: null,
+          inputPrompt: null
+        }
+      ],
+      homeDirectory: "/home/gouki",
+      draft: {
+        name: "",
+        path: "~",
+        server: "",
+        selectedAgentNames: []
+      },
+      loading: false,
+      error: null,
+      availableSessions: ["shell"],
+      onDraftChange: vi.fn(),
+      onCreateProject: vi.fn(),
+      onOpenSession: vi.fn(),
+      onRemoveSession: vi.fn(),
+      onKillSession: vi.fn(),
+      onDeleteProject: vi.fn(),
+      onAddSession: vi.fn()
+    });
+
+    const projectPath = root.querySelector<HTMLElement>(".kanban-project-path")!;
+    const sessionPath = root.querySelector<HTMLElement>(".kanban-ungrouped-card code")!;
+
+    expect(projectPath.textContent).toBe("~/server/wwwroot/gemm4");
+    expect(projectPath.title).toBe("/home/gouki/server/wwwroot/gemm4");
+    expect(sessionPath.textContent).toBe("~/server/wwwroot/gemm4");
+    expect(sessionPath.title).toBe("/home/gouki/server/wwwroot/gemm4");
+    expect(root.textContent).not.toContain("/home/gouki/server/wwwroot/gemm4");
+  });
+
   it("keeps the create group panel collapsed until a draft is being edited", () => {
     const root = document.createElement("div");
 

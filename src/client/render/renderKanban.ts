@@ -4,6 +4,7 @@ import type {
 } from "../api/sessionApi";
 import type { KanbanCreateDraft as KanbanDraft } from "./kanbanCreatePanel";
 import type { ResponsiveUiTier } from "../responsiveUiTier";
+import { formatDisplayPath } from "../pathDisplay";
 import {
   getKanbanAgentSessionName,
   hasKanbanDraftContent,
@@ -14,6 +15,7 @@ export { getKanbanAgentSessionName } from "./kanbanCreatePanel";
 export type KanbanState = {
   projects: KanbanProject[];
   sessions?: SessionSummary[];
+  homeDirectory?: string | null;
   targetProjectName?: string | null;
   draft: KanbanDraft;
   uiTier?: ResponsiveUiTier;
@@ -270,7 +272,9 @@ function renderUngroupedSessions(state: KanbanState) {
       : "session details unavailable";
 
     const path = document.createElement("code");
-    path.textContent = summary?.currentPath ?? "";
+    path.textContent = summary?.currentPath
+      ? formatDisplayPath(summary.currentPath, state.homeDirectory)
+      : "";
     path.title = summary?.currentPath ?? "";
 
     const actions = document.createElement("div");
@@ -424,7 +428,7 @@ export function renderKanban(root: HTMLElement, state: KanbanState) {
 
     const path = document.createElement("div");
     path.className = "kanban-project-path";
-    path.textContent = project.path;
+    path.textContent = formatDisplayPath(project.path, state.homeDirectory);
     path.title = project.path;
 
     const agents = document.createElement("div");

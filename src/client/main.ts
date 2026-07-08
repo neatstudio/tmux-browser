@@ -209,7 +209,12 @@ let versionReloadCheckInFlight = false;
 function refreshCurrentViewState(options: { includeTimeline?: boolean } = {}) {
   const refreshPromise =
     appView === "kanban"
-      ? store.refreshSessionList()
+      ? store.refresh({
+          includePreview: false,
+          includePanes: true,
+          includeServerStatus: true,
+          preferActiveSessionStatus: false
+        })
       : store
           .refresh({
             includePreview: false,
@@ -1885,7 +1890,12 @@ function openSessionPane(sessionName: string, paneId: string) {
 function refreshDashboard(options: { includeServerStatus?: boolean } = {}) {
   const isKanbanView = appView === "kanban";
   const refreshPromise = isKanbanView
-    ? store.refreshSessionList()
+    ? store.refresh({
+        includePreview: false,
+        includePanes: true,
+        includeServerStatus: true,
+        preferActiveSessionStatus: false
+      })
     : store.refresh({
         includePreview: true,
         includePanes: true,
@@ -1940,6 +1950,7 @@ function createSessionStatusActions(tab: BrowserTab, mounted: MountedTerminal) {
     onSplitVertical: () => splitPane(tab.sessionName, "vertical"),
     onKill: () => killSession(tab.sessionName, { confirm: true }),
     onKillSession: (sessionName) => killSession(sessionName, { confirm: true }),
+    homeDirectory: store.getState().serverStatus?.homeDirectory ?? null,
     uiTier: getResponsiveUiTier(window.innerWidth),
     kanbanProject: getDisplayKanbanStatusProject(tab.sessionName),
     kanbanProjects: getDisplayKanbanStatusProjects(),
@@ -1987,6 +1998,7 @@ function render() {
       renderKanban(dashboardRoot, {
         projects: store.getState().kanbanProjects,
         sessions: store.getState().sessions,
+        homeDirectory: store.getState().serverStatus?.homeDirectory ?? null,
         targetProjectName: activeKanbanProjectName,
         draft: kanbanDraft,
         uiTier,
