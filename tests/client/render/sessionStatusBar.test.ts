@@ -315,6 +315,54 @@ describe("sessionStatusBar", () => {
     ).not.toHaveLength(0);
   });
 
+  it("keeps mobile cursor keys visible beside the groups control", () => {
+    const root = document.createElement("div");
+    const onSendSoftKey = vi.fn();
+
+    renderSessionStatusBar(root, SESSION, {
+      uiTier: "phone",
+      onSendSoftKey,
+      kanbanProject: {
+        name: "local",
+        sessions: [{ name: "build", label: "build" }]
+      },
+      kanbanProjects: [
+        {
+          name: "local",
+          sessions: [{ name: "build", label: "build" }]
+        }
+      ],
+      onMoveKanbanSession: vi.fn()
+    });
+
+    const cursorKeys = root.querySelector<HTMLElement>(
+      "[data-group='mobile-cursor-keys']"
+    );
+
+    expect(cursorKeys).not.toBeNull();
+    expect(
+      [...cursorKeys!.querySelectorAll<HTMLButtonElement>("[data-action]")]
+        .map((button) => [button.dataset.action, button.textContent])
+    ).toEqual([
+      ["soft-key-left", "←"],
+      ["soft-key-up", "↑"],
+      ["soft-key-down", "↓"],
+      ["soft-key-right", "→"]
+    ]);
+    expect(root.querySelector(".terminal-status-mobile-sheet")).toBeNull();
+
+    cursorKeys
+      ?.querySelector<HTMLButtonElement>("[data-action='soft-key-left']")
+      ?.click();
+    cursorKeys
+      ?.querySelector<HTMLButtonElement>("[data-action='soft-key-right']")
+      ?.click();
+
+    expect(onSendSoftKey).toHaveBeenNthCalledWith(1, "\x1b[D");
+    expect(onSendSoftKey).toHaveBeenNthCalledWith(2, "\x1b[C");
+    expect(root.querySelector(".terminal-status-mobile-sheet")).toBeNull();
+  });
+
   it("uses readable compact labels for status bar actions", () => {
     const root = document.createElement("div");
 

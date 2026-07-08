@@ -248,10 +248,10 @@ describe("sessionFloatingMenu", () => {
     expect(actionsPane?.querySelector("[data-action='send-command']")).not.toBeNull();
     expect(actionsPane?.querySelector("[data-action='soft-key-ctrl-c']")).not.toBeNull();
     expect(actionsPane?.querySelector("[data-action='soft-key-tab']")).not.toBeNull();
-    expect(actionsPane?.querySelector("[data-action='soft-key-up']")).toBeNull();
-    expect(actionsPane?.querySelector("[data-action='soft-key-down']")).toBeNull();
-    expect(actionsPane?.querySelector("[data-action='soft-key-left']")).toBeNull();
-    expect(actionsPane?.querySelector("[data-action='soft-key-right']")).toBeNull();
+    expect(actionsPane?.querySelector("[data-action='soft-key-up']")).not.toBeNull();
+    expect(actionsPane?.querySelector("[data-action='soft-key-down']")).not.toBeNull();
+    expect(actionsPane?.querySelector("[data-action='soft-key-left']")).not.toBeNull();
+    expect(actionsPane?.querySelector("[data-action='soft-key-right']")).not.toBeNull();
     expect(actionsPane?.querySelector("[data-session-name]")).toBeNull();
     expect(sessionsPane?.querySelector("[data-session-name='xxvisa-pm']")).not.toBeNull();
     expect(sessionsPane?.querySelector("[data-action='soft-key-ctrl-c']")).toBeNull();
@@ -295,6 +295,10 @@ describe("sessionFloatingMenu", () => {
     expect(actions).toContain("soft-key-tab");
     expect(actions).toContain("soft-key-ctrl-c");
     expect(actions).toContain("soft-key-ctrl-l");
+    expect(actions).toContain("soft-key-left");
+    expect(actions).toContain("soft-key-up");
+    expect(actions).toContain("soft-key-down");
+    expect(actions).toContain("soft-key-right");
     expect(actions).not.toContain("toggle-mobile-status-actions");
     expect(actions).toContain("open-current-session-groups");
     expect(actions).toContain("open-group-task");

@@ -2569,6 +2569,10 @@ select {
   display: none;
 }
 
+.terminal-status-action-group[data-group="mobile-cursor-keys"] {
+  display: none;
+}
+
 .terminal-status-action {
   border: 1px solid rgba(217, 226, 234, 0.24);
   border-radius: 3px;
@@ -2647,6 +2651,23 @@ select {
 
 .terminal-frame .xterm {
   height: 100%;
+}
+
+@keyframes tmux-ui-terminal-cursor-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.terminal-frame .xterm .xterm-cursor,
+.terminal-frame .xterm .xterm-cursor-block {
+  animation: tmux-ui-terminal-cursor-blink 1s steps(1, end) infinite;
 }
 
 .terminal-pane-selection-overlay {
@@ -3608,6 +3629,27 @@ select {
     display: none;
   }
 
+  .terminal-status-action-group[data-group="mobile-cursor-keys"] {
+    display: inline-grid;
+    grid-template-columns: repeat(4, minmax(1.45rem, 1fr));
+    gap: 0.12rem;
+    flex: 0 0 min(7rem, 34vw);
+    border-left: 0;
+    padding-left: 0;
+  }
+
+  .terminal-status-cursor-key {
+    justify-content: center;
+    min-height: 32px;
+    border-color: rgba(255, 211, 122, 0.3);
+    background:
+      linear-gradient(180deg, rgba(255, 211, 122, 0.16), rgba(255, 255, 255, 0.055));
+    color: #ffe2a7;
+    font-weight: 820;
+    padding-right: 0.24rem;
+    padding-left: 0.24rem;
+  }
+
   .terminal-status-mobile-toggle {
     display: inline-flex;
     align-items: center;
@@ -3886,6 +3928,18 @@ select {
   .terminal-status-mobile-sheet .terminal-status-action-group[data-group="kanban-groups"] {
     display: grid;
     grid-template-columns: 1fr;
+  }
+
+  .terminal-status-action-group[data-group="mobile-cursor-keys"] {
+    grid-template-columns: repeat(4, minmax(1.25rem, 1fr));
+    gap: 0.09rem;
+    flex-basis: min(6.1rem, 32vw);
+  }
+
+  .terminal-status-cursor-key {
+    min-height: 30px;
+    padding-right: 0.12rem;
+    padding-left: 0.12rem;
   }
 
   .kanban-template-item {

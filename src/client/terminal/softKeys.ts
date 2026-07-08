@@ -5,6 +5,13 @@ export type SoftKey = {
   sequence: string;
 };
 
+export const MOBILE_CURSOR_KEYS: SoftKey[] = [
+  { id: "left", label: "←", title: "Move cursor left", sequence: "\x1b[D" },
+  { id: "up", label: "↑", title: "Move cursor or history up", sequence: "\x1b[A" },
+  { id: "down", label: "↓", title: "Move cursor or history down", sequence: "\x1b[B" },
+  { id: "right", label: "→", title: "Move cursor right", sequence: "\x1b[C" }
+];
+
 export const MOBILE_SOFT_KEYS: SoftKey[] = [
   { id: "esc", label: "Esc", title: "Send Escape", sequence: "\x1b" },
   { id: "tab", label: "Tab", title: "Send Tab", sequence: "\t" },
@@ -14,6 +21,7 @@ export const MOBILE_SOFT_KEYS: SoftKey[] = [
   { id: "ctrl-r", label: "^R", title: "Send Ctrl-R", sequence: "\x12" },
   { id: "ctrl-a", label: "^A", title: "Send Ctrl-A", sequence: "\x01" },
   { id: "ctrl-e", label: "^E", title: "Send Ctrl-E", sequence: "\x05" },
+  ...MOBILE_CURSOR_KEYS,
   { id: "alt-b", label: "M-B", title: "Send Alt-B", sequence: "\x1bb" },
   { id: "alt-f", label: "M-F", title: "Send Alt-F", sequence: "\x1bf" }
 ];

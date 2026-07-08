@@ -15,18 +15,15 @@ describe("mobile terminal soft keys", () => {
       "ctrl-r": "\x12",
       "ctrl-a": "\x01",
       "ctrl-e": "\x05",
+      left: "\x1b[D",
+      up: "\x1b[A",
+      down: "\x1b[B",
+      right: "\x1b[C",
       "alt-b": "\x1bb",
       "alt-f": "\x1bf"
     });
     expect(MOBILE_SOFT_KEYS.map((key) => key.id)).not.toEqual(
-      expect.arrayContaining([
-        "up",
-        "down",
-        "left",
-        "right",
-        "page-up",
-        "page-down"
-      ])
+      expect.arrayContaining(["page-up", "page-down"])
     );
     expect(MOBILE_SOFT_KEYS.map((key) => key.label)).toEqual([
       "Esc",
@@ -37,6 +34,10 @@ describe("mobile terminal soft keys", () => {
       "^R",
       "^A",
       "^E",
+      "←",
+      "↑",
+      "↓",
+      "→",
       "M-B",
       "M-F"
     ]);

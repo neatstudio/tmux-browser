@@ -1,6 +1,6 @@
 import type { SessionSummary } from "../api/sessionApi";
 import type { ResponsiveUiTier } from "../responsiveUiTier";
-import { MOBILE_SOFT_KEYS } from "../terminal/softKeys";
+import { MOBILE_CURSOR_KEYS, MOBILE_SOFT_KEYS } from "../terminal/softKeys";
 
 const mobileSheetCleanupByStatusBar = new WeakMap<HTMLElement, () => void>();
 
@@ -425,6 +425,38 @@ function renderSoftKeyActions(
   );
 }
 
+function renderMobileCursorKeyActions(
+  actions: SessionStatusBarActions
+) {
+  if (!actions.onSendSoftKey) {
+    return null;
+  }
+
+  const group = createActionGroup(
+    "mobile-cursor-keys",
+    MOBILE_CURSOR_KEYS.map((key) => {
+      const button = createActionButton(
+        `soft-key-${key.id}`,
+        key.label,
+        () => actions.onSendSoftKey?.(key.sequence),
+        false,
+        key.title
+      );
+
+      button.classList.add(
+        "terminal-status-soft-key",
+        "terminal-status-cursor-key"
+      );
+
+      return button;
+    })
+  );
+
+  group.classList.add("terminal-status-mobile-cursor-keys");
+
+  return group;
+}
+
 function renderGroupSwitcherActions(
   session: SessionSummary | null | undefined,
   actions: SessionStatusBarActions,
@@ -526,9 +558,14 @@ export function renderSessionStatusBar(
       actions.uiTier && actions.uiTier !== "desktop"
         ? createMobileActionToggle(statusBar, session, actions)
         : null;
+    const mobileCursorKeys =
+      actions.uiTier && actions.uiTier !== "desktop"
+        ? renderMobileCursorKeyActions(actions)
+        : null;
     statusBar.append(
       ...renderLeftStatusActions(session, actions),
       main,
+      ...(mobileCursorKeys ? [mobileCursorKeys] : []),
       ...(mobileToggle ? [mobileToggle] : []),
       ...renderRightStatusActions(session, actions)
     );
@@ -551,10 +588,15 @@ export function renderSessionStatusBar(
     actions.uiTier && actions.uiTier !== "desktop"
       ? createMobileActionToggle(statusBar, session, actions)
       : null;
+  const mobileCursorKeys =
+    actions.uiTier && actions.uiTier !== "desktop"
+      ? renderMobileCursorKeyActions(actions)
+      : null;
   const rightActions = renderRightStatusActions(session, actions);
   statusBar.append(
     ...renderLeftStatusActions(session, actions),
     main,
+    ...(mobileCursorKeys ? [mobileCursorKeys] : []),
     ...(mobileToggle ? [mobileToggle] : []),
     ...rightActions
   );

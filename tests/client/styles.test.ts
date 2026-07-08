@@ -23,6 +23,13 @@ describe("client layout styles", () => {
     );
   });
 
+  it("keeps the xterm cursor visibly blinking", () => {
+    expect(styles).toContain("@keyframes tmux-ui-terminal-cursor-blink");
+    expect(styles).toMatch(
+      /\.terminal-frame\s+\.xterm\s+\.xterm-cursor[\s\S]*animation:\s*tmux-ui-terminal-cursor-blink\s+1s\s+steps\(1,\s*end\)\s+infinite;/s
+    );
+  });
+
   it("keeps dashboard and terminal content away from panel edges", () => {
     expect(styles).toMatch(
       /\.dashboard-root\s*\{[^}]*padding:\s*clamp\(0\.875rem,\s*1\.7vw,\s*1\.5rem\);/s
@@ -421,6 +428,12 @@ describe("client layout styles", () => {
     );
     expect(styles).toMatch(
       /\.terminal-status-action-group\[data-group="soft-keys"\]\s*\{[^}]*display:\s*none;/s
+    );
+    expect(styles).toMatch(
+      /\.terminal-status-action-group\[data-group="mobile-cursor-keys"\]\s*\{[^}]*display:\s*none;/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*1200px\)\s*\{[\s\S]*\.terminal-status-action-group\[data-group="mobile-cursor-keys"\]\s*\{[^}]*display:\s*inline-grid;[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(1\.45rem,\s*1fr\)\);/s
     );
     expect(styles).toMatch(
       /@media\s*\(max-width:\s*1200px\)\s*\{[\s\S]*\.terminal-status-mobile-sheet\s+\.terminal-status-action-group\[data-group="soft-keys"\]\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(5,\s*minmax\(0,\s*1fr\)\);/s
