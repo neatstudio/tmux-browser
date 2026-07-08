@@ -3615,7 +3615,7 @@ select {
     min-height: 58px;
     flex-basis: 58px;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(7.2rem, 36vw) auto;
+    grid-template-columns: minmax(0, 1fr) minmax(12.6rem, 54vw) auto;
     grid-template-rows: 26px 24px;
     gap: 0.14rem 0.24rem;
     overflow: visible;
@@ -3648,8 +3648,8 @@ select {
     display: inline-grid;
     grid-column: 2;
     grid-row: 1;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 0.1rem;
+    grid-template-columns: repeat(9, minmax(0, 1fr));
+    gap: 0.08rem;
     width: 100%;
     border-left: 0;
     padding-left: 0;
@@ -3928,7 +3928,7 @@ select {
     height: 54px;
     min-height: 54px;
     flex-basis: 54px;
-    grid-template-columns: minmax(0, 1fr) minmax(6.4rem, 34vw) auto;
+    grid-template-columns: minmax(0, 1fr) minmax(10.8rem, 52vw) auto;
     grid-template-rows: 24px 22px;
     gap: 0.12rem 0.18rem;
     padding: 0.16rem 0.24rem;
@@ -3967,8 +3967,8 @@ select {
   }
 
   .terminal-status-action-group[data-group="mobile-cursor-keys"] {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 0.08rem;
+    grid-template-columns: repeat(9, minmax(0, 1fr));
+    gap: 0.06rem;
   }
 
   .terminal-status-cursor-key {

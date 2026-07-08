@@ -14,6 +14,13 @@ export const MOBILE_CURSOR_KEYS: SoftKey[] = [
   { id: "right", label: "→", title: "Move cursor right", sequence: "\x1b[C" }
 ];
 
+export const MOBILE_SHIFT_CURSOR_KEYS: SoftKey[] = [
+  { id: "shift-left", label: "S←", title: "Send Shift+Left", sequence: "\x1b[1;2D" },
+  { id: "shift-up", label: "S↑", title: "Send Shift+Up", sequence: "\x1b[1;2A" },
+  { id: "shift-down", label: "S↓", title: "Send Shift+Down", sequence: "\x1b[1;2B" },
+  { id: "shift-right", label: "S→", title: "Send Shift+Right", sequence: "\x1b[1;2C" }
+];
+
 export const MOBILE_SHIFT_ENTER_KEY: SoftKey = {
   id: "shift-enter",
   label: "S↵",
@@ -23,6 +30,7 @@ export const MOBILE_SHIFT_ENTER_KEY: SoftKey = {
 
 export const MOBILE_EDITING_KEYS: SoftKey[] = [
   ...MOBILE_CURSOR_KEYS,
+  ...MOBILE_SHIFT_CURSOR_KEYS,
   MOBILE_SHIFT_ENTER_KEY
 ];
 
@@ -37,6 +45,7 @@ export const MOBILE_SOFT_KEYS: SoftKey[] = [
   { id: "ctrl-a", label: "^A", title: "Send Ctrl-A", sequence: "\x01" },
   { id: "ctrl-e", label: "^E", title: "Send Ctrl-E", sequence: "\x05" },
   ...MOBILE_CURSOR_KEYS,
+  ...MOBILE_SHIFT_CURSOR_KEYS,
   { id: "alt-b", label: "M-B", title: "Send Alt-B", sequence: "\x1bb" },
   { id: "alt-f", label: "M-F", title: "Send Alt-F", sequence: "\x1bf" }
 ];

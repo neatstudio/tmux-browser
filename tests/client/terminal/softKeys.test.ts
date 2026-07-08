@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { MOBILE_SOFT_KEYS } from "../../../src/client/terminal/softKeys";
+import {
+  MOBILE_EDITING_KEYS,
+  MOBILE_SOFT_KEYS
+} from "../../../src/client/terminal/softKeys";
 
 describe("mobile terminal soft keys", () => {
   it("defines common phone-unfriendly terminal keys with PTY sequences", () => {
@@ -20,6 +23,10 @@ describe("mobile terminal soft keys", () => {
       up: "\x1b[A",
       down: "\x1b[B",
       right: "\x1b[C",
+      "shift-left": "\x1b[1;2D",
+      "shift-up": "\x1b[1;2A",
+      "shift-down": "\x1b[1;2B",
+      "shift-right": "\x1b[1;2C",
       "alt-b": "\x1bb",
       "alt-f": "\x1bf"
     });
@@ -40,8 +47,26 @@ describe("mobile terminal soft keys", () => {
       "↑",
       "↓",
       "→",
+      "S←",
+      "S↑",
+      "S↓",
+      "S→",
       "M-B",
       "M-F"
+    ]);
+  });
+
+  it("keeps Shift+arrow keys in the mobile editing key cluster", () => {
+    expect(MOBILE_EDITING_KEYS.map((key) => key.id)).toEqual([
+      "left",
+      "up",
+      "down",
+      "right",
+      "shift-left",
+      "shift-up",
+      "shift-down",
+      "shift-right",
+      "shift-enter"
     ]);
   });
 });
