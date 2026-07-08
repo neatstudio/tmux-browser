@@ -368,6 +368,35 @@ describe("sessionStatusBar", () => {
     expect(root.querySelector(".terminal-status-mobile-sheet")).toBeNull();
   });
 
+  it("keeps focused mobile text input active when pressing cursor keys", () => {
+    const root = document.createElement("div");
+    const input = document.createElement("textarea");
+
+    document.body.append(input);
+    input.focus();
+
+    renderSessionStatusBar(root, SESSION, {
+      uiTier: "phone",
+      onSendSoftKey: vi.fn()
+    });
+
+    const leftKey = root.querySelector<HTMLButtonElement>(
+      "[data-group='mobile-cursor-keys'] [data-action='soft-key-left']"
+    );
+    const event = new PointerEvent("pointerdown", {
+      bubbles: true,
+      cancelable: true
+    });
+
+    expect(leftKey).not.toBeNull();
+    leftKey!.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(input);
+
+    input.remove();
+  });
+
   it("uses readable compact labels for status bar actions", () => {
     const root = document.createElement("div");
 

@@ -82,6 +82,15 @@ function createActionButton(
   return button;
 }
 
+function keepCurrentInputFocusOnPress(button: HTMLButtonElement) {
+  const preventFocusSteal = (event: Event) => {
+    event.preventDefault();
+  };
+
+  button.addEventListener("pointerdown", preventFocusSteal);
+  button.addEventListener("mousedown", preventFocusSteal);
+}
+
 function createSwitchSessionButton(
   actions: SessionStatusBarActions,
   afterClick?: () => void
@@ -419,6 +428,7 @@ function renderSoftKeyActions(
       );
 
       button.classList.add("terminal-status-soft-key");
+      keepCurrentInputFocusOnPress(button);
 
       return button;
     })
@@ -447,6 +457,7 @@ function renderMobileCursorKeyActions(
         "terminal-status-soft-key",
         "terminal-status-cursor-key"
       );
+      keepCurrentInputFocusOnPress(button);
 
       return button;
     })

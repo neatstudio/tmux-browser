@@ -94,6 +94,15 @@ function createMenuButton(
   return button;
 }
 
+function keepCurrentInputFocusOnPress(button: HTMLButtonElement) {
+  const preventFocusSteal = (event: Event) => {
+    event.preventDefault();
+  };
+
+  button.addEventListener("pointerdown", preventFocusSteal);
+  button.addEventListener("mousedown", preventFocusSteal);
+}
+
 function createMenuSection(titleText: string) {
   const section = document.createElement("section");
   section.className = "session-floating-menu-section";
@@ -347,6 +356,7 @@ function renderSoftKeysSection(state: SessionFloatingMenuState) {
       key.title
     );
     button.classList.add("session-floating-menu-soft-key");
+    keepCurrentInputFocusOnPress(button);
     section.append(button);
   });
 

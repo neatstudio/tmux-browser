@@ -64,6 +64,50 @@ describe("sessionFloatingMenu", () => {
     expect(onOpenSession).not.toHaveBeenCalled();
   });
 
+  it("keeps focused mobile text input active when pressing floating soft keys", () => {
+    const root = document.createElement("div");
+    const input = document.createElement("textarea");
+
+    document.body.append(input);
+    input.focus();
+
+    renderSessionFloatingMenu(root, {
+      currentSessionName: "build",
+      sessions: ["build"],
+      onOpenDashboard: vi.fn(),
+      onOpenKanban: vi.fn(),
+      onOpenSession: vi.fn(),
+      onConfig: vi.fn(),
+      onRename: vi.fn(),
+      onSendCommand: vi.fn(),
+      onSendSoftKey: vi.fn(),
+      onRefresh: vi.fn(),
+      onCreateSession: vi.fn()
+    });
+
+    root
+      .querySelector<HTMLButtonElement>(
+        "[data-action='toggle-session-floating-menu']"
+      )
+      ?.click();
+
+    const leftKey = root.querySelector<HTMLButtonElement>(
+      "[data-action='soft-key-left']"
+    );
+    const event = new PointerEvent("pointerdown", {
+      bubbles: true,
+      cancelable: true
+    });
+
+    expect(leftKey).not.toBeNull();
+    leftKey!.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(input);
+
+    input.remove();
+  });
+
   it("opens a compact top-right menu without sidebar-only controls", () => {
     const root = document.createElement("div");
     const onOpenDashboard = vi.fn();
