@@ -26,12 +26,12 @@ import {
   findPaneAtTerminalPoint,
   isSelectionWithinOnePane
 } from "./paneSelection";
+import { SHIFT_ENTER_SEQUENCE } from "./keySequences";
 
 const TERMINAL_SCROLLBACK = 5000;
 const PIXELS_PER_SCROLL_LINE = 40;
 const TOUCH_PIXELS_PER_SCROLL_LINE = 12;
 const MOUSE_CLICK_MOVE_TOLERANCE_PX = 5;
-const SHIFT_ENTER_SEQUENCE = "\x1b[13;2u";
 const TERMINAL_RECONNECT_DELAY_MS = 2_000;
 
 type FrameDeps = {

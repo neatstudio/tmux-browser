@@ -72,6 +72,7 @@ import {
   getDefaultKanbanSelectedSessionNames
 } from "../shared/kanbanTemplates";
 import type { GroupMessage } from "../shared/groupMessages";
+import { installMobileKeyboardViewportController } from "./mobileKeyboardViewport";
 import "./styles.css";
 
 declare const __TMUX_UI_CLIENT_VERSION__: string;
@@ -130,6 +131,7 @@ document.title = getCompactPageTitle(
   window.location.hostname,
   __TMUX_UI_CLIENT_VERSION__
 );
+installMobileKeyboardViewportController();
 
 let activeTheme = getTheme(loadThemeId());
 let draftSessionName = "";

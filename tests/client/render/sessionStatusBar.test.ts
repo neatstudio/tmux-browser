@@ -315,7 +315,7 @@ describe("sessionStatusBar", () => {
     ).not.toHaveLength(0);
   });
 
-  it("keeps mobile cursor keys visible beside the groups control", () => {
+  it("keeps mobile editing keys visible beside the groups control", () => {
     const root = document.createElement("div");
     const onSendSoftKey = vi.fn();
 
@@ -347,7 +347,8 @@ describe("sessionStatusBar", () => {
       ["soft-key-left", "←"],
       ["soft-key-up", "↑"],
       ["soft-key-down", "↓"],
-      ["soft-key-right", "→"]
+      ["soft-key-right", "→"],
+      ["soft-key-shift-enter", "S↵"]
     ]);
     expect(root.querySelector(".terminal-status-mobile-sheet")).toBeNull();
 
@@ -357,9 +358,13 @@ describe("sessionStatusBar", () => {
     cursorKeys
       ?.querySelector<HTMLButtonElement>("[data-action='soft-key-right']")
       ?.click();
+    cursorKeys
+      ?.querySelector<HTMLButtonElement>("[data-action='soft-key-shift-enter']")
+      ?.click();
 
     expect(onSendSoftKey).toHaveBeenNthCalledWith(1, "\x1b[D");
     expect(onSendSoftKey).toHaveBeenNthCalledWith(2, "\x1b[C");
+    expect(onSendSoftKey).toHaveBeenNthCalledWith(3, "\x1b[13;2u");
     expect(root.querySelector(".terminal-status-mobile-sheet")).toBeNull();
   });
 

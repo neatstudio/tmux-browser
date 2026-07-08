@@ -208,6 +208,21 @@ describe("client layout styles", () => {
     );
   });
 
+  it("keeps mobile input surfaces above the soft keyboard", () => {
+    expect(styles).toMatch(
+      /:root\s*\{[^}]*--mobile-keyboard-inset:\s*0px;[^}]*--mobile-visual-viewport-height:\s*100dvh;/s
+    );
+    expect(styles).toMatch(
+      /\.is-mobile-keyboard-open\s+\.app-shell\s*\{[^}]*height:\s*var\(--mobile-visual-viewport-height\);/s
+    );
+    expect(styles).toMatch(
+      /\.is-mobile-keyboard-open\s+\.send-command-backdrop,\s*\.is-mobile-keyboard-open\s+\.action-center-backdrop,\s*\.is-mobile-keyboard-open\s+\.session-config-backdrop,\s*\.is-mobile-keyboard-open\s+\.group-message-backdrop\s*\{[^}]*padding-bottom:\s*calc\(1rem\s*\+\s*var\(--mobile-keyboard-inset\)\);/s
+    );
+    expect(styles).toMatch(
+      /\.is-mobile-keyboard-open\s+\.input-prompt-toast,\s*\.is-mobile-keyboard-open\s+\.hook-event-toast\s*\{[^}]*bottom:\s*calc\(1rem\s*\+\s*env\(safe-area-inset-bottom\)\s*\+\s*var\(--mobile-keyboard-inset\)\);/s
+    );
+  });
+
   it("makes desktop cards visibly larger than the default scale", () => {
     expect(styles).toContain("--dashboard-card-name-size: clamp(1.32rem, 0.92vw + 1.04rem, 2.08rem);");
     expect(styles).toContain("--dashboard-card-meta-size: clamp(1rem, 0.42vw + 0.84rem, 1.25rem);");
@@ -433,7 +448,7 @@ describe("client layout styles", () => {
       /\.terminal-status-action-group\[data-group="mobile-cursor-keys"\]\s*\{[^}]*display:\s*none;/s
     );
     expect(styles).toMatch(
-      /@media\s*\(max-width:\s*1200px\)\s*\{[\s\S]*\.terminal-status-action-group\[data-group="mobile-cursor-keys"\]\s*\{[^}]*display:\s*inline-grid;[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(1\.45rem,\s*1fr\)\);/s
+      /@media\s*\(max-width:\s*1200px\)\s*\{[\s\S]*\.terminal-status-action-group\[data-group="mobile-cursor-keys"\]\s*\{[^}]*display:\s*inline-grid;[^}]*grid-template-columns:\s*repeat\(5,\s*minmax\(1\.32rem,\s*1fr\)\);/s
     );
     expect(styles).toMatch(
       /@media\s*\(max-width:\s*1200px\)\s*\{[\s\S]*\.terminal-status-mobile-sheet\s+\.terminal-status-action-group\[data-group="soft-keys"\]\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(5,\s*minmax\(0,\s*1fr\)\);/s

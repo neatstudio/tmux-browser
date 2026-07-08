@@ -9,6 +9,7 @@ describe("mobile terminal soft keys", () => {
     ).toMatchObject({
       esc: "\x1b",
       tab: "\t",
+      "shift-enter": "\x1b[13;2u",
       "ctrl-c": "\x03",
       "ctrl-d": "\x04",
       "ctrl-l": "\x0c",
@@ -28,6 +29,7 @@ describe("mobile terminal soft keys", () => {
     expect(MOBILE_SOFT_KEYS.map((key) => key.label)).toEqual([
       "Esc",
       "Tab",
+      "S↵",
       "^C",
       "^D",
       "^L",

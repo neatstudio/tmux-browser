@@ -248,6 +248,7 @@ describe("sessionFloatingMenu", () => {
     expect(actionsPane?.querySelector("[data-action='send-command']")).not.toBeNull();
     expect(actionsPane?.querySelector("[data-action='soft-key-ctrl-c']")).not.toBeNull();
     expect(actionsPane?.querySelector("[data-action='soft-key-tab']")).not.toBeNull();
+    expect(actionsPane?.querySelector("[data-action='soft-key-shift-enter']")).not.toBeNull();
     expect(actionsPane?.querySelector("[data-action='soft-key-up']")).not.toBeNull();
     expect(actionsPane?.querySelector("[data-action='soft-key-down']")).not.toBeNull();
     expect(actionsPane?.querySelector("[data-action='soft-key-left']")).not.toBeNull();
@@ -282,6 +283,7 @@ describe("sessionFloatingMenu", () => {
     expect(actionsPane?.textContent).not.toContain("Rename");
     expect(actionsPane?.textContent).not.toContain("Refresh");
     expect(actionsPane?.textContent).toContain("^C");
+    expect(actionsPane?.textContent).toContain("S↵");
     expect(actionsPane?.textContent).toContain("M-B");
     expect(actionsPane?.textContent).not.toContain("Ctrl-C");
     expect(actionsPane?.textContent).not.toContain("Alt-B");
@@ -293,6 +295,7 @@ describe("sessionFloatingMenu", () => {
     expect(actions).toContain("send-command");
     expect(actions).toContain("soft-key-esc");
     expect(actions).toContain("soft-key-tab");
+    expect(actions).toContain("soft-key-shift-enter");
     expect(actions).toContain("soft-key-ctrl-c");
     expect(actions).toContain("soft-key-ctrl-l");
     expect(actions).toContain("soft-key-left");
@@ -430,6 +433,7 @@ describe("sessionFloatingMenu", () => {
     toggle.click();
     root.querySelector<HTMLButtonElement>("[data-action='soft-key-ctrl-c']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='soft-key-tab']")?.click();
+    root.querySelector<HTMLButtonElement>("[data-action='soft-key-shift-enter']")?.click();
     root.querySelector<HTMLButtonElement>("[data-action='open-group-task']")?.click();
     toggle.click();
     root
@@ -465,6 +469,7 @@ describe("sessionFloatingMenu", () => {
     expect(onSendCommand).toHaveBeenCalledOnce();
     expect(onSendSoftKey).toHaveBeenNthCalledWith(1, "\x03");
     expect(onSendSoftKey).toHaveBeenNthCalledWith(2, "\t");
+    expect(onSendSoftKey).toHaveBeenNthCalledWith(3, "\x1b[13;2u");
     expect(onOpenGroupTask).toHaveBeenCalledOnce();
     expect(onOpenGroupMessages).toHaveBeenCalledOnce();
     expect(onReconnect).toHaveBeenCalledOnce();

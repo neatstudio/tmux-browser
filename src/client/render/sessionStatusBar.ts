@@ -1,6 +1,6 @@
 import type { SessionSummary } from "../api/sessionApi";
 import type { ResponsiveUiTier } from "../responsiveUiTier";
-import { MOBILE_CURSOR_KEYS, MOBILE_SOFT_KEYS } from "../terminal/softKeys";
+import { MOBILE_EDITING_KEYS, MOBILE_SOFT_KEYS } from "../terminal/softKeys";
 
 const mobileSheetCleanupByStatusBar = new WeakMap<HTMLElement, () => void>();
 
@@ -434,7 +434,7 @@ function renderMobileCursorKeyActions(
 
   const group = createActionGroup(
     "mobile-cursor-keys",
-    MOBILE_CURSOR_KEYS.map((key) => {
+    MOBILE_EDITING_KEYS.map((key) => {
       const button = createActionButton(
         `soft-key-${key.id}`,
         key.label,

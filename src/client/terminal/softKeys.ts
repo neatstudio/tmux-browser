@@ -1,3 +1,5 @@
+import { SHIFT_ENTER_SEQUENCE } from "./keySequences";
+
 export type SoftKey = {
   id: string;
   label: string;
@@ -12,9 +14,22 @@ export const MOBILE_CURSOR_KEYS: SoftKey[] = [
   { id: "right", label: "→", title: "Move cursor right", sequence: "\x1b[C" }
 ];
 
+export const MOBILE_SHIFT_ENTER_KEY: SoftKey = {
+  id: "shift-enter",
+  label: "S↵",
+  title: "Send Shift+Enter newline",
+  sequence: SHIFT_ENTER_SEQUENCE
+};
+
+export const MOBILE_EDITING_KEYS: SoftKey[] = [
+  ...MOBILE_CURSOR_KEYS,
+  MOBILE_SHIFT_ENTER_KEY
+];
+
 export const MOBILE_SOFT_KEYS: SoftKey[] = [
   { id: "esc", label: "Esc", title: "Send Escape", sequence: "\x1b" },
   { id: "tab", label: "Tab", title: "Send Tab", sequence: "\t" },
+  MOBILE_SHIFT_ENTER_KEY,
   { id: "ctrl-c", label: "^C", title: "Send Ctrl-C", sequence: "\x03" },
   { id: "ctrl-d", label: "^D", title: "Send Ctrl-D", sequence: "\x04" },
   { id: "ctrl-l", label: "^L", title: "Send Ctrl-L", sequence: "\x0c" },
