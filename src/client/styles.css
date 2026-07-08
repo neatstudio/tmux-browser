@@ -3511,7 +3511,7 @@ select {
   }
 
   .session-floating-menu {
-    top: 0.42rem;
+    top: calc(2.35rem + env(safe-area-inset-top));
     right: max(0.45rem, env(safe-area-inset-right));
     gap: 0.2rem;
   }
@@ -3808,7 +3808,7 @@ select {
   }
 
   .session-floating-menu {
-    top: 0.34rem;
+    top: calc(2.15rem + env(safe-area-inset-top));
     right: max(0.24rem, env(safe-area-inset-right));
     gap: 0.14rem;
   }

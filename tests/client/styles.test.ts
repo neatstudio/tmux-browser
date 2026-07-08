@@ -455,7 +455,13 @@ describe("client layout styles", () => {
       /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.terminal-session-rail\s*\{[^}]*overflow-x:\s*auto;[^}]*padding:\s*0\.24rem\s+3\.1rem\s+0\.24rem\s+0\.42rem;/s
     );
     expect(styles).toMatch(
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.session-floating-menu\s*\{[^}]*top:\s*calc\(2\.35rem\s*\+\s*env\(safe-area-inset-top\)\);/s
+    );
+    expect(styles).toMatch(
       /@media\s*\(max-width:\s*430px\)\s*\{[\s\S]*\.terminal-session-rail\s*\{[^}]*min-height:\s*28px;[^}]*padding:\s*0\.2rem\s+2\.8rem\s+0\.2rem\s+0\.34rem;/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*430px\)\s*\{[\s\S]*\.session-floating-menu\s*\{[^}]*top:\s*calc\(2\.15rem\s*\+\s*env\(safe-area-inset-top\)\);/s
     );
     expect(styles).toMatch(
       /@media\s*\(max-width:\s*430px\)\s*\{[\s\S]*\.session-floating-menu-panel\s*\{[^}]*grid-template-columns:\s*minmax\(5\.6rem,\s*0\.86fr\)\s+minmax\(0,\s*1\.64fr\);/s
