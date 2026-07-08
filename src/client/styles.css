@@ -3611,10 +3611,10 @@ select {
 @media (max-width: 1200px) {
   .terminal-status-bar {
     align-items: center;
-    min-height: 42px;
-    gap: 0.38rem;
+    min-height: 34px;
+    gap: 0.26rem;
     overflow: visible;
-    padding: 0 0.55rem;
+    padding: 0 0.42rem;
     scrollbar-width: thin;
   }
 
@@ -3629,8 +3629,8 @@ select {
   }
 
   .terminal-status-action {
-    min-height: 32px;
-    padding: 0.34rem 0.52rem;
+    min-height: 28px;
+    padding: 0.24rem 0.42rem;
     white-space: nowrap;
   }
 
@@ -3640,16 +3640,17 @@ select {
 
   .terminal-status-action-group[data-group="mobile-cursor-keys"] {
     display: inline-grid;
-    grid-template-columns: repeat(5, minmax(1.32rem, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 0.1rem;
-    flex: 0 0 min(8rem, 38vw);
+    flex: 0 0 min(7.6rem, 38vw);
     border-left: 0;
     padding-left: 0;
   }
 
   .terminal-status-cursor-key {
     justify-content: center;
-    min-height: 32px;
+    width: 100%;
+    min-height: 28px;
     border-color: rgba(255, 211, 122, 0.3);
     background:
       linear-gradient(180deg, rgba(255, 211, 122, 0.16), rgba(255, 255, 255, 0.055));
@@ -3663,9 +3664,11 @@ select {
     display: inline-flex;
     align-items: center;
     flex: 0 0 auto;
+    min-height: 30px;
     border-color: rgba(143, 217, 255, 0.42);
     background: rgba(91, 192, 255, 0.14);
     color: #d8f3ff;
+    padding: 0.24rem 0.56rem;
   }
 
   .terminal-status-mobile-sheet {
@@ -3906,8 +3909,8 @@ select {
   }
 
   .terminal-status-bar {
-    min-height: 38px;
-    padding: 0 0.35rem;
+    min-height: 32px;
+    padding: 0 0.3rem;
   }
 
   .terminal-status-main {
@@ -3943,15 +3946,15 @@ select {
   }
 
   .terminal-status-action-group[data-group="mobile-cursor-keys"] {
-    grid-template-columns: repeat(5, minmax(1.05rem, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 0.07rem;
-    flex-basis: min(6.8rem, 36vw);
+    flex-basis: min(6.6rem, 36vw);
   }
 
   .terminal-status-cursor-key {
-    min-height: 30px;
-    padding-right: 0.12rem;
-    padding-left: 0.12rem;
+    min-height: 26px;
+    padding-right: 0.1rem;
+    padding-left: 0.1rem;
   }
 
   .kanban-template-item {
