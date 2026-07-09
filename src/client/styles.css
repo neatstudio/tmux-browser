@@ -3710,6 +3710,19 @@ select {
     padding: 0 0.08rem;
   }
 
+  .terminal-status-inline-soft-keys .terminal-status-soft-key.is-active {
+    border-color: rgba(94, 255, 130, 0.72);
+    background: linear-gradient(
+      180deg,
+      rgba(94, 255, 130, 0.34),
+      rgba(94, 255, 130, 0.16)
+    );
+    color: #f3fff4;
+    box-shadow:
+      0 0 0 1px rgba(94, 255, 130, 0.24) inset,
+      0 0 12px rgba(94, 255, 130, 0.22);
+  }
+
   .terminal-status-mobile-sheet {
     position: fixed;
     right: 0.55rem;

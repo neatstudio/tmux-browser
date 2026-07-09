@@ -474,6 +474,9 @@ describe("client layout styles", () => {
     expect(styles).toMatch(
       /@media\s*\(max-width:\s*1200px\)\s*\{[\s\S]*\.terminal-status-inline-soft-keys\s+\.terminal-status-soft-key\s*\{[^}]*width:\s*var\(--terminal-status-soft-key-width\);[^}]*min-height:\s*var\(--terminal-status-soft-key-height\);/s
     );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*1200px\)\s*\{[\s\S]*\.terminal-status-inline-soft-keys\s+\.terminal-status-soft-key\.is-active\s*\{[^}]*border-color:\s*rgba\(94,\s*255,\s*130,\s*0\.72\);[^}]*background:\s*linear-gradient\(\s*180deg,\s*rgba\(94,\s*255,\s*130,\s*0\.34\),\s*rgba\(94,\s*255,\s*130,\s*0\.16\)\s*\);[^}]*color:\s*#f3fff4;[^}]*box-shadow:\s*0\s+0\s+0\s+1px\s+rgba\(94,\s*255,\s*130,\s*0\.24\)\s+inset,\s*0\s+0\s+12px\s+rgba\(94,\s*255,\s*130,\s*0\.22\);/s
+    );
   });
 
   it("uses an adaptive narrow-phone layout for the top-right menu and terminal action sheet", () => {
