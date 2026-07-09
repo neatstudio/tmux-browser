@@ -36,6 +36,8 @@ const readme = readFileSync("README.md", "utf8");
 const readmeZh = readFileSync("README.zh-CN.md", "utf8");
 const publishExample = readFileSync(".tmux-ui.publish.json.example", "utf8");
 const installScriptPath = "install.sh";
+const installScriptDownloadUrl =
+  "https://github.com/neatstudio/tmux-browser/releases/latest/download/install.sh";
 
 function readInstallScript() {
   return existsSync(installScriptPath)
@@ -332,6 +334,7 @@ describe("run release scripts", () => {
     expect(syntax.stderr).toBe("");
     expect(syntax.status).toBe(0);
     expect(installScript).toContain("TMUX_UI_INSTALL_URL");
+    expect(installScript).toContain(installScriptDownloadUrl);
     expect(installScript).toContain(
       "https://github.com/neatstudio/tmux-browser/releases/latest/download/release.run"
     );
@@ -472,6 +475,7 @@ describe("run release scripts", () => {
     );
     expect(workflow).toContain("release/release.run");
     expect(workflow).toContain("release/tmux-ui-${VERSION}.run");
+    expect(workflow).toContain("install.sh");
     expect(workflow).toContain("release/release-notes.zh-CN.md");
     expect(workflow).toContain("release/release-notes.combined.md");
     expect(workflow).toContain('TAG="v${VERSION}"');
@@ -585,7 +589,7 @@ describe("run release scripts", () => {
       "- Release note formatting is covered by a content-level test. (`8d28173`)"
     );
     expect(english).toContain(
-      "- Published assets: `release.run` and `tmux-ui-0.1.19.run`."
+      "- Published assets: `install.sh`, `release.run`, and `tmux-ui-0.1.19.run`."
     );
 
     expect(chinese).toContain("## 摘要");
@@ -618,14 +622,12 @@ describe("run release scripts", () => {
     expect(readmeZh).toContain("安装完成后，使用稳定命令 `tmux-ui`");
     expect(readme).toContain("tmux-ui upgrade");
     expect(readmeZh).toContain("tmux-ui upgrade");
-    expect(readme).toContain(
-      "curl -fsSL https://raw.githubusercontent.com/neatstudio/tmux-browser/main/install.sh | sh"
-    );
-    expect(readmeZh).toContain(
-      "curl -fsSL https://raw.githubusercontent.com/neatstudio/tmux-browser/main/install.sh | sh"
-    );
+    expect(readme).toContain(`curl -fsSL ${installScriptDownloadUrl} | sh`);
+    expect(readmeZh).toContain(`curl -fsSL ${installScriptDownloadUrl} | sh`);
     expect(readme).toContain("sh -s -- --service");
     expect(readmeZh).toContain("sh -s -- --service");
+    expect(readme).toContain("publishes `install.sh`, `release.run`, and the");
+    expect(readme).not.toContain("same two run files");
     expect(readme).toContain("auto-installs nvm when Node is missing");
     expect(readmeZh).toContain("如果宿主机没有 Node，会自动安装 nvm");
     expect(readme).toContain("systemctl status tmux-ui");

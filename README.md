@@ -116,7 +116,7 @@ curl -s http://<host>:3000/api/health
 Install or update directly from the latest GitHub Release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/neatstudio/tmux-browser/main/install.sh | sh
+curl -fsSL https://github.com/neatstudio/tmux-browser/releases/latest/download/install.sh | sh
 ```
 
 The bootstrap installer downloads the latest `release.run`, installs it, and
@@ -124,19 +124,19 @@ restarts tmux-ui. It works for first-time installs and for updating existing
 installs. To install or update service mode instead:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/neatstudio/tmux-browser/main/install.sh | sh -s -- --service
+curl -fsSL https://github.com/neatstudio/tmux-browser/releases/latest/download/install.sh | sh -s -- --service
 ```
 
 Install without starting the server:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/neatstudio/tmux-browser/main/install.sh | sh -s -- --install-only
+curl -fsSL https://github.com/neatstudio/tmux-browser/releases/latest/download/install.sh | sh -s -- --install-only
 ```
 
 Pass run-file commands directly after `--` when you need a lower-level action:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/neatstudio/tmux-browser/main/install.sh | sh -s -- -- service-status
+curl -fsSL https://github.com/neatstudio/tmux-browser/releases/latest/download/install.sh | sh -s -- -- service-status
 ```
 
 Download and run a GitHub Release build manually:
@@ -282,8 +282,8 @@ ssh server-a
 ```
 
 On GitHub, pushing to `main` creates tag `v<package.json version>` when it does
-not already exist. That tag builds the same two run files and publishes them as
-a GitHub Release.
+not already exist. That tag publishes `install.sh`, `release.run`, and the
+versioned run file as a GitHub Release.
 
 ## Kanban Projects
 

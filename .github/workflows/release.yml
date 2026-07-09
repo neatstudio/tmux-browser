@@ -55,6 +55,7 @@ jobs:
         with:
           name: release.run
           path: |
+            install.sh
             release/release.run
             release/release-notes.md
             release/release-notes.zh-CN.md
@@ -80,6 +81,7 @@ jobs:
               --notes-file release/release-notes.combined.md
 
             gh release upload "$TAG" \
+              install.sh \
               release/release.run \
               "release/tmux-ui-${VERSION}.run" \
               --clobber
@@ -87,6 +89,7 @@ jobs:
           fi
 
           gh release create "$TAG" \
+            install.sh \
             release/release.run \
             "release/tmux-ui-${VERSION}.run" \
             --target "$GITHUB_SHA" \

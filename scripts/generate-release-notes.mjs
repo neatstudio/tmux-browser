@@ -231,7 +231,23 @@ function releaseEntry(text) {
 }
 
 function releaseAssets(version) {
-  return [`release.run`, `tmux-ui-${version}.run`];
+  return [`install.sh`, `release.run`, `tmux-ui-${version}.run`];
+}
+
+function formatEnglishList(items) {
+  if (items.length <= 1) {
+    return items.join("");
+  }
+
+  if (items.length === 2) {
+    return `${items[0]} and ${items[1]}`;
+  }
+
+  return `${items.slice(0, -1).join(", ")}, and ${items.at(-1)}`;
+}
+
+function formatChineseList(items) {
+  return items.join("、");
 }
 
 function describeEnglishCommit(commit) {
@@ -429,7 +445,7 @@ export function formatReleaseNotes({ commits, from, version }) {
   const sections = buildReleaseSections(commits, describeEnglishCommit);
   sections.verification.push(
     releaseEntry(
-      `Published assets: ${releaseAssets(version).map((asset) => `\`${asset}\``).join(" and ")}.`
+      `Published assets: ${formatEnglishList(releaseAssets(version).map((asset) => `\`${asset}\``))}.`
     )
   );
   const includeHashes = commits.length > 1;
@@ -455,7 +471,7 @@ export function formatChineseReleaseNotes({ commits, from, version }) {
   const sections = buildReleaseSections(commits, describeChineseCommit);
   sections.verification.push(
     releaseEntry(
-      `发布资产：${releaseAssets(version).map((asset) => `\`${asset}\``).join(" 和 ")}。`
+      `发布资产：${formatChineseList(releaseAssets(version).map((asset) => `\`${asset}\``))}。`
     )
   );
   const includeHashes = commits.length > 1;

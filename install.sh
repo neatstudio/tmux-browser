@@ -18,8 +18,8 @@ tmux-ui installer
 Downloads the latest GitHub Release run file and executes it.
 
 Usage:
-  curl -fsSL https://raw.githubusercontent.com/neatstudio/tmux-browser/main/install.sh | sh
-  curl -fsSL https://raw.githubusercontent.com/neatstudio/tmux-browser/main/install.sh | sh -s -- [options]
+  curl -fsSL https://github.com/neatstudio/tmux-browser/releases/latest/download/install.sh | sh
+  curl -fsSL https://github.com/neatstudio/tmux-browser/releases/latest/download/install.sh | sh -s -- [options]
   sh install.sh [options]
 
 Options:
