@@ -208,7 +208,8 @@ vi.mock("@xterm/addon-web-links", () => ({
 import {
   createTerminalTab,
   createTerminalOutputBuffer,
-  createTerminalTabController
+  createTerminalTabController,
+  stripTerminalDeviceAttributeResponses
 } from "../../../src/client/terminal/createTerminalTab";
 import { createTabState } from "../../../src/client/state/tabState";
 import type { PaneSummary } from "../../../src/client/api/sessionApi";
@@ -273,6 +274,26 @@ function createTerminalPane(overrides: Partial<PaneSummary>): PaneSummary {
     ...overrides
   };
 }
+
+describe("stripTerminalDeviceAttributeResponses", () => {
+  it("removes terminal device attribute responses before they reach the shell", () => {
+    expect(
+      stripTerminalDeviceAttributeResponses("\x1b[?1;2c\x1b[>0;276;0c")
+    ).toBe("");
+    expect(
+      stripTerminalDeviceAttributeResponses("typed\x1b[?1;2c text\x1b[>0;276;0c")
+    ).toBe("typed text");
+  });
+
+  it("preserves modified key sequences used by the mobile toolbar", () => {
+    const shiftedCursorKeys = "\x1b[1;2D\x1b[1;2A\x1b[1;2B\x1b[1;2C";
+    const shiftEnter = "\x1b[13;2u";
+
+    expect(
+      stripTerminalDeviceAttributeResponses(`${shiftedCursorKeys}${shiftEnter}`)
+    ).toBe(`${shiftedCursorKeys}${shiftEnter}`);
+  });
+});
 
 describe("createTerminalTabController", () => {
   it("closes the browser tab when the server reports session exit", () => {
@@ -828,6 +849,47 @@ describe("createTerminalTab", () => {
     );
     expect(socket.send).toHaveBeenCalledWith(
       JSON.stringify({ type: "input", data: "\t" })
+    );
+
+    mounted.destroy();
+  });
+
+  it("does not forward terminal device attribute responses from xterm back to the PTY", () => {
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    };
+
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        constructor() {
+          return socket;
+        }
+      }
+    );
+
+    const mounted = createTerminalTab({
+      container: document.createElement("div"),
+      tabId: "tab-1",
+      sessionName: "build",
+      onClosed: vi.fn()
+    });
+    const terminal = terminalTestState.terminals[0]?.instance;
+    const handleData = terminal?.onData.mock.calls[0]?.[0] as
+      | ((data: string) => void)
+      | undefined;
+    socket.send.mockClear();
+
+    handleData?.("\x1b[?1;2c");
+    handleData?.("\x1b[>0;276;0c");
+    handleData?.("typed\x1b[?1;2c\r");
+
+    expect(socket.send).toHaveBeenCalledTimes(1);
+    expect(socket.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: "input", data: "typed\r" })
     );
 
     mounted.destroy();

@@ -33,6 +33,8 @@ const PIXELS_PER_SCROLL_LINE = 40;
 const TOUCH_PIXELS_PER_SCROLL_LINE = 12;
 const MOUSE_CLICK_MOVE_TOLERANCE_PX = 5;
 const TERMINAL_RECONNECT_DELAY_MS = 2_000;
+const DEVICE_ATTRIBUTE_RESPONSE_PATTERN =
+  /\x1b\[(?:\?[0-9;]*|>[0-9;]*|[0-9;]*)c/g;
 
 type FrameDeps = {
   requestFrame?: (callback: FrameRequestCallback) => number;
@@ -58,6 +60,10 @@ type PaneTextSelection = {
   end: { cellX: number; cellY: number };
   moved: boolean;
 };
+
+export function stripTerminalDeviceAttributeResponses(data: string) {
+  return data.replace(DEVICE_ATTRIBUTE_RESPONSE_PATTERN, "");
+}
 
 type BrowserSocket = {
   send: (payload: string) => void;
@@ -1132,7 +1138,11 @@ export function createTerminalTab(deps: {
   resizeObserver?.observe(deps.container);
 
   terminal.onData((data) => {
-    controller?.sendInput(data);
+    const userInput = stripTerminalDeviceAttributeResponses(data);
+
+    if (userInput) {
+      controller?.sendInput(userInput);
+    }
   });
 
   return {
