@@ -326,17 +326,20 @@ describe("createTerminalTabController", () => {
     };
     const onClosed = vi.fn();
     const onOutput = vi.fn();
+    const onDisconnect = vi.fn();
 
     createTerminalTabController({
       socket,
       onClosed,
-      onOutput
+      onOutput,
+      onDisconnect
     });
 
     listeners.get("close")?.(new Event("close"));
 
     expect(onClosed).not.toHaveBeenCalled();
-    expect(onOutput).toHaveBeenCalledWith("\r\n[disconnected]\r\n");
+    expect(onDisconnect).toHaveBeenCalledOnce();
+    expect(onOutput).not.toHaveBeenCalled();
   });
 
   it("queues input until the websocket is open and attached", () => {
@@ -516,11 +519,13 @@ describe("createTerminalTab", () => {
       }
     );
 
+    const onConnectionStateChange = vi.fn();
     const mounted = createTerminalTab({
       container: document.createElement("div"),
       tabId: "tab-1",
       sessionName: "build",
-      onClosed: vi.fn()
+      onClosed: vi.fn(),
+      onConnectionStateChange
     });
 
     expect(terminalTestState.terminals).toHaveLength(1);
@@ -1479,11 +1484,13 @@ describe("createTerminalTab", () => {
       }
     );
 
+    const onConnectionStateChange = vi.fn();
     const mounted = createTerminalTab({
       container: document.createElement("div"),
       tabId: "tab-1",
       sessionName: "build",
-      onClosed: vi.fn()
+      onClosed: vi.fn(),
+      onConnectionStateChange
     });
     const requestAnimationFrame = vi
       .spyOn(window, "requestAnimationFrame")
@@ -1500,8 +1507,9 @@ describe("createTerminalTab", () => {
 
     expect(sockets).toHaveLength(2);
     expect(sockets[0]?.close).toHaveBeenCalledOnce();
-    expect(terminalTestState.terminals[0]?.instance.write).toHaveBeenCalledWith(
-      "\r\n[reconnecting]\r\n",
+    expect(onConnectionStateChange).toHaveBeenCalledWith("reconnecting");
+    expect(terminalTestState.terminals[0]?.instance.write).not.toHaveBeenCalledWith(
+      expect.stringContaining("[reconnecting]"),
       expect.any(Function)
     );
 
@@ -1554,11 +1562,13 @@ describe("createTerminalTab", () => {
       }
     );
 
+    const onConnectionStateChange = vi.fn();
     const mounted = createTerminalTab({
       container: document.createElement("div"),
       tabId: "tab-1",
       sessionName: "build",
-      onClosed: vi.fn()
+      onClosed: vi.fn(),
+      onConnectionStateChange
     });
 
     expect(sockets).toHaveLength(1);
@@ -1580,11 +1590,13 @@ describe("createTerminalTab", () => {
         rows: 40
       })
     );
-    expect(terminalTestState.terminals[0]?.instance.write).toHaveBeenCalledWith(
+    expect(onConnectionStateChange).toHaveBeenCalledWith("disconnected");
+    expect(onConnectionStateChange).toHaveBeenCalledWith("reconnecting");
+    expect(terminalTestState.terminals[0]?.instance.write).not.toHaveBeenCalledWith(
       expect.stringContaining("[disconnected]"),
       expect.any(Function)
     );
-    expect(terminalTestState.terminals[0]?.instance.write).toHaveBeenCalledWith(
+    expect(terminalTestState.terminals[0]?.instance.write).not.toHaveBeenCalledWith(
       expect.stringContaining("[reconnecting]"),
       expect.any(Function)
     );

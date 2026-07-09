@@ -106,6 +106,39 @@ describe("sessionStatusBar", () => {
     vi.useRealTimers();
   });
 
+  it("renders reconnecting state as a right-side status pill", () => {
+    const root = document.createElement("div");
+
+    renderSessionStatusBar(root, SESSION, {
+      connectionState: "reconnecting",
+      homeDirectory: "/tmp"
+    });
+
+    const bar = root.querySelector<HTMLElement>(".terminal-status-bar")!;
+    const status = root.querySelector<HTMLElement>(".terminal-status-connection");
+
+    expect(bar.classList.contains("has-connection-status")).toBe(true);
+    expect(bar.textContent).toContain("~/project/app");
+    expect(status).not.toBeNull();
+    expect(status?.textContent).toBe("Reconnecting");
+    expect(status?.title).toBe("Terminal connection: reconnecting");
+    expect(status?.className).toContain("is-reconnecting");
+    expect([...bar.children].at(-1)).toBe(status);
+  });
+
+  it("does not reserve connection status space for a connected terminal", () => {
+    const root = document.createElement("div");
+
+    renderSessionStatusBar(root, SESSION, {
+      connectionState: "connected"
+    });
+
+    const bar = root.querySelector<HTMLElement>(".terminal-status-bar")!;
+
+    expect(bar.classList.contains("has-connection-status")).toBe(false);
+    expect(root.querySelector(".terminal-status-connection")).toBeNull();
+  });
+
   it("keeps the status bar focused on the current path when clicked", () => {
     const root = document.createElement("div");
 

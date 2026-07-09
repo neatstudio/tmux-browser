@@ -15,7 +15,10 @@ import { renderGroupMessagePanel } from "./render/groupMessagePanel";
 import { renderSessionConfigModal } from "./render/sessionConfigModal";
 import { renderSessionFloatingMenu } from "./render/sessionFloatingMenu";
 import { renderSessionGroupRail } from "./render/sessionGroupRail";
-import { renderSessionStatusBar } from "./render/sessionStatusBar";
+import {
+  renderSessionStatusBar,
+  type TerminalConnectionState
+} from "./render/sessionStatusBar";
 import { createDashboardStore } from "./state/dashboardStore";
 import { createInputPromptRegistry } from "./state/inputPromptRegistry";
 import { createMutedSessionsStore } from "./state/mutedSessions";
@@ -96,9 +99,13 @@ type MountedTerminal = {
   setLineHeight: (lineHeight: number) => void;
   panel: HTMLElement;
   statusBar: HTMLElement;
+  connectionState: TerminalConnectionState;
 };
 
-type MountedTerminalCore = Omit<MountedTerminal, "panel" | "statusBar">;
+type MountedTerminalCore = Omit<
+  MountedTerminal,
+  "panel" | "statusBar" | "connectionState"
+>;
 
 const app = document.querySelector<HTMLElement>("#app");
 
@@ -747,7 +754,8 @@ function ensureTerminal(tab: BrowserTab) {
     setFontFamily: () => {},
     setLineHeight: () => {},
     panel,
-    statusBar: panel
+    statusBar: panel,
+    connectionState: "connecting"
   };
   mountedTerminals.set(tab.id, loadingTerminal);
   renderSessionStatusBar(
@@ -767,6 +775,16 @@ function ensureTerminal(tab: BrowserTab) {
     }
 
     const settings = sessionSettings.get(tab.sessionName);
+    const updateConnectionState = (connectionState: TerminalConnectionState) => {
+      const current = mountedTerminals.get(tab.id);
+
+      if (!current) {
+        return;
+      }
+
+      current.connectionState = connectionState;
+      syncTerminalStatusBars();
+    };
     const mounted = createTerminalTab({
       container: frame,
       rendererStatusElement: panel,
@@ -780,6 +798,7 @@ function ensureTerminal(tab: BrowserTab) {
       onPaneClick: (event) => selectPaneAtTerminalPoint(tab.sessionName, event),
       getPaneSummaries: () =>
         store.getState().sessions.find((session) => session.name === tab.sessionName)?.panes ?? [],
+      onConnectionStateChange: updateConnectionState,
       onClosed: () => {
         closeTab(tab.id, { force: true });
         refreshCurrentViewState();
@@ -788,7 +807,8 @@ function ensureTerminal(tab: BrowserTab) {
     const mountedTerminal: MountedTerminal = {
       ...(mounted satisfies MountedTerminalCore),
       panel,
-      statusBar: panel
+      statusBar: panel,
+      connectionState: loadingTerminal.connectionState
     };
 
     pendingTerminalMounts.delete(tab.id);
@@ -1936,6 +1956,7 @@ function createSessionStatusActions(tab: BrowserTab, mounted: MountedTerminal) {
       syncTerminalStatusBars();
     },
     browserScrollEnabled: mounted.isBrowserScrollEnabled(),
+    connectionState: mounted.connectionState,
     onConfig: () => {
       activeConfigSessionName = tab.sessionName;
       scheduleRender();

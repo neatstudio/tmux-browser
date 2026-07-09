@@ -54,6 +54,12 @@ type PaneClickListener = (event: {
   rows: number;
 }) => void;
 
+export type TerminalConnectionState =
+  | "connecting"
+  | "connected"
+  | "reconnecting"
+  | "disconnected";
+
 type PaneTextSelection = {
   pane: PaneSummary;
   start: { cellX: number; cellY: number };
@@ -84,6 +90,7 @@ export function createTerminalTabController(deps: {
   socket: BrowserSocket;
   onOutput: (data: string) => void;
   onClosed: () => void;
+  onConnect?: () => void;
   onDisconnect?: () => void;
 }) {
   let closedByApp = false;
@@ -144,14 +151,18 @@ export function createTerminalTabController(deps: {
 
   function handleSocketClose() {
     if (!closedByApp) {
-      deps.onOutput("\r\n[disconnected]\r\n");
       deps.onDisconnect?.();
     }
   }
 
+  function handleSocketOpen() {
+    flushPendingMessages();
+    deps.onConnect?.();
+  }
+
   deps.socket.addEventListener("message", handleSocketMessage);
   deps.socket.addEventListener("close", handleSocketClose);
-  deps.socket.addEventListener("open", flushPendingMessages);
+  deps.socket.addEventListener("open", handleSocketOpen);
 
   return {
     handleMessage,
@@ -174,7 +185,7 @@ export function createTerminalTabController(deps: {
       closedByApp = true;
       deps.socket.removeEventListener?.("message", handleSocketMessage);
       deps.socket.removeEventListener?.("close", handleSocketClose);
-      deps.socket.removeEventListener?.("open", flushPendingMessages);
+      deps.socket.removeEventListener?.("open", handleSocketOpen);
       deps.socket.close();
     }
   };
@@ -417,6 +428,7 @@ export function createTerminalTab(deps: {
   terminalTheme?: TerminalTheme;
   onClosed: () => void;
   onOutput?: RenderedOutputListener;
+  onConnectionStateChange?: (state: TerminalConnectionState) => void;
   onPaneClick?: PaneClickListener;
   getPaneSummaries?: () => PaneSummary[];
 }) {
@@ -442,6 +454,7 @@ export function createTerminalTab(deps: {
   let socket: WebSocket | null = null;
   let controller: ReturnType<typeof createTerminalTabController> | null = null;
   let reconnectTimer: number | null = null;
+  let connectionState: TerminalConnectionState | null = null;
   let destroyed = false;
   let browserScrollEnabled = false;
   let touchScrollY: number | null = null;
@@ -728,11 +741,21 @@ export function createTerminalTab(deps: {
     reconnectTimer = null;
   }
 
+  function setConnectionState(nextState: TerminalConnectionState) {
+    if (connectionState === nextState) {
+      return;
+    }
+
+    connectionState = nextState;
+    deps.onConnectionStateChange?.(nextState);
+  }
+
   function scheduleReconnect() {
     if (destroyed || reconnectTimer !== null) {
       return;
     }
 
+    setConnectionState("disconnected");
     reconnectTimer = window.setTimeout(() => {
       reconnectTimer = null;
 
@@ -744,6 +767,7 @@ export function createTerminalTab(deps: {
 
   function connect(options: { announce?: boolean } = {}) {
     clearReconnectTimer();
+    setConnectionState(options.announce ? "reconnecting" : "connecting");
     controller?.destroy();
     socket = createTerminalSocket();
     controller = createTerminalTabController({
@@ -752,13 +776,10 @@ export function createTerminalTab(deps: {
         outputBuffer.write(data);
       },
       onClosed: deps.onClosed,
+      onConnect: () => setConnectionState("connected"),
       onDisconnect: scheduleReconnect
     });
     attach();
-
-    if (options.announce) {
-      outputBuffer.write("\r\n[reconnecting]\r\n");
-    }
   }
 
   connect();

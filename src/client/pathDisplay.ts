@@ -6,14 +6,11 @@ export function formatDisplayPath(
     return "path unavailable";
   }
 
-  if (!homeDirectory || homeDirectory === "/") {
+  const normalizedHome = getNormalizedHomeDirectory(path, homeDirectory);
+
+  if (!normalizedHome) {
     return path;
   }
-
-  const normalizedHome =
-    homeDirectory.endsWith("/") && homeDirectory !== "/"
-      ? homeDirectory.slice(0, -1)
-      : homeDirectory;
 
   if (path === normalizedHome) {
     return "~";
@@ -24,4 +21,19 @@ export function formatDisplayPath(
   }
 
   return path;
+}
+
+function getNormalizedHomeDirectory(
+  path: string,
+  homeDirectory: string | null | undefined
+) {
+  if (homeDirectory && homeDirectory !== "/") {
+    return homeDirectory.endsWith("/") ? homeDirectory.slice(0, -1) : homeDirectory;
+  }
+
+  return inferCommonHomeDirectory(path);
+}
+
+function inferCommonHomeDirectory(path: string) {
+  return path.match(/^\/(?:Users|home)\/[^/]+(?=\/|$)/)?.[0] ?? null;
 }

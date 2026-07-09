@@ -31,6 +31,12 @@ const MOBILE_SHIFT_CURSOR_KEY_BY_ID = new Map(
 
 const mobileSheetCleanupByStatusBar = new WeakMap<HTMLElement, () => void>();
 
+export type TerminalConnectionState =
+  | "connecting"
+  | "connected"
+  | "reconnecting"
+  | "disconnected";
+
 export type KanbanStatusSession = {
   name: string;
   label: string;
@@ -77,6 +83,7 @@ export type SessionStatusBarActions = {
   uiTier?: ResponsiveUiTier;
   onRestoreFocus?: () => void;
   homeDirectory?: string | null;
+  connectionState?: TerminalConnectionState;
 };
 
 export function formatSessionStatusBar(
@@ -541,6 +548,27 @@ function renderMobileCursorKeyActions(
   return group;
 }
 
+function renderConnectionStatus(
+  state: TerminalConnectionState | undefined
+) {
+  if (!state || state === "connected") {
+    return null;
+  }
+
+  const status = document.createElement("span");
+  status.className = `terminal-status-connection is-${state}`;
+  status.textContent = state === "reconnecting"
+    ? "Reconnecting"
+    : state === "disconnected"
+      ? "Disconnected"
+      : "Connecting";
+  status.title = `Terminal connection: ${state}`;
+  status.setAttribute("role", "status");
+  status.setAttribute("aria-live", "polite");
+
+  return status;
+}
+
 function renderGroupSwitcherActions(
   session: SessionSummary | null | undefined,
   actions: SessionStatusBarActions,
@@ -643,6 +671,8 @@ export function renderSessionStatusBar(
     : [];
   const main = document.createElement("div");
   main.className = "terminal-status-main";
+  const connectionStatus = renderConnectionStatus(actions.connectionState);
+  statusBar.classList.toggle("has-connection-status", Boolean(connectionStatus));
 
   if (items.length === 0) {
     const emptyItem = document.createElement("span");
@@ -673,7 +703,8 @@ export function renderSessionStatusBar(
       ...(mobileCursorKeys ? [mobileCursorKeys] : []),
       ...(mobileToggle ? [mobileToggle] : []),
       ...(inlineSoftKeys ? [inlineSoftKeys] : []),
-      ...renderRightStatusActions(session, actions)
+      ...renderRightStatusActions(session, actions),
+      ...(connectionStatus ? [connectionStatus] : [])
     );
     if (shouldRestoreMobileSheet && mobileToggle) {
       setMobileSheetOpen(statusBar, true, mobileToggle);
@@ -715,7 +746,8 @@ export function renderSessionStatusBar(
     ...(mobileCursorKeys ? [mobileCursorKeys] : []),
     ...(mobileToggle ? [mobileToggle] : []),
     ...(inlineSoftKeys ? [inlineSoftKeys] : []),
-    ...rightActions
+    ...rightActions,
+    ...(connectionStatus ? [connectionStatus] : [])
   );
   if (shouldRestoreMobileSheet && mobileToggle) {
     setMobileSheetOpen(statusBar, true, mobileToggle);

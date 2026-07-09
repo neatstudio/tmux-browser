@@ -70,6 +70,17 @@ describe("renderDashboard", () => {
     expect(formatDisplayPath("/var/www", "/root")).toBe("/var/www");
   });
 
+  it("shortens common home paths even before server status has loaded", () => {
+    expect(formatDisplayPath("/Users/gouki/server/wwwroot", null)).toBe(
+      "~/server/wwwroot"
+    );
+    expect(formatDisplayPath("/home/gouki/tmux", undefined)).toBe("~/tmux");
+    expect(formatDisplayPath("/Users/goukix/app", null)).toBe(
+      "~/app"
+    );
+    expect(formatDisplayPath("/var/www", null)).toBe("/var/www");
+  });
+
   it("preserves the new-session draft across rerenders", () => {
     const root = document.createElement("div");
     let draft = "";

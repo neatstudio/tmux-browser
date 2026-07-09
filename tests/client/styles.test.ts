@@ -65,6 +65,12 @@ describe("client layout styles", () => {
       /\.terminal-status-main\s*\{[^}]*flex:\s*1\s+1\s+auto;/s
     );
     expect(styles).toMatch(
+      /\.terminal-status-connection\s*\{[^}]*margin-left:\s*auto;/s
+    );
+    expect(styles).toMatch(
+      /\.terminal-status-connection\.is-reconnecting\s*\{[^}]*color:\s*#ffe2a7;/s
+    );
+    expect(styles).toMatch(
       /\.terminal-panel\.has-session-rail\s*\{[^}]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\)\s+auto;/s
     );
     expect(styles).toMatch(
@@ -469,6 +475,12 @@ describe("client layout styles", () => {
       /@media\s*\(max-width:\s*1200px\)\s*\{[\s\S]*\.terminal-status-inline-soft-keys\[data-group="soft-keys"\]\s*\{[^}]*display:\s*grid;[^}]*grid-column:\s*1\s*\/\s*4;[^}]*grid-row:\s*2;[^}]*grid-template-columns:\s*repeat\(9,\s*var\(--terminal-status-soft-key-width\)\);[^}]*justify-content:\s*start;[^}]*gap:\s*0\.08rem;/s
     );
     expect(styles).toMatch(
+      /@media\s*\(max-width:\s*1200px\)\s*\{[\s\S]*\.terminal-status-connection\s*\{[^}]*grid-column:\s*3;[^}]*grid-row:\s*2;[^}]*justify-self:\s*end;/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*1200px\)\s*\{[\s\S]*\.terminal-status-bar\.has-connection-status\s+\.terminal-status-inline-soft-keys\[data-group="soft-keys"\]\s*\{[^}]*grid-column:\s*1\s*\/\s*3;/s
+    );
+    expect(styles).toMatch(
       /@media\s*\(max-width:\s*1200px\)\s*\{[\s\S]*\.terminal-status-mobile-sheet\s+\.terminal-status-action-group\[data-group="kanban-groups"\]\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*1fr;[^}]*gap:\s*0\.12rem;/s
     );
     expect(styles).toMatch(
@@ -522,6 +534,9 @@ describe("client layout styles", () => {
     );
     expect(styles).toMatch(
       /@media\s*\(max-width:\s*430px\)\s*\{[\s\S]*\.terminal-status-mobile-toggle\s*\{[^}]*min-height:\s*24px;[^}]*min-width:\s*3\.25rem;[^}]*padding:\s*0\.12rem\s+0\.3rem;/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*430px\)\s*\{[\s\S]*\.terminal-status-connection\s*\{[^}]*max-width:\s*5\.4rem;[^}]*padding:\s*0\.14rem\s+0\.26rem;[^}]*font-size:\s*0\.58rem;/s
     );
     expect(styles).toMatch(
       /@media\s*\(max-width:\s*430px\)\s*\{[\s\S]*\.terminal-status-inline-soft-keys\[data-group="soft-keys"\]\s*\{[^}]*grid-template-columns:\s*repeat\(9,\s*var\(--terminal-status-soft-key-width\)\);[^}]*gap:\s*0\.06rem;/s
