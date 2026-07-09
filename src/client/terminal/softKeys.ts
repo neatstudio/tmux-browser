@@ -30,7 +30,6 @@ export const MOBILE_SHIFT_ENTER_KEY: SoftKey = {
 
 export const MOBILE_EDITING_KEYS: SoftKey[] = [
   ...MOBILE_CURSOR_KEYS,
-  ...MOBILE_SHIFT_CURSOR_KEYS,
   MOBILE_SHIFT_ENTER_KEY
 ];
 
@@ -44,6 +43,5 @@ export const MOBILE_SOFT_KEYS: SoftKey[] = [
   { id: "ctrl-r", label: "^R", title: "Send Ctrl-R", sequence: "\x12" },
   { id: "ctrl-a", label: "^A", title: "Send Ctrl-A", sequence: "\x01" },
   { id: "ctrl-e", label: "^E", title: "Send Ctrl-E", sequence: "\x05" },
-  ...MOBILE_CURSOR_KEYS,
-  ...MOBILE_SHIFT_CURSOR_KEYS
+  ...MOBILE_CURSOR_KEYS
 ];

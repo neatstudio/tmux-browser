@@ -360,13 +360,16 @@ describe("sessionStatusBar", () => {
       ["soft-key-up", "↑"],
       ["soft-key-down", "↓"],
       ["soft-key-right", "→"],
-      ["soft-key-shift-left", "S←"],
-      ["soft-key-shift-up", "S↑"],
-      ["soft-key-shift-down", "S↓"],
-      ["soft-key-shift-right", "S→"],
       ["soft-key-shift-enter", "S↵"]
     ]);
     expect(root.querySelector(".terminal-status-mobile-sheet")).toBeNull();
+
+    const shiftKey = root.querySelector<HTMLButtonElement>(
+      "[data-group='soft-keys'] [data-action='soft-key-shift']"
+    );
+    expect(shiftKey).not.toBeNull();
+    expect(shiftKey?.textContent).toBe("⇧");
+    expect(shiftKey?.getAttribute("aria-pressed")).toBe("false");
 
     cursorKeys
       ?.querySelector<HTMLButtonElement>("[data-action='soft-key-left']")
@@ -374,11 +377,20 @@ describe("sessionStatusBar", () => {
     cursorKeys
       ?.querySelector<HTMLButtonElement>("[data-action='soft-key-right']")
       ?.click();
+    shiftKey?.click();
+    expect(shiftKey?.getAttribute("aria-pressed")).toBe("true");
+    expect(shiftKey?.classList.contains("is-active")).toBe(true);
     cursorKeys
-      ?.querySelector<HTMLButtonElement>("[data-action='soft-key-shift-left']")
+      ?.querySelector<HTMLButtonElement>("[data-action='soft-key-left']")
       ?.click();
     cursorKeys
-      ?.querySelector<HTMLButtonElement>("[data-action='soft-key-shift-right']")
+      ?.querySelector<HTMLButtonElement>("[data-action='soft-key-right']")
+      ?.click();
+    shiftKey?.click();
+    expect(shiftKey?.getAttribute("aria-pressed")).toBe("false");
+    expect(shiftKey?.classList.contains("is-active")).toBe(false);
+    cursorKeys
+      ?.querySelector<HTMLButtonElement>("[data-action='soft-key-left']")
       ?.click();
     cursorKeys
       ?.querySelector<HTMLButtonElement>("[data-action='soft-key-shift-enter']")
@@ -388,7 +400,8 @@ describe("sessionStatusBar", () => {
     expect(onSendSoftKey).toHaveBeenNthCalledWith(2, "\x1b[C");
     expect(onSendSoftKey).toHaveBeenNthCalledWith(3, "\x1b[1;2D");
     expect(onSendSoftKey).toHaveBeenNthCalledWith(4, "\x1b[1;2C");
-    expect(onSendSoftKey).toHaveBeenNthCalledWith(5, "\x1b[13;2u");
+    expect(onSendSoftKey).toHaveBeenNthCalledWith(5, "\x1b[D");
+    expect(onSendSoftKey).toHaveBeenNthCalledWith(6, "\x1b[13;2u");
     expect(root.querySelector(".terminal-status-mobile-sheet")).toBeNull();
   });
 
@@ -417,6 +430,7 @@ describe("sessionStatusBar", () => {
       [...inlineSoftKeys!.querySelectorAll<HTMLButtonElement>("[data-action]")]
         .map((button) => button.textContent)
     ).toEqual([
+      "⇧",
       "Esc",
       "Tab",
       "^C",

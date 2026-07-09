@@ -3610,6 +3610,8 @@ select {
 
 @media (max-width: 1200px) {
   .terminal-status-bar {
+    --terminal-status-soft-key-width: 1.95rem;
+    --terminal-status-soft-key-height: 24px;
     align-items: center;
     height: 58px;
     min-height: 58px;
@@ -3648,8 +3650,9 @@ select {
     display: inline-grid;
     grid-column: 2;
     grid-row: 1;
-    grid-template-columns: repeat(9, minmax(0, 1fr));
+    grid-template-columns: repeat(5, var(--terminal-status-soft-key-width));
     gap: 0.08rem;
+    justify-content: end;
     width: 100%;
     border-left: 0;
     padding-left: 0;
@@ -3657,8 +3660,8 @@ select {
 
   .terminal-status-cursor-key {
     justify-content: center;
-    width: 100%;
-    min-height: 26px;
+    width: var(--terminal-status-soft-key-width);
+    min-height: var(--terminal-status-soft-key-height);
     border-color: rgba(255, 211, 122, 0.3);
     background:
       linear-gradient(180deg, rgba(255, 211, 122, 0.16), rgba(255, 255, 255, 0.055));
@@ -3687,7 +3690,7 @@ select {
     display: grid;
     grid-column: 1 / 4;
     grid-row: 2;
-    grid-template-columns: repeat(8, 1.95rem);
+    grid-template-columns: repeat(9, var(--terminal-status-soft-key-width));
     justify-content: start;
     gap: 0.08rem;
     border-left: 0;
@@ -3696,8 +3699,8 @@ select {
 
   .terminal-status-inline-soft-keys .terminal-status-soft-key {
     justify-content: center;
-    width: 1.95rem;
-    min-height: 22px;
+    width: var(--terminal-status-soft-key-width);
+    min-height: var(--terminal-status-soft-key-height);
     border-color: rgba(255, 211, 122, 0.26);
     background:
       linear-gradient(180deg, rgba(255, 211, 122, 0.12), rgba(255, 255, 255, 0.045));
@@ -3927,6 +3930,8 @@ select {
   }
 
   .terminal-status-bar {
+    --terminal-status-soft-key-width: 1.55rem;
+    --terminal-status-soft-key-height: 22px;
     height: 54px;
     min-height: 54px;
     flex-basis: 54px;
@@ -3969,12 +3974,12 @@ select {
   }
 
   .terminal-status-action-group[data-group="mobile-cursor-keys"] {
-    grid-template-columns: repeat(9, minmax(0, 1fr));
+    grid-template-columns: repeat(5, var(--terminal-status-soft-key-width));
     gap: 0.06rem;
   }
 
   .terminal-status-cursor-key {
-    min-height: 24px;
+    min-height: var(--terminal-status-soft-key-height);
     padding-right: 0.08rem;
     padding-left: 0.08rem;
   }
@@ -3986,13 +3991,13 @@ select {
   }
 
   .terminal-status-inline-soft-keys[data-group="soft-keys"] {
-    grid-template-columns: repeat(8, 1.55rem);
+    grid-template-columns: repeat(9, var(--terminal-status-soft-key-width));
     gap: 0.06rem;
   }
 
   .terminal-status-inline-soft-keys .terminal-status-soft-key {
-    width: 1.55rem;
-    min-height: 20px;
+    width: var(--terminal-status-soft-key-width);
+    min-height: var(--terminal-status-soft-key-height);
     font-size: 0.62rem;
     padding-right: 0.06rem;
     padding-left: 0.06rem;

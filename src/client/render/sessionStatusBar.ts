@@ -1,11 +1,32 @@
 import type { SessionSummary } from "../api/sessionApi";
 import type { ResponsiveUiTier } from "../responsiveUiTier";
 import { formatDisplayPath } from "../pathDisplay";
-import { MOBILE_EDITING_KEYS, MOBILE_SOFT_KEYS } from "../terminal/softKeys";
+import {
+  MOBILE_EDITING_KEYS,
+  MOBILE_SHIFT_CURSOR_KEYS,
+  MOBILE_SOFT_KEYS,
+  type SoftKey
+} from "../terminal/softKeys";
 
 const MOBILE_EDITING_KEY_IDS = new Set(MOBILE_EDITING_KEYS.map((key) => key.id));
 const MOBILE_INLINE_SOFT_KEYS = MOBILE_SOFT_KEYS.filter(
   (key) => !MOBILE_EDITING_KEY_IDS.has(key.id)
+);
+const MOBILE_SHIFT_TOGGLE_KEY: SoftKey = {
+  id: "shift",
+  label: "⇧",
+  title: "Toggle Shift for arrow keys",
+  sequence: ""
+};
+const MOBILE_INLINE_SHIFT_SOFT_KEYS = [
+  MOBILE_SHIFT_TOGGLE_KEY,
+  ...MOBILE_INLINE_SOFT_KEYS
+];
+const MOBILE_SHIFT_CURSOR_KEY_BY_ID = new Map(
+  MOBILE_SHIFT_CURSOR_KEYS.map((key) => [
+    key.id.replace(/^shift-/, ""),
+    key
+  ])
 );
 
 const mobileSheetCleanupByStatusBar = new WeakMap<HTMLElement, () => void>();
@@ -425,11 +446,37 @@ function renderSoftKeyActions(
   actions: SessionStatusBarActions,
   afterClick?: () => void,
   className?: string,
-  keys = MOBILE_SOFT_KEYS
+  keys = MOBILE_SOFT_KEYS,
+  shiftState?: {
+    get: () => boolean;
+    toggle: () => boolean;
+  }
 ) {
   const group = createActionGroup(
     "soft-keys",
     keys.map((key) => {
+      if (key.id === MOBILE_SHIFT_TOGGLE_KEY.id && shiftState) {
+        const button = createActionButton(
+          `soft-key-${key.id}`,
+          key.label,
+          () => {
+            const active = shiftState.toggle();
+            button.setAttribute("aria-pressed", active ? "true" : "false");
+            button.classList.toggle("is-active", active);
+          },
+          !actions.onSendSoftKey,
+          key.title,
+          afterClick
+        );
+
+        button.classList.add("terminal-status-soft-key");
+        button.setAttribute("aria-pressed", shiftState.get() ? "true" : "false");
+        button.classList.toggle("is-active", shiftState.get());
+        keepCurrentInputFocusOnPress(button);
+
+        return button;
+      }
+
       const button = createActionButton(
         `soft-key-${key.id}`,
         key.label,
@@ -454,7 +501,10 @@ function renderSoftKeyActions(
 }
 
 function renderMobileCursorKeyActions(
-  actions: SessionStatusBarActions
+  actions: SessionStatusBarActions,
+  shiftState?: {
+    get: () => boolean;
+  }
 ) {
   if (!actions.onSendSoftKey) {
     return null;
@@ -466,7 +516,12 @@ function renderMobileCursorKeyActions(
       const button = createActionButton(
         `soft-key-${key.id}`,
         key.label,
-        () => actions.onSendSoftKey?.(key.sequence),
+        () => {
+          const shiftedKey = shiftState?.get()
+            ? MOBILE_SHIFT_CURSOR_KEY_BY_ID.get(key.id)
+            : undefined;
+          actions.onSendSoftKey?.(shiftedKey?.sequence ?? key.sequence);
+        },
         false,
         key.title
       );
@@ -566,6 +621,15 @@ export function renderSessionStatusBar(
   const shouldRestoreMobileSheet = Boolean(
     statusBar.querySelector(".terminal-status-mobile-sheet")
   );
+  let mobileShiftActive = statusBar.dataset.mobileShiftActive === "true";
+  const mobileShiftState = {
+    get: () => mobileShiftActive,
+    toggle: () => {
+      mobileShiftActive = !mobileShiftActive;
+      statusBar.dataset.mobileShiftActive = mobileShiftActive ? "true" : "false";
+      return mobileShiftActive;
+    }
+  };
 
   statusBar.removeAttribute("data-mode");
   statusBar.title = "Current tmux path";
@@ -591,7 +655,7 @@ export function renderSessionStatusBar(
         : null;
     const mobileCursorKeys =
       actions.uiTier && actions.uiTier !== "desktop"
-        ? renderMobileCursorKeyActions(actions)
+        ? renderMobileCursorKeyActions(actions, mobileShiftState)
         : null;
     const inlineSoftKeys =
       actions.uiTier && actions.uiTier !== "desktop" && actions.onSendSoftKey
@@ -599,7 +663,8 @@ export function renderSessionStatusBar(
             actions,
             undefined,
             "terminal-status-inline-soft-keys",
-            MOBILE_INLINE_SOFT_KEYS
+            MOBILE_INLINE_SHIFT_SOFT_KEYS,
+            mobileShiftState
           )
         : null;
     statusBar.append(
@@ -631,7 +696,7 @@ export function renderSessionStatusBar(
       : null;
   const mobileCursorKeys =
     actions.uiTier && actions.uiTier !== "desktop"
-      ? renderMobileCursorKeyActions(actions)
+      ? renderMobileCursorKeyActions(actions, mobileShiftState)
       : null;
   const inlineSoftKeys =
     actions.uiTier && actions.uiTier !== "desktop" && actions.onSendSoftKey
@@ -639,7 +704,8 @@ export function renderSessionStatusBar(
           actions,
           undefined,
           "terminal-status-inline-soft-keys",
-          MOBILE_INLINE_SOFT_KEYS
+          MOBILE_INLINE_SHIFT_SOFT_KEYS,
+          mobileShiftState
         )
       : null;
   const rightActions = renderRightStatusActions(session, actions);
