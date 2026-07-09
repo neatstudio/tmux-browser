@@ -3687,7 +3687,8 @@ select {
     display: grid;
     grid-column: 1 / 4;
     grid-row: 2;
-    grid-template-columns: repeat(10, minmax(0, 1fr));
+    grid-template-columns: repeat(10, 1.95rem);
+    justify-content: start;
     gap: 0.08rem;
     border-left: 0;
     padding-left: 0;
@@ -3695,6 +3696,7 @@ select {
 
   .terminal-status-inline-soft-keys .terminal-status-soft-key {
     justify-content: center;
+    width: 1.95rem;
     min-height: 22px;
     border-color: rgba(255, 211, 122, 0.26);
     background:
@@ -3984,11 +3986,12 @@ select {
   }
 
   .terminal-status-inline-soft-keys[data-group="soft-keys"] {
-    grid-template-columns: repeat(10, minmax(0, 1fr));
+    grid-template-columns: repeat(10, 1.55rem);
     gap: 0.06rem;
   }
 
   .terminal-status-inline-soft-keys .terminal-status-soft-key {
+    width: 1.55rem;
     min-height: 20px;
     font-size: 0.62rem;
     padding-right: 0.06rem;
