@@ -328,7 +328,8 @@ describe("sessionFloatingMenu", () => {
     expect(actionsPane?.textContent).not.toContain("Refresh");
     expect(actionsPane?.textContent).toContain("^C");
     expect(actionsPane?.textContent).toContain("S↵");
-    expect(actionsPane?.textContent).toContain("M-B");
+    expect(actionsPane?.textContent).not.toContain("M-B");
+    expect(actionsPane?.textContent).not.toContain("M-F");
     expect(actionsPane?.textContent).not.toContain("Ctrl-C");
     expect(actionsPane?.textContent).not.toContain("Alt-B");
     expect(actions).not.toContain("open-dashboard");

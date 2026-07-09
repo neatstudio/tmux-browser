@@ -26,12 +26,10 @@ describe("mobile terminal soft keys", () => {
       "shift-left": "\x1b[1;2D",
       "shift-up": "\x1b[1;2A",
       "shift-down": "\x1b[1;2B",
-      "shift-right": "\x1b[1;2C",
-      "alt-b": "\x1bb",
-      "alt-f": "\x1bf"
+      "shift-right": "\x1b[1;2C"
     });
     expect(MOBILE_SOFT_KEYS.map((key) => key.id)).not.toEqual(
-      expect.arrayContaining(["page-up", "page-down"])
+      expect.arrayContaining(["page-up", "page-down", "alt-b", "alt-f"])
     );
     expect(MOBILE_SOFT_KEYS.map((key) => key.label)).toEqual([
       "Esc",
@@ -50,9 +48,7 @@ describe("mobile terminal soft keys", () => {
       "S←",
       "S↑",
       "S↓",
-      "S→",
-      "M-B",
-      "M-F"
+      "S→"
     ]);
   });
 

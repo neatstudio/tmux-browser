@@ -424,9 +424,7 @@ describe("sessionStatusBar", () => {
       "^L",
       "^R",
       "^A",
-      "^E",
-      "M-B",
-      "M-F"
+      "^E"
     ]);
 
     inlineSoftKeys

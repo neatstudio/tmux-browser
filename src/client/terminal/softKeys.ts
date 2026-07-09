@@ -45,7 +45,5 @@ export const MOBILE_SOFT_KEYS: SoftKey[] = [
   { id: "ctrl-a", label: "^A", title: "Send Ctrl-A", sequence: "\x01" },
   { id: "ctrl-e", label: "^E", title: "Send Ctrl-E", sequence: "\x05" },
   ...MOBILE_CURSOR_KEYS,
-  ...MOBILE_SHIFT_CURSOR_KEYS,
-  { id: "alt-b", label: "M-B", title: "Send Alt-B", sequence: "\x1bb" },
-  { id: "alt-f", label: "M-F", title: "Send Alt-F", sequence: "\x1bf" }
+  ...MOBILE_SHIFT_CURSOR_KEYS
 ];
