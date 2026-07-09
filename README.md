@@ -113,7 +113,33 @@ browser title and health checks can tell whether the running server is current:
 curl -s http://<host>:3000/api/health
 ```
 
-Download and run a GitHub Release build:
+Install or update directly from the latest GitHub Release:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/neatstudio/tmux-browser/main/install.sh | sh
+```
+
+The bootstrap installer downloads the latest `release.run`, installs it, and
+restarts tmux-ui. It works for first-time installs and for updating existing
+installs. To install or update service mode instead:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/neatstudio/tmux-browser/main/install.sh | sh -s -- --service
+```
+
+Install without starting the server:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/neatstudio/tmux-browser/main/install.sh | sh -s -- --install-only
+```
+
+Pass run-file commands directly after `--` when you need a lower-level action:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/neatstudio/tmux-browser/main/install.sh | sh -s -- -- service-status
+```
+
+Download and run a GitHub Release build manually:
 
 ```bash
 curl -L -o tmux.run https://github.com/neatstudio/tmux-browser/releases/latest/download/release.run

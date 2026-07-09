@@ -1,5 +1,15 @@
-import { readFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync
+} from "node:fs";
 import { spawnSync } from "node:child_process";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 import { describe, expect, it } from "vitest";
 import {
@@ -25,6 +35,77 @@ const workflow = readFileSync(".github/workflows/release.yml", "utf8");
 const readme = readFileSync("README.md", "utf8");
 const readmeZh = readFileSync("README.zh-CN.md", "utf8");
 const publishExample = readFileSync(".tmux-ui.publish.json.example", "utf8");
+const installScriptPath = "install.sh";
+
+function readInstallScript() {
+  return existsSync(installScriptPath)
+    ? readFileSync(installScriptPath, "utf8")
+    : "";
+}
+
+function runInstallScript(args: string[] = []) {
+  const tempDir = mkdtempSync(join(tmpdir(), "tmux-ui-install-test-"));
+  const fakeBin = join(tempDir, "bin");
+  const argsFile = join(tempDir, "args.txt");
+  const urlFile = join(tempDir, "url.txt");
+  const curlPath = join(fakeBin, "curl");
+
+  mkdirSync(fakeBin);
+  writeFileSync(
+    curlPath,
+    `#!/bin/sh
+set -eu
+out=""
+url=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o)
+      out="$2"
+      shift 2
+      ;;
+    http://*|https://*)
+      url="$1"
+      shift
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+printf '%s' "$url" > "$TMUX_UI_FAKE_URL_FILE"
+cat > "$out" <<'RUN'
+#!/bin/sh
+printf '%s\\n' "$@" > "$TMUX_UI_FAKE_ARGS_FILE"
+RUN
+chmod +x "$out"
+`,
+    "utf8"
+  );
+  chmodSync(curlPath, 0o755);
+
+  const result = spawnSync("bash", [installScriptPath, ...args], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
+      TMUX_UI_FAKE_ARGS_FILE: argsFile,
+      TMUX_UI_FAKE_URL_FILE: urlFile
+    }
+  });
+
+  const commandArgs = existsSync(argsFile)
+    ? readFileSync(argsFile, "utf8").trim().split("\n").filter(Boolean)
+    : [];
+  const url = existsSync(urlFile) ? readFileSync(urlFile, "utf8") : "";
+
+  rmSync(tempDir, { recursive: true, force: true });
+
+  return {
+    result,
+    commandArgs,
+    url
+  };
+}
 
 describe("run release scripts", () => {
   it("loads the pack script without template syntax errors", () => {
@@ -238,6 +319,61 @@ describe("run release scripts", () => {
     expect(packScript).toContain('"$upgrade_file" service-install');
     expect(packScript).toContain('"$upgrade_file" restart');
     expect(packScript).toContain('upgrade)');
+  });
+
+  it("ships a curl-friendly installer script for latest release installs", () => {
+    expect(existsSync(installScriptPath)).toBe(true);
+
+    const installScript = readInstallScript();
+    const syntax = spawnSync("bash", ["-n", installScriptPath], {
+      encoding: "utf8"
+    });
+
+    expect(syntax.stderr).toBe("");
+    expect(syntax.status).toBe(0);
+    expect(installScript).toContain("TMUX_UI_INSTALL_URL");
+    expect(installScript).toContain(
+      "https://github.com/neatstudio/tmux-browser/releases/latest/download/release.run"
+    );
+    expect(installScript).toContain("curl -fL");
+    expect(installScript).toContain("wget -O");
+    expect(installScript).toContain("service-install");
+    expect(installScript).toContain("install restart");
+  });
+
+  it("defaults the curl installer to install and restart the latest release", () => {
+    const { result, commandArgs, url } = runInstallScript();
+
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+    expect(url).toBe(
+      "https://github.com/neatstudio/tmux-browser/releases/latest/download/release.run"
+    );
+    expect(commandArgs).toEqual(["install", "restart"]);
+  });
+
+  it("lets the curl installer update through service mode", () => {
+    const { result, commandArgs } = runInstallScript(["--service"]);
+
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+    expect(commandArgs).toEqual(["service-install"]);
+  });
+
+  it("lets the curl installer install without starting the server", () => {
+    const { result, commandArgs } = runInstallScript(["--install-only"]);
+
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+    expect(commandArgs).toEqual(["install"]);
+  });
+
+  it("reports a clean error when installer URL options are missing a value", () => {
+    const { result } = runInstallScript(["--upgrade-url"]);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("--upgrade-url requires a URL");
+    expect(result.stderr).not.toContain("unbound variable");
   });
 
   it("exposes short tmux resurrection management commands", () => {
@@ -482,6 +618,14 @@ describe("run release scripts", () => {
     expect(readmeZh).toContain("安装完成后，使用稳定命令 `tmux-ui`");
     expect(readme).toContain("tmux-ui upgrade");
     expect(readmeZh).toContain("tmux-ui upgrade");
+    expect(readme).toContain(
+      "curl -fsSL https://raw.githubusercontent.com/neatstudio/tmux-browser/main/install.sh | sh"
+    );
+    expect(readmeZh).toContain(
+      "curl -fsSL https://raw.githubusercontent.com/neatstudio/tmux-browser/main/install.sh | sh"
+    );
+    expect(readme).toContain("sh -s -- --service");
+    expect(readmeZh).toContain("sh -s -- --service");
     expect(readme).toContain("auto-installs nvm when Node is missing");
     expect(readmeZh).toContain("如果宿主机没有 Node，会自动安装 nvm");
     expect(readme).toContain("systemctl status tmux-ui");

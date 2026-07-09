@@ -107,7 +107,31 @@ run 文件默认安装到 `~/.tmux-ui`：
 curl -s http://<host>:3000/api/health
 ```
 
-从 GitHub Release 下载并运行：
+直接从最新 GitHub Release 安装或更新：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/neatstudio/tmux-browser/main/install.sh | sh
+```
+
+这个 bootstrap 安装器会下载最新的 `release.run`，安装并重启 tmux-ui。首次安装和旧版本更新都可以用同一条命令。如果要安装或更新为服务模式：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/neatstudio/tmux-browser/main/install.sh | sh -s -- --service
+```
+
+只安装、不启动服务：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/neatstudio/tmux-browser/main/install.sh | sh -s -- --install-only
+```
+
+如果需要直接调用底层 run-file 命令，可以把命令放在 `--` 后面：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/neatstudio/tmux-browser/main/install.sh | sh -s -- -- service-status
+```
+
+也可以手动从 GitHub Release 下载并运行：
 
 ```bash
 curl -L -o tmux.run https://github.com/neatstudio/tmux-browser/releases/latest/download/release.run
