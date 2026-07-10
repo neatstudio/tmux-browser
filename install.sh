@@ -5,6 +5,8 @@ DEFAULT_INSTALL_URL="https://github.com/neatstudio/tmux-browser/releases/latest/
 INSTALL_URL="${TMUX_UI_INSTALL_URL:-${TMUX_UI_UPGRADE_URL:-$DEFAULT_INSTALL_URL}}"
 KEEP_RUN_FILE=0
 RUN_MODE="default"
+RUN_COMMANDS=""
+RUN_CUSTOM=0
 
 die() {
   printf 'tmux-ui install: %s\n' "$*" >&2
@@ -37,7 +39,7 @@ Pass-through:
     sh install.sh -- service-status
 
 Default run-file command:
-  install restart
+  install, then restart
 EOF
 }
 
@@ -118,19 +120,20 @@ done
 
 case "$RUN_MODE" in
   default|restart)
-    set -- install restart
+    RUN_COMMANDS="install restart"
     ;;
   service)
-    set -- service-install
+    RUN_COMMANDS="service-install"
     ;;
   install)
-    set -- install
+    RUN_COMMANDS="install"
     ;;
   start)
-    set -- install start
+    RUN_COMMANDS="install start"
     ;;
   custom)
     [ "$#" -gt 0 ] || die "pass-through mode requires a run-file command"
+    RUN_CUSTOM=1
     ;;
   *)
     die "invalid run mode: $RUN_MODE"
@@ -144,4 +147,10 @@ if [ "$KEEP_RUN_FILE" = "1" ]; then
   printf 'Downloaded run file: %s\n' "$run_file"
 fi
 
-"$run_file" "$@"
+if [ "$RUN_CUSTOM" = "1" ]; then
+  "$run_file" "$@"
+else
+  for run_command in $RUN_COMMANDS; do
+    "$run_file" "$run_command"
+  done
+fi

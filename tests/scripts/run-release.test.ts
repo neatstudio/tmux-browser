@@ -77,7 +77,7 @@ done
 printf '%s' "$url" > "$TMUX_UI_FAKE_URL_FILE"
 cat > "$out" <<'RUN'
 #!/bin/sh
-printf '%s\\n' "$@" > "$TMUX_UI_FAKE_ARGS_FILE"
+printf '%s\\n' "$*" >> "$TMUX_UI_FAKE_ARGS_FILE"
 RUN
 chmod +x "$out"
 `,
@@ -355,6 +355,15 @@ describe("run release scripts", () => {
     expect(commandArgs).toEqual(["install", "restart"]);
   });
 
+  it("explicitly restarts with install first instead of passing two commands at once", () => {
+    const { result, commandArgs } = runInstallScript(["--restart"]);
+
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+    expect(commandArgs).toEqual(["install", "restart"]);
+    expect(commandArgs).not.toEqual(["install restart"]);
+  });
+
   it("lets the curl installer update through service mode", () => {
     const { result, commandArgs } = runInstallScript(["--service"]);
 
@@ -369,6 +378,14 @@ describe("run release scripts", () => {
     expect(result.stderr).toBe("");
     expect(result.status).toBe(0);
     expect(commandArgs).toEqual(["install"]);
+  });
+
+  it("lets the curl installer install and then start in the current context", () => {
+    const { result, commandArgs } = runInstallScript(["--start"]);
+
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+    expect(commandArgs).toEqual(["install", "start"]);
   });
 
   it("reports a clean error when installer URL options are missing a value", () => {
