@@ -76,6 +76,10 @@ import {
 } from "../shared/kanbanTemplates";
 import type { GroupMessage } from "../shared/groupMessages";
 import { installMobileKeyboardViewportController } from "./mobileKeyboardViewport";
+import type {
+  HookEventAction,
+  HookEventTarget
+} from "../shared/hookEvents";
 import "./styles.css";
 
 declare const __TMUX_UI_CLIENT_VERSION__: string;
@@ -1830,12 +1834,12 @@ function dismissHookEventToast(id: string) {
 function openHookEventSession(id: string) {
   const item = getHookEventToastItem(id);
 
-  if (!item || !item.sessionName) {
+  if (!item) {
     return;
   }
 
   dismissHookEventToast(id);
-  openActionCenterSession(item.sessionName);
+  openHookEventTarget(item, item.target);
 }
 
 function openHookEventActions(id: string) {
@@ -1845,16 +1849,106 @@ function openHookEventActions(id: string) {
 
 async function sendHookEventEnter(id: string) {
   const item = getHookEventToastItem(id);
+  const sessionName = item ? getHookEventTargetSession(item, item.target) : null;
 
-  if (!item || !item.sessionName) {
+  if (!item || !sessionName) {
     return;
   }
 
   try {
-    await api.sendInput(item.sessionName, "\r");
+    await api.sendInput(sessionName, "\r");
     dismissHookEventToast(id);
   } catch (error) {
     console.warn("Failed to send hook event Enter", error);
+  }
+}
+
+function getHookEventTargetSession(
+  item: ActionCenterHookEventItem,
+  target: HookEventTarget | null
+) {
+  return target?.sessionName ?? item.target.sessionName ?? item.sessionName ?? null;
+}
+
+function isLiveSession(sessionName: string) {
+  return store.getState().sessions.some((session) => session.name === sessionName);
+}
+
+function openHookEventTarget(
+  item: ActionCenterHookEventItem,
+  target: HookEventTarget | null
+) {
+  const sessionName = getHookEventTargetSession(item, target);
+  const projectName = target?.projectName ?? item.target.projectName;
+  const view = target?.view ?? item.target.view;
+
+  if (view === "kanban") {
+    if (projectName) {
+      openKanbanView(projectName);
+      return;
+    }
+
+    openKanbanView();
+    return;
+  }
+
+  if (sessionName && isLiveSession(sessionName)) {
+    getOrOpenTab(sessionName);
+    scheduleRender();
+    return;
+  }
+
+  if (projectName) {
+    openKanbanView(projectName);
+    return;
+  }
+
+  if (sessionName) {
+    getOrOpenTab(sessionName);
+    scheduleRender();
+  }
+}
+
+function getHookEventAction(
+  item: ActionCenterHookEventItem,
+  actionId: string
+): HookEventAction | null {
+  return item.actions.find((action) => action.id === actionId) ?? null;
+}
+
+async function runHookEventAction(id: string, actionId: string) {
+  const item = getHookEventToastItem(id);
+
+  if (!item) {
+    return;
+  }
+
+  const action = getHookEventAction(item, actionId);
+
+  if (!action) {
+    return;
+  }
+
+  if (action.open) {
+    openHookEventTarget(item, action.target ?? item.target);
+  }
+
+  if (!action.input) {
+    dismissHookEventToast(id);
+    return;
+  }
+
+  const sessionName = getHookEventTargetSession(item, action.target);
+
+  if (!sessionName) {
+    return;
+  }
+
+  try {
+    await api.sendInput(sessionName, action.input);
+    dismissHookEventToast(id);
+  } catch (error) {
+    console.warn("Failed to run hook event action", error);
   }
 }
 
@@ -2134,7 +2228,10 @@ function render() {
     onClose: () => setActionCenterOpen(false),
     onOpenSession: openActionCenterSession,
     onDismissPrompt: closeInputPrompt,
-    onSendPrompt: sendInputPromptAction
+    onSendPrompt: sendInputPromptAction,
+    onRunHookAction: (id, actionId) => {
+      void runHookEventAction(id, actionId);
+    }
   });
   renderInputPromptToast(appRoot, inputPrompts.getPrompts(), {
     onDismiss: closeInputPrompt,
@@ -2147,6 +2244,9 @@ function render() {
     onOpenActions: openHookEventActions,
     onSendEnter: (id) => {
       void sendHookEventEnter(id);
+    },
+    onRunAction: (id, actionId) => {
+      void runHookEventAction(id, actionId);
     }
   });
 

@@ -314,8 +314,11 @@ This is more reliable than screen parsing for states such as waiting for
 approval, blocked tasks, or failed commands.
 
 Hook requests from `127.0.0.1`, `::1`, or Tailscale `100.64.0.0/10` do not
-require a token. Other sources require a token. Setting one is still recommended
-when you want explicit protection in every environment:
+require a token when the source is the real socket address, or an Express trusted
+proxy address if trusted proxy is explicitly configured. Direct requests cannot
+bypass auth by spoofing `X-Forwarded-For`. Other sources require a token.
+Setting one is still recommended when you want explicit protection in every
+environment:
 
 ```bash
 export TMUX_UI_HOOK_TOKEN='change-me'
@@ -336,7 +339,34 @@ tmux-ui hooks-uninstall
 
 `hooks-install` merges a Codex `PermissionRequest` hook into
 `~/.codex/hooks.json` and a Claude `Notification(permission_prompt|idle_prompt)`
-hook into `~/.claude/settings.json`. Existing hooks are preserved.
+hook into `~/.claude/settings.json`. Existing hooks are preserved. The installed
+adapter emits standard `tmux-ui.hook/v1` events, so future tool adapters such as
+opencode, kimi, qwecn, or qodercli can map into the same payload without
+changing the UI.
+
+Standard hook events can include a cross-group target and explicit buttons:
+
+```json
+{
+  "schemaVersion": "tmux-ui.hook/v1",
+  "source": "codex",
+  "sessionName": "project-codex",
+  "eventType": "approval-required",
+  "status": "waiting",
+  "title": "Need confirmation",
+  "body": "Approve file edit?",
+  "target": {
+    "sessionName": "project-codex",
+    "projectName": "project",
+    "view": "terminal"
+  },
+  "actions": [
+    { "id": "approve", "label": "Approve", "input": "y\r", "style": "primary" },
+    { "id": "deny", "label": "Deny", "input": "n\r", "style": "danger" },
+    { "id": "open", "label": "Open", "open": true }
+  ]
+}
+```
 
 For other tools, call the helper manually from that tool's hook system:
 
@@ -346,6 +376,8 @@ echo "Approve file edit?" | \
   TMUX_UI_HOOK_EVENT_TYPE=approval-required \
   TMUX_UI_HOOK_STATUS=waiting \
   TMUX_UI_HOOK_TITLE='Need confirmation' \
+  TMUX_UI_HOOK_TARGET_PROJECT=project \
+  TMUX_UI_HOOK_ACTIONS_JSON='[{"id":"approve","label":"Approve","input":"y\r","style":"primary"}]' \
   ~/.tmux-ui/bin/tmux-ui-hook
 ```
 

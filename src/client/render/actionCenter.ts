@@ -7,6 +7,7 @@ export type ActionCenterPanelOptions = {
   onOpenSession: (sessionName: string) => void;
   onDismissPrompt: (promptKey: string) => void;
   onSendPrompt: (promptKey: string, input: string) => void;
+  onRunHookAction: (eventId: string, actionId: string) => void;
 };
 
 function formatActionCount(count: number) {
@@ -155,7 +156,12 @@ function renderHookEventItem(
 
   const meta = document.createElement("div");
   meta.className = "action-center-meta";
-  meta.textContent = [item.sessionName, item.eventType, item.taskId]
+  meta.textContent = [
+    item.target.sessionName ?? item.sessionName,
+    item.target.projectName,
+    item.eventType,
+    item.taskId
+  ]
     .filter(Boolean)
     .join(" · ");
 
@@ -166,11 +172,26 @@ function renderHookEventItem(
   const actions = document.createElement("div");
   actions.className = "action-center-actions";
 
+  item.actions.forEach((hookAction) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.action = "run-hook-action";
+    button.dataset.hookActionId = hookAction.id;
+    button.dataset.hookActionStyle = hookAction.style;
+    button.textContent = hookAction.label;
+    button.addEventListener("click", () => {
+      options.onRunHookAction(item.id, hookAction.id);
+    });
+    actions.append(button);
+  });
+
   const openButton = document.createElement("button");
   openButton.type = "button";
   openButton.dataset.action = "open-action-session";
   openButton.textContent = "Open";
-  openButton.addEventListener("click", () => options.onOpenSession(item.sessionName));
+  openButton.addEventListener("click", () =>
+    options.onOpenSession(item.target.sessionName ?? item.sessionName)
+  );
   actions.append(openButton);
 
   card.append(header, meta);

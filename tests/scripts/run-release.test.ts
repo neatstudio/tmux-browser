@@ -132,8 +132,12 @@ describe("run release scripts", () => {
     expect(hookHelperScript).toContain("Authorization: Bearer $token");
     expect(agentHookScript).toContain("codex-permission");
     expect(agentHookScript).toContain("claude-notification");
+    expect(agentHookScript).toContain("tmux-ui.hook/v1");
+    expect(agentHookScript).toContain("actions");
+    expect(agentHookScript).toContain("target");
     expect(installAgentHooksScript).toContain("PermissionRequest");
     expect(installAgentHooksScript).toContain("permission_prompt|idle_prompt");
+    expect(installAgentHooksScript).toContain("standard tmux-ui.hook/v1 events");
     expect(installAgentHooksScript).toContain("--uninstall");
     expect(packScript).toContain("scripts\", \"tmux-ui-hook.sh");
     expect(packScript).toContain("scripts\", \"tmux-ui-agent-hook.mjs");
@@ -143,8 +147,8 @@ describe("run release scripts", () => {
     expect(packScript).toContain('"$APP_HOME/install-agent-hooks.mjs"');
     expect(packScript).toContain('ln -sfn "$APP_HOME/tmux-ui-hook.sh" "$APP_HOME/bin/tmux-ui-hook"');
     expect(packScript).toContain('ln -sfn "$APP_HOME/tmux-ui-agent-hook.mjs" "$APP_HOME/bin/tmux-ui-agent-hook"');
-    expect(packScript).toContain("hooks-install Install Codex/Claude hooks");
-    expect(packScript).toContain("hooks-uninstall Remove tmux-ui Codex/Claude hooks");
+    expect(packScript).toContain("hooks-install Install agent hooks");
+    expect(packScript).toContain("hooks-uninstall Remove tmux-ui agent hooks");
     expect(packScript).toContain('node "$APP_HOME/install-agent-hooks.mjs"');
     expect(packScript).toContain("install_agent_hooks --uninstall");
     expect(packScript).toContain("TMUX_UI_HOOK_TOKEN='\\${TMUX_UI_HOOK_TOKEN:-}' ./start.sh");

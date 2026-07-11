@@ -47,9 +47,14 @@ import type {
 } from "../shared/groupMessages.js";
 import type {
   HookEvent,
+  HookEventAction,
+  HookEventActionStyle,
+  HookEventTarget,
+  HookEventTargetView,
   HookEventSeverity,
   HookEventStatus
 } from "../shared/hookEvents.js";
+import { HOOK_EVENT_SCHEMA_VERSION } from "../shared/hookEvents.js";
 
 const faviconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#15181c"/><path d="M14 14h36v10H37v28H27V24H14z" fill="#b7ffb0"/></svg>`;
 const UNGROUPED_PROJECT_NAME = "ungrouped";
@@ -66,6 +71,9 @@ const IMAGE_MIME_TYPES = new Map([
 const HOOK_TEXT_LIMIT = 4_000;
 const HOOK_TITLE_LIMIT = 160;
 const HOOK_METADATA_LIMIT = 24;
+const HOOK_ACTION_LIMIT = 8;
+const HOOK_ACTION_LABEL_LIMIT = 80;
+const HOOK_TARGET_LIMIT = 128;
 const HOOK_STATUSES = new Set<HookEventStatus>([
   "waiting",
   "blocked",
@@ -79,6 +87,15 @@ const HOOK_SEVERITIES = new Set<HookEventSeverity>([
   "info",
   "warning",
   "error"
+]);
+const HOOK_ACTION_STYLES = new Set<HookEventActionStyle>([
+  "primary",
+  "secondary",
+  "danger"
+]);
+const HOOK_TARGET_VIEWS = new Set<HookEventTargetView>([
+  "terminal",
+  "kanban"
 ]);
 
 class HttpError extends Error {
@@ -232,6 +249,18 @@ function readNullableString(value: unknown, maxLength = HOOK_TEXT_LIMIT) {
   return normalized || null;
 }
 
+function readOptionalRawString(value: unknown, maxLength = HOOK_TEXT_LIMIT) {
+  if (typeof value !== "string" || value.length === 0) {
+    return null;
+  }
+
+  return value.slice(0, maxLength);
+}
+
+function readBoolean(value: unknown, fallback = false) {
+  return typeof value === "boolean" ? value : fallback;
+}
+
 function normalizeHookStatus(value: unknown): HookEventStatus {
   const normalized = readString(value, { fallback: "info", maxLength: 40 });
 
@@ -246,6 +275,133 @@ function normalizeHookSeverity(value: unknown): HookEventSeverity {
   return HOOK_SEVERITIES.has(normalized as HookEventSeverity)
     ? (normalized as HookEventSeverity)
     : "info";
+}
+
+function normalizeHookTargetView(value: unknown): HookEventTargetView {
+  const normalized = readString(value, {
+    fallback: "terminal",
+    maxLength: 40
+  });
+
+  return HOOK_TARGET_VIEWS.has(normalized as HookEventTargetView)
+    ? (normalized as HookEventTargetView)
+    : "terminal";
+}
+
+function normalizeHookActionStyle(value: unknown): HookEventActionStyle {
+  const normalized = readString(value, {
+    fallback: "secondary",
+    maxLength: 40
+  });
+
+  return HOOK_ACTION_STYLES.has(normalized as HookEventActionStyle)
+    ? (normalized as HookEventActionStyle)
+    : "secondary";
+}
+
+function readHookTargetString(
+  payload: Record<string, unknown>,
+  keys: string[]
+) {
+  for (const key of keys) {
+    const value = readNullableString(payload[key], HOOK_TARGET_LIMIT);
+
+    if (value) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function normalizeOptionalHookTarget(value: unknown): HookEventTarget | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const payload = value as Record<string, unknown>;
+  const sessionName = readHookTargetString(payload, [
+    "sessionName",
+    "session",
+    "session_name"
+  ]);
+
+  if (sessionName) {
+    try {
+      validateSessionName(sessionName);
+    } catch {
+      throw new HttpError("Invalid hook target session name", 400);
+    }
+  }
+
+  return {
+    sessionName,
+    projectName: readHookTargetString(payload, [
+      "projectName",
+      "project",
+      "groupName",
+      "group"
+    ]),
+    view: normalizeHookTargetView(payload.view)
+  };
+}
+
+function normalizeHookTarget(
+  value: unknown,
+  fallbackSessionName: string
+): HookEventTarget {
+  return normalizeOptionalHookTarget(value) ?? {
+    sessionName: fallbackSessionName,
+    projectName: null,
+    view: "terminal"
+  };
+}
+
+function normalizeHookActions(value: unknown): HookEventAction[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const actions: HookEventAction[] = [];
+  const seenIds = new Set<string>();
+
+  for (const [index, entry] of value.entries()) {
+    if (actions.length >= HOOK_ACTION_LIMIT) {
+      break;
+    }
+
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      continue;
+    }
+
+    const payload = entry as Record<string, unknown>;
+    const fallbackId = `action-${index + 1}`;
+    let id = readString(payload.id, {
+      fallback: fallbackId,
+      maxLength: HOOK_ACTION_LABEL_LIMIT
+    });
+
+    if (seenIds.has(id)) {
+      id = `${id}-${index + 1}`;
+    }
+
+    seenIds.add(id);
+    const label = readString(payload.label, {
+      fallback: id,
+      maxLength: HOOK_ACTION_LABEL_LIMIT
+    });
+
+    actions.push({
+      id,
+      label,
+      input: readOptionalRawString(payload.input),
+      open: readBoolean(payload.open),
+      target: normalizeOptionalHookTarget(payload.target),
+      style: normalizeHookActionStyle(payload.style)
+    });
+  }
+
+  return actions;
 }
 
 function normalizeHookMetadata(value: unknown) {
@@ -302,6 +458,7 @@ function normalizeHookEventPayload(body: unknown): HookEvent {
   });
 
   return {
+    schemaVersion: HOOK_EVENT_SCHEMA_VERSION,
     source,
     sessionName,
     eventType,
@@ -311,6 +468,8 @@ function normalizeHookEventPayload(body: unknown): HookEvent {
     cwd: readNullableString(payload.cwd),
     taskId: readNullableString(payload.taskId, 160),
     severity: normalizeHookSeverity(payload.severity),
+    target: normalizeHookTarget(payload.target, sessionName),
+    actions: normalizeHookActions(payload.actions),
     metadata: normalizeHookMetadata(payload.metadata)
   };
 }
@@ -322,7 +481,7 @@ function getHookBearerToken(req: express.Request) {
   return match?.[1] ?? req.get("x-tmux-ui-hook-token") ?? "";
 }
 
-function normalizeRemoteAddress(value: string | undefined) {
+function normalizeRemoteAddress(value: string | undefined | null) {
   if (!value) {
     return "";
   }
@@ -352,18 +511,21 @@ function isLocalHookAddress(address: string) {
   return address === "127.0.0.1" || address === "::1" || address === "localhost";
 }
 
-function getHookRemoteAddress(req: express.Request) {
-  return normalizeRemoteAddress(
-    req.get("x-forwarded-for") ??
-      req.socket.remoteAddress ??
-      req.ip
-  );
+export function getHookRemoteAddress(req: {
+  ip?: string;
+  socket?: { remoteAddress?: string | null };
+}) {
+  return normalizeRemoteAddress(req.ip ?? req.socket?.remoteAddress);
+}
+
+export function isTrustedHookRemoteAddress(address: string) {
+  return isLocalHookAddress(address) || isTailscaleAddress(address);
 }
 
 function isTrustedHookSource(req: express.Request) {
   const address = getHookRemoteAddress(req);
 
-  return isLocalHookAddress(address) || isTailscaleAddress(address);
+  return isTrustedHookRemoteAddress(address);
 }
 
 function assertHookAuthorized(req: express.Request, hookToken: string) {
@@ -757,6 +919,7 @@ export function createApp(options: {
   eventHub?: AppEventHub;
   preferences?: PreferenceStore;
   hookToken?: string;
+  trustedProxy?: boolean | number | string | string[];
 } = {}) {
   const tmuxService = options.tmuxService ?? createTmuxService();
   const readServerStatus = options.getServerStatus ?? getServerStatus;
@@ -774,6 +937,10 @@ export function createApp(options: {
   const hookToken = options.hookToken ?? process.env.TMUX_UI_HOOK_TOKEN ?? "";
   const app = express();
   const clientDistDir = resolve(process.cwd(), "dist/client");
+
+  if (options.trustedProxy !== undefined) {
+    app.set("trust proxy", options.trustedProxy);
+  }
 
   app.use(express.json());
 
@@ -817,6 +984,7 @@ export function createApp(options: {
         sessionName: hookEvent.sessionName,
         message: hookEvent.title,
         metadata: {
+          ...(hookEvent.metadata ?? {}),
           source: hookEvent.source,
           eventType: hookEvent.eventType,
           status: hookEvent.status,
@@ -824,7 +992,8 @@ export function createApp(options: {
           taskId: hookEvent.taskId,
           cwd: hookEvent.cwd,
           body: hookEvent.body,
-          ...(hookEvent.metadata ?? {})
+          target: JSON.stringify(hookEvent.target),
+          actions: JSON.stringify(hookEvent.actions)
         }
       });
       const appEvent = options.eventHub?.publish({

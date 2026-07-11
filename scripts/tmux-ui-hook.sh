@@ -9,6 +9,10 @@ status="${TMUX_UI_HOOK_STATUS:-info}"
 severity="${TMUX_UI_HOOK_SEVERITY:-info}"
 title="${TMUX_UI_HOOK_TITLE:-}"
 task_id="${TMUX_UI_HOOK_TASK_ID:-}"
+target_project="${TMUX_UI_HOOK_TARGET_PROJECT:-}"
+target_view="${TMUX_UI_HOOK_TARGET_VIEW:-terminal}"
+target_json="${TMUX_UI_HOOK_TARGET_JSON:-}"
+actions_json="${TMUX_UI_HOOK_ACTIONS_JSON:-[]}"
 session_name="${TMUX_UI_SESSION_NAME:-${TMUX_UI_SESSION:-}}"
 body=""
 
@@ -38,6 +42,7 @@ json_escape() {
 payload="$(
   {
     printf '{'
+    printf '"schemaVersion":"tmux-ui.hook/v1",'
     printf '"source":%s,' "$(printf '%s' "$source" | json_escape)"
     printf '"sessionName":%s,' "$(printf '%s' "$session_name" | json_escape)"
     printf '"cwd":%s,' "$(printf '%s' "${PWD:-}" | json_escape)"
@@ -46,7 +51,17 @@ payload="$(
     printf '"severity":%s,' "$(printf '%s' "$severity" | json_escape)"
     printf '"title":%s,' "$(printf '%s' "$title" | json_escape)"
     printf '"body":%s,' "$(printf '%s' "$body" | json_escape)"
-    printf '"taskId":%s' "$(printf '%s' "$task_id" | json_escape)"
+    printf '"taskId":%s,' "$(printf '%s' "$task_id" | json_escape)"
+    if [[ -n "$target_json" ]]; then
+      printf '"target":%s,' "$target_json"
+    else
+      printf '"target":{'
+      printf '"sessionName":%s,' "$(printf '%s' "$session_name" | json_escape)"
+      printf '"projectName":%s,' "$(printf '%s' "$target_project" | json_escape)"
+      printf '"view":%s' "$(printf '%s' "$target_view" | json_escape)"
+      printf '},'
+    fi
+    printf '"actions":%s' "$actions_json"
     printf '}'
   }
 )"

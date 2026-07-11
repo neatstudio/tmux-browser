@@ -39,7 +39,8 @@ describe("renderActionCenterPanel", () => {
       onClose,
       onOpenSession,
       onDismissPrompt,
-      onSendPrompt
+      onSendPrompt,
+      onRunHookAction: vi.fn()
     });
 
     expect(root.querySelector(".action-center-panel")).not.toBeNull();
@@ -106,7 +107,8 @@ describe("renderActionCenterPanel", () => {
       onClose: vi.fn(),
       onOpenSession: vi.fn(),
       onDismissPrompt: vi.fn(),
-      onSendPrompt
+      onSendPrompt,
+      onRunHookAction: vi.fn()
     });
 
     expect(root.textContent).toContain("2 actions");
@@ -129,6 +131,7 @@ describe("renderActionCenterPanel", () => {
   it("renders hook events as session-openable action cards", () => {
     const root = document.createElement("div");
     const onOpenSession = vi.fn();
+    const onRunHookAction = vi.fn();
 
     renderActionCenterPanel(root, {
       open: true,
@@ -142,24 +145,58 @@ describe("renderActionCenterPanel", () => {
           status: "waiting",
           title: "Need approval",
           body: "Approve file edit?",
-          taskId: "task-1"
+          taskId: "task-1",
+          target: {
+            sessionName: "project-codex",
+            projectName: "project",
+            view: "terminal"
+          },
+          actions: [
+            {
+              id: "approve",
+              label: "Approve",
+              input: "y\r",
+              open: false,
+              target: null,
+              style: "primary"
+            },
+            {
+              id: "details",
+              label: "Open details",
+              input: null,
+              open: true,
+              target: {
+                sessionName: "project-review",
+                projectName: "project",
+                view: "terminal"
+              },
+              style: "secondary"
+            }
+          ]
         }
       ],
       onClose: vi.fn(),
       onOpenSession,
       onDismissPrompt: vi.fn(),
-      onSendPrompt: vi.fn()
+      onSendPrompt: vi.fn(),
+      onRunHookAction
     });
 
     expect(root.textContent).toContain("Need approval");
     expect(root.textContent).toContain("codex");
     expect(root.textContent).toContain("waiting");
     expect(root.textContent).toContain("Approve file edit?");
+    expect(root.textContent).toContain("Approve");
+    expect(root.textContent).toContain("Open details");
     root
       .querySelector<HTMLButtonElement>("[data-action='open-action-session']")
       ?.click();
+    root
+      .querySelector<HTMLButtonElement>("[data-action='run-hook-action']")
+      ?.click();
 
-    expect(onOpenSession).toHaveBeenCalledWith("codex");
+    expect(onOpenSession).toHaveBeenCalledWith("project-codex");
+    expect(onRunHookAction).toHaveBeenCalledWith("hook:1", "approve");
   });
 
   it("shows an empty state while open without actions", () => {
@@ -171,7 +208,8 @@ describe("renderActionCenterPanel", () => {
       onClose: vi.fn(),
       onOpenSession: vi.fn(),
       onDismissPrompt: vi.fn(),
-      onSendPrompt: vi.fn()
+      onSendPrompt: vi.fn(),
+      onRunHookAction: vi.fn()
     });
 
     expect(root.textContent).toContain("No pending actions");
@@ -186,7 +224,8 @@ describe("renderActionCenterPanel", () => {
       onClose: vi.fn(),
       onOpenSession: vi.fn(),
       onDismissPrompt: vi.fn(),
-      onSendPrompt: vi.fn()
+      onSendPrompt: vi.fn(),
+      onRunHookAction: vi.fn()
     });
     renderActionCenterPanel(root, {
       open: false,
@@ -194,7 +233,8 @@ describe("renderActionCenterPanel", () => {
       onClose: vi.fn(),
       onOpenSession: vi.fn(),
       onDismissPrompt: vi.fn(),
-      onSendPrompt: vi.fn()
+      onSendPrompt: vi.fn(),
+      onRunHookAction: vi.fn()
     });
 
     expect(root.querySelector(".action-center-backdrop")).toBeNull();

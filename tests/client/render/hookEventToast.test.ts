@@ -18,6 +18,29 @@ function hookItem(
     title: "Codex approval needed",
     body: "1. Yes, proceed (y)\n2. No (esc)",
     taskId: "task-1",
+    target: {
+      sessionName: "codex",
+      projectName: "project",
+      view: "terminal"
+    },
+    actions: [
+      {
+        id: "approve",
+        label: "Approve",
+        input: "y\r",
+        open: false,
+        target: null,
+        style: "primary"
+      },
+      {
+        id: "deny",
+        label: "Deny",
+        input: "n\r",
+        open: false,
+        target: null,
+        style: "danger"
+      }
+    ],
     ...overrides
   };
 }
@@ -29,21 +52,25 @@ describe("renderHookEventToast", () => {
     const onOpenSession = vi.fn();
     const onOpenActions = vi.fn();
     const onSendEnter = vi.fn();
+    const onRunAction = vi.fn();
 
     renderHookEventToast(root, [hookItem()], {
       onDismiss,
       onOpenSession,
       onOpenActions,
-      onSendEnter
+      onSendEnter,
+      onRunAction
     });
 
     expect(root.querySelector(".hook-event-toast")).not.toBeNull();
     expect(root.textContent).toContain("Codex approval needed");
     expect(root.textContent).toContain("codex · waiting");
     expect(root.textContent).toContain("Yes, proceed");
+    expect(root.textContent).toContain("Approve");
+    expect(root.textContent).toContain("Deny");
 
     root
-      .querySelector<HTMLButtonElement>("[data-action='hook-toast-enter']")
+      .querySelector<HTMLButtonElement>("[data-action='hook-toast-run-action']")
       ?.click();
     root
       .querySelector<HTMLButtonElement>("[data-action='hook-toast-open']")
@@ -55,7 +82,8 @@ describe("renderHookEventToast", () => {
       .querySelector<HTMLButtonElement>("[data-action='hook-toast-close']")
       ?.click();
 
-    expect(onSendEnter).toHaveBeenCalledWith("hook:1");
+    expect(onRunAction).toHaveBeenCalledWith("hook:1", "approve");
+    expect(onSendEnter).not.toHaveBeenCalled();
     expect(onOpenSession).toHaveBeenCalledWith("hook:1");
     expect(onOpenActions).toHaveBeenCalledWith("hook:1");
     expect(onDismiss).toHaveBeenCalledWith("hook:1");
@@ -67,7 +95,8 @@ describe("renderHookEventToast", () => {
       onDismiss: vi.fn(),
       onOpenSession: vi.fn(),
       onOpenActions: vi.fn(),
-      onSendEnter: vi.fn()
+      onSendEnter: vi.fn(),
+      onRunAction: vi.fn()
     };
 
     renderHookEventToast(root, [hookItem()], handlers);

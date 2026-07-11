@@ -856,8 +856,8 @@ Commands:
   service-status   Show systemd/launchd service status
   service-stop     Stop systemd/launchd service
   service-uninstall Stop and remove systemd/launchd service
-  hooks-install Install Codex/Claude hooks that report attention events
-  hooks-uninstall Remove tmux-ui Codex/Claude hooks
+  hooks-install Install agent hooks that report standard tmux-ui events
+  hooks-uninstall Remove tmux-ui agent hooks
   tmux-install  Install tmux-resurrect and tmux-continuum
   tmux-status   Show tmux resurrection status
   tmux-save     Save tmux sessions now

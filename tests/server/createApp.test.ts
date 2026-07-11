@@ -13,7 +13,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
-import { createApp } from "../../src/server/createApp";
+import {
+  createApp,
+  getHookRemoteAddress,
+  isTrustedHookRemoteAddress
+} from "../../src/server/createApp";
 import { createAppEventHub } from "../../src/server/services/events/createAppEventHub";
 import { createTimelineStore } from "../../src/server/services/timeline/createTimelineStore";
 import { fetchRemoteImage } from "../../src/server/services/uploads/remoteImageUploadService";
@@ -148,7 +152,28 @@ describe("createApp", () => {
         metadata: {
           tool: "apply_patch",
           ignored: { nested: true }
-        }
+        },
+        target: {
+          sessionName: "project-codex",
+          projectName: "project"
+        },
+        actions: [
+          {
+            id: "approve",
+            label: "Approve",
+            input: "y\r",
+            style: "primary"
+          },
+          {
+            id: "details",
+            label: "Open details",
+            open: true,
+            target: {
+              sessionName: "project-review",
+              projectName: "project"
+            }
+          }
+        ]
       });
 
     expect(response.status).toBe(202);
@@ -162,11 +187,40 @@ describe("createApp", () => {
       title: "Need confirmation",
       body: "Approve file edit?",
       taskId: "task-1",
+      schemaVersion: "tmux-ui.hook/v1",
+      target: {
+        sessionName: "project-codex",
+        projectName: "project",
+        view: "terminal"
+      },
+      actions: [
+        {
+          id: "approve",
+          label: "Approve",
+          input: "y\r",
+          open: false,
+          style: "primary",
+          target: null
+        },
+        {
+          id: "details",
+          label: "Open details",
+          input: null,
+          open: true,
+          style: "secondary",
+          target: {
+            sessionName: "project-review",
+            projectName: "project",
+            view: "terminal"
+          }
+        }
+      ],
       metadata: {
         tool: "apply_patch"
       }
     });
-    expect(timelineStore.listEvents({ limit: 1 })[0]).toMatchObject({
+    const timelineEvent = timelineStore.listEvents({ limit: 1 })[0];
+    expect(timelineEvent).toMatchObject({
       type: "hook-event",
       sessionName: "local-pets",
       message: "Need confirmation",
@@ -175,22 +229,72 @@ describe("createApp", () => {
         eventType: "approval-required",
         status: "waiting",
         taskId: "task-1",
-        cwd: "/Users/gouki/server/wwwroot/own/pets"
+        cwd: "/Users/gouki/server/wwwroot/own/pets",
+        target: expect.any(String),
+        actions: expect.any(String)
       }
     });
+    expect(JSON.parse(String(timelineEvent.metadata?.target))).toEqual({
+      sessionName: "project-codex",
+      projectName: "project",
+      view: "terminal"
+    });
+    expect(JSON.parse(String(timelineEvent.metadata?.actions))).toEqual([
+      {
+        id: "approve",
+        label: "Approve",
+        input: "y\r",
+        open: false,
+        target: null,
+        style: "primary"
+      },
+      {
+        id: "details",
+        label: "Open details",
+        input: null,
+        open: true,
+        target: {
+          sessionName: "project-review",
+          projectName: "project",
+          view: "terminal"
+        },
+        style: "secondary"
+      }
+    ]);
     expect(received).toEqual([
       expect.objectContaining({
         type: "hook-event",
         source: "codex",
         sessionName: "local-pets",
-        status: "waiting"
+        status: "waiting",
+        actions: expect.arrayContaining([
+          expect.objectContaining({ id: "approve", label: "Approve" })
+        ]),
+        target: {
+          sessionName: "project-codex",
+          projectName: "project",
+          view: "terminal"
+        }
       })
     ]);
+  });
+
+  it("does not trust spoofable X-Forwarded-For values for hook auth", () => {
+    const address = getHookRemoteAddress({
+      ip: "203.0.113.20",
+      socket: { remoteAddress: "203.0.113.20" },
+      get: (header: string) =>
+        header.toLowerCase() === "x-forwarded-for" ? "127.0.0.1" : undefined
+    });
+
+    expect(address).toBe("203.0.113.20");
+    expect(isTrustedHookRemoteAddress(address)).toBe(false);
   });
 
   it("rejects hook events without the configured bearer token", async () => {
     const app = createApp({
       hookToken: "secret-token",
+      trustedProxy: true,
       tmuxService: {
         listSessions: vi.fn(),
         createSession: vi.fn(),
@@ -217,8 +321,9 @@ describe("createApp", () => {
     expect(response.status).toBe(401);
   });
 
-  it("allows hook events from localhost or Tailscale addresses without a token", async () => {
+  it("allows hook events from trusted proxy localhost or Tailscale addresses without a token", async () => {
     const app = createApp({
+      trustedProxy: true,
       tmuxService: {
         listSessions: vi.fn(),
         createSession: vi.fn(),
@@ -257,6 +362,7 @@ describe("createApp", () => {
   it("still requires a token for hook events from non-local private addresses", async () => {
     const app = createApp({
       hookToken: "secret-token",
+      trustedProxy: true,
       tmuxService: {
         listSessions: vi.fn(),
         createSession: vi.fn(),

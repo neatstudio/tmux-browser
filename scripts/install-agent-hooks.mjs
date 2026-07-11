@@ -149,7 +149,7 @@ function uninstallClaudeHooks() {
 }
 
 function printHelp() {
-  console.log(`Install tmux-ui agent hooks.
+  console.log(`Install tmux-ui agent hooks that emit standard tmux-ui.hook/v1 events.
 
 Usage:
   node scripts/install-agent-hooks.mjs [--codex] [--claude]

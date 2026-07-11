@@ -10,9 +10,11 @@ directly. It is based on the current Express routes and shared TypeScript types.
 - API routes do not implement user login or API keys. Keep the server bound to a
   trusted private interface.
 - `POST /api/hooks/events` accepts unauthenticated requests from localhost and
-  Tailscale `100.64.0.0/10`. Other sources require `Authorization: Bearer
-  <TMUX_UI_HOOK_TOKEN>` or `X-Tmux-Ui-Hook-Token: <token>` when a hook token is
-  configured.
+  Tailscale `100.64.0.0/10` based on the socket address, or the Express trusted
+  proxy address if trusted proxy is explicitly configured. Direct requests cannot
+  bypass this by spoofing `X-Forwarded-For`. Other sources require
+  `Authorization: Bearer <TMUX_UI_HOOK_TOKEN>` or
+  `X-Tmux-Ui-Hook-Token: <token>` when a hook token is configured.
 - JSON endpoints expect `Content-Type: application/json`.
 - Path parameters should be URL-encoded.
 - JSON errors use:
@@ -419,7 +421,23 @@ type HookEventStatus =
 
 type HookEventSeverity = "info" | "warning" | "error";
 
+type HookEventTarget = {
+  sessionName: string | null;
+  projectName: string | null;
+  view: "terminal" | "kanban";
+};
+
+type HookEventAction = {
+  id: string;
+  label: string;
+  input: string | null;
+  open: boolean;
+  target: HookEventTarget | null;
+  style: "primary" | "secondary" | "danger";
+};
+
 type HookEvent = {
+  schemaVersion: "tmux-ui.hook/v1";
   source: string;
   sessionName: string;
   eventType: string;
@@ -429,6 +447,8 @@ type HookEvent = {
   cwd: string | null;
   taskId: string | null;
   severity: HookEventSeverity;
+  target: HookEventTarget;
+  actions: HookEventAction[];
   metadata?: Record<string, string | number | boolean | null>;
 };
 ```
@@ -453,8 +473,16 @@ type Response = {
 };
 ```
 
-Defaults: `source` is `"custom"`, `eventType` is `"event"`, `status` is
-`"info"`, `severity` is `"info"`, and `title` is `"<source> <eventType>"`.
+Defaults: `schemaVersion` is `"tmux-ui.hook/v1"`, `source` is `"custom"`,
+`eventType` is `"event"`, `status` is `"info"`, `severity` is `"info"`,
+`title` is `"<source> <eventType>"`, `target.sessionName` is `sessionName`,
+and `actions` is `[]`.
+
+`target` lets tmux-ui jump to the correct terminal or Kanban group when the event
+belongs to a different group than the current page. `actions` renders explicit
+buttons in the toast and Action Center. For example, an approval hook can send
+`"y\r"` or `"n\r"` directly to the target tmux session instead of relying on
+screen-content guessing.
 
 ## Uploads And Image Preview
 
@@ -545,11 +573,22 @@ curl -fsS "$BASE/api/sessions/third-party/send" \
 curl -fsS "$BASE/api/hooks/events" \
   -H 'Content-Type: application/json' \
   -d '{
+    "schemaVersion": "tmux-ui.hook/v1",
     "source": "third-party",
-    "sessionName": "third-party",
-    "eventType": "need-input",
+    "sessionName": "project-codex",
+    "eventType": "approval-required",
     "status": "waiting",
     "title": "Tool needs input",
-    "body": "Approve the next step?"
+    "body": "Approve the next step?",
+    "target": {
+      "sessionName": "project-codex",
+      "projectName": "project",
+      "view": "terminal"
+    },
+    "actions": [
+      { "id": "approve", "label": "Approve", "input": "y\r", "style": "primary" },
+      { "id": "deny", "label": "Deny", "input": "n\r", "style": "danger" },
+      { "id": "open", "label": "Open", "open": true }
+    ]
   }'
 ```

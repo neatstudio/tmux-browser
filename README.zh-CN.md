@@ -283,7 +283,7 @@ ssh server-a
 
 tmux-ui 支持接收 Codex、Claude 或其他 agent hook 主动上报的事件。相比扫描终端画面，hook 更适合上报等待确认、任务阻塞、命令失败等明确状态。
 
-来自 `127.0.0.1`、`::1` 或 Tailscale `100.64.0.0/10` 的 hook 请求可以免 token。其他来源需要 token；如果你希望所有环境都显式保护，仍建议设置 token：
+来自 `127.0.0.1`、`::1` 或 Tailscale `100.64.0.0/10` 的 hook 请求可以免 token，但判断依据是真实 socket 地址；只有显式配置 trusted proxy 时，才会使用 Express 解析后的代理地址。直接请求不能通过伪造 `X-Forwarded-For` 绕过鉴权。其他来源需要 token；如果你希望所有环境都显式保护，仍建议设置 token：
 
 ```bash
 export TMUX_UI_HOOK_TOKEN='change-me'
@@ -302,7 +302,31 @@ tmux-ui hooks-install
 tmux-ui hooks-uninstall
 ```
 
-`hooks-install` 会合并写入 `~/.codex/hooks.json` 的 `PermissionRequest` 和 `~/.claude/settings.json` 的 `Notification(permission_prompt|idle_prompt)`，不会覆盖已有 hook。
+`hooks-install` 会合并写入 `~/.codex/hooks.json` 的 `PermissionRequest` 和 `~/.claude/settings.json` 的 `Notification(permission_prompt|idle_prompt)`，不会覆盖已有 hook。安装的 adapter 会输出标准 `tmux-ui.hook/v1` 事件，后续增加 opencode、kimi、qwecn、qodercli 等工具时，只需要新增安装适配器，不需要改 UI。
+
+标准 hook 事件可以带跨 group target 和明确按钮：
+
+```json
+{
+  "schemaVersion": "tmux-ui.hook/v1",
+  "source": "codex",
+  "sessionName": "project-codex",
+  "eventType": "approval-required",
+  "status": "waiting",
+  "title": "Need confirmation",
+  "body": "Approve file edit?",
+  "target": {
+    "sessionName": "project-codex",
+    "projectName": "project",
+    "view": "terminal"
+  },
+  "actions": [
+    { "id": "approve", "label": "Approve", "input": "y\r", "style": "primary" },
+    { "id": "deny", "label": "Deny", "input": "n\r", "style": "danger" },
+    { "id": "open", "label": "Open", "open": true }
+  ]
+}
+```
 
 如果要手动在其他工具 hook 中调用：
 
@@ -312,6 +336,8 @@ echo "Approve file edit?" | \
   TMUX_UI_HOOK_EVENT_TYPE=approval-required \
   TMUX_UI_HOOK_STATUS=waiting \
   TMUX_UI_HOOK_TITLE='Need confirmation' \
+  TMUX_UI_HOOK_TARGET_PROJECT=project \
+  TMUX_UI_HOOK_ACTIONS_JSON='[{"id":"approve","label":"Approve","input":"y\r","style":"primary"}]' \
   ~/.tmux-ui/bin/tmux-ui-hook
 ```
 

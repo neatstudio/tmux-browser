@@ -5,6 +5,7 @@ export type HookEventToastActions = {
   onOpenSession: (id: string) => void;
   onOpenActions: (id: string) => void;
   onSendEnter: (id: string) => void;
+  onRunAction: (id: string, actionId: string) => void;
 };
 
 export function renderHookEventToast(
@@ -67,11 +68,27 @@ export function renderHookEventToast(
   const actions = document.createElement("div");
   actions.className = "hook-event-toast-actions";
 
-  const enterButton = document.createElement("button");
-  enterButton.type = "button";
-  enterButton.dataset.action = "hook-toast-enter";
-  enterButton.textContent = "Enter";
-  enterButton.addEventListener("click", () => handlers.onSendEnter(event.id));
+  if (event.actions.length > 0) {
+    event.actions.slice(0, 3).forEach((hookAction) => {
+      const actionButton = document.createElement("button");
+      actionButton.type = "button";
+      actionButton.dataset.action = "hook-toast-run-action";
+      actionButton.dataset.hookActionId = hookAction.id;
+      actionButton.dataset.hookActionStyle = hookAction.style;
+      actionButton.textContent = hookAction.label;
+      actionButton.addEventListener("click", () =>
+        handlers.onRunAction(event.id, hookAction.id)
+      );
+      actions.append(actionButton);
+    });
+  } else {
+    const enterButton = document.createElement("button");
+    enterButton.type = "button";
+    enterButton.dataset.action = "hook-toast-enter";
+    enterButton.textContent = "Enter";
+    enterButton.addEventListener("click", () => handlers.onSendEnter(event.id));
+    actions.append(enterButton);
+  }
 
   const openButton = document.createElement("button");
   openButton.type = "button";
@@ -85,7 +102,7 @@ export function renderHookEventToast(
   actionsButton.textContent = "Actions";
   actionsButton.addEventListener("click", () => handlers.onOpenActions(event.id));
 
-  actions.append(enterButton, openButton, actionsButton);
+  actions.append(openButton, actionsButton);
   toast.append(actions);
   root.append(toast);
 }

@@ -121,7 +121,28 @@ describe("deriveActionCenterItems", () => {
             eventType: "approval-required",
             status: "waiting",
             body: "Approve file edit?",
-            taskId: "task-1"
+            taskId: "task-1",
+            target: JSON.stringify({
+              sessionName: "project-codex",
+              projectName: "project"
+            }),
+            actions: JSON.stringify([
+              {
+                id: "approve",
+                label: "Approve",
+                input: "y\r",
+                style: "primary"
+              },
+              {
+                id: "details",
+                label: "Open details",
+                open: true,
+                target: {
+                  sessionName: "project-review",
+                  projectName: "project"
+                }
+              }
+            ])
           }
         },
         {
@@ -149,7 +170,34 @@ describe("deriveActionCenterItems", () => {
         status: "waiting",
         title: "Need approval",
         body: "Approve file edit?",
-        taskId: "task-1"
+        taskId: "task-1",
+        target: {
+          sessionName: "project-codex",
+          projectName: "project",
+          view: "terminal"
+        },
+        actions: [
+          {
+            id: "approve",
+            label: "Approve",
+            input: "y\r",
+            open: false,
+            style: "primary",
+            target: null
+          },
+          {
+            id: "details",
+            label: "Open details",
+            input: null,
+            open: true,
+            style: "secondary",
+            target: {
+              sessionName: "project-review",
+              projectName: "project",
+              view: "terminal"
+            }
+          }
+        ]
       }
     ]);
   });

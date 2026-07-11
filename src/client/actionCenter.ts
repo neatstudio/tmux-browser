@@ -1,6 +1,10 @@
 import type { SessionSummary } from "./api/sessionApi";
 import type { InputPromptNotice } from "./state/inputPromptRegistry";
 import type { TerminalInputPromptAction } from "../shared/inputPromptDetector";
+import type {
+  HookEventAction,
+  HookEventTarget
+} from "../shared/hookEvents";
 import type { TimelineEvent } from "../shared/timeline";
 
 export type ActionCenterInputPromptItem = {
@@ -32,6 +36,8 @@ export type ActionCenterHookEventItem = {
   title: string;
   body: string | null;
   taskId: string | null;
+  target: HookEventTarget;
+  actions: HookEventAction[];
 };
 
 export type ActionCenterItem =
@@ -53,6 +59,91 @@ function readMetadataString(
   const value = metadata?.[key];
 
   return typeof value === "string" ? value : null;
+}
+
+function readMetadataJson(
+  metadata: TimelineEvent["metadata"] | undefined,
+  key: string
+) {
+  const value = readMetadataString(metadata, key);
+
+  if (!value) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+function readHookTarget(value: unknown, fallbackSessionName: string): HookEventTarget {
+  const target = value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+  const sessionName =
+    typeof target.sessionName === "string" && target.sessionName.trim()
+      ? target.sessionName.trim()
+      : fallbackSessionName || null;
+  const projectName =
+    typeof target.projectName === "string" && target.projectName.trim()
+      ? target.projectName.trim()
+      : null;
+  const view = target.view === "kanban" ? "kanban" : "terminal";
+
+  return { sessionName, projectName, view };
+}
+
+function readOptionalHookTarget(value: unknown): HookEventTarget | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const target = readHookTarget(value, "");
+
+  return target.sessionName || target.projectName ? target : null;
+}
+
+function readHookActionStyle(value: unknown): HookEventAction["style"] {
+  return value === "primary" || value === "danger" ? value : "secondary";
+}
+
+function readHookActions(value: unknown): HookEventAction[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap<HookEventAction>((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      return [];
+    }
+
+    const action = entry as Record<string, unknown>;
+    const id =
+      typeof action.id === "string" && action.id.trim()
+        ? action.id.trim()
+        : "";
+    const label =
+      typeof action.label === "string" && action.label.trim()
+        ? action.label.trim()
+        : id;
+
+    if (!id || !label) {
+      return [];
+    }
+
+    return [
+      {
+        id,
+        label,
+        input: typeof action.input === "string" ? action.input : null,
+        open: action.open === true,
+        target: readOptionalHookTarget(action.target),
+        style: readHookActionStyle(action.style)
+      }
+    ];
+  });
 }
 
 export function deriveActionCenterItems(input: {
@@ -122,7 +213,12 @@ export function deriveActionCenterItems(input: {
             status,
             title: event.message,
             body: readMetadataString(event.metadata, "body"),
-            taskId: readMetadataString(event.metadata, "taskId")
+            taskId: readMetadataString(event.metadata, "taskId"),
+            target: readHookTarget(
+              readMetadataJson(event.metadata, "target"),
+              event.sessionName ?? ""
+            ),
+            actions: readHookActions(readMetadataJson(event.metadata, "actions"))
           }
         ];
       }) ?? [];
