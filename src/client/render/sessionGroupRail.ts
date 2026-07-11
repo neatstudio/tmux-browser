@@ -82,6 +82,11 @@ export function renderSessionGroupRail(
 ) {
   root.querySelector(".terminal-session-rail")?.remove();
 
+  if (actions.uiTier && actions.uiTier !== "desktop") {
+    root.classList.remove("has-session-rail");
+    return;
+  }
+
   if (!project || project.sessions.length <= 1) {
     root.classList.remove("has-session-rail");
     return;

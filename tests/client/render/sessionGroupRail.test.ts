@@ -176,4 +176,27 @@ describe("sessionGroupRail", () => {
     expect(root.querySelector(".terminal-session-rail")).not.toBeNull();
     expect(root.classList.contains("has-session-rail")).toBe(true);
   });
+
+  it("does not render the top rail on phone sized screens", () => {
+    const root = document.createElement("div");
+
+    renderSessionGroupRail(
+      root,
+      "xxvisa-pm",
+      {
+        name: "xxvisa",
+        sessions: [
+          { name: "xxvisa-pm", label: "pm" },
+          { name: "xxvisa-review", label: "review" }
+        ]
+      },
+      {
+        uiTier: "phone",
+        onOpenSession: vi.fn()
+      }
+    );
+
+    expect(root.querySelector(".terminal-session-rail")).toBeNull();
+    expect(root.classList.contains("has-session-rail")).toBe(false);
+  });
 });

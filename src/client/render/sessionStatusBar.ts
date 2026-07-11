@@ -72,6 +72,8 @@ export type SessionStatusBarActions = {
   kanbanProject?: KanbanStatusProject | null;
   kanbanProjects?: KanbanStatusProject[];
   onOpenKanbanProject?: (projectName: string) => void;
+  onOpenSession?: (sessionName: string) => void;
+  onOpenGroupTask?: () => void;
   onMoveKanbanSession?: (
     fromProjectName: string | null,
     toProjectName: string,
@@ -144,6 +146,83 @@ function createSwitchSessionButton(
   button.classList.add("is-mobile-primary");
 
   return button;
+}
+
+function renderBottomProjectRail(
+  session: SessionSummary | null | undefined,
+  actions: SessionStatusBarActions
+) {
+  const project = actions.kanbanProject;
+
+  if (!project || project.sessions.length <= 1) {
+    return null;
+  }
+
+  const rail = document.createElement("nav");
+  rail.className = "terminal-status-project-rail";
+  rail.dataset.group = "project-rail";
+  rail.setAttribute(
+    "aria-label",
+    `Sessions in Kanban project ${project.name}`
+  );
+
+  const label = document.createElement("span");
+  label.className = "terminal-status-project-label";
+  label.textContent = project.name;
+  label.title = `Kanban project: ${project.name}`;
+  rail.append(label);
+
+  if (actions.onOpenGroupTask) {
+    const taskButton = createActionButton(
+      "bottom-open-group-task",
+      "Task",
+      () => actions.onOpenGroupTask?.(),
+      false,
+      `Send task in ${project.name}`
+    );
+    taskButton.classList.add("terminal-status-project-action");
+    rail.append(taskButton);
+  }
+
+  const sessions = document.createElement("div");
+  sessions.className = "terminal-status-project-sessions";
+
+  project.sessions.forEach((projectSession) => {
+    const isCurrent = projectSession.name === session?.name;
+    const isOffline = projectSession.live === false;
+    const button = createActionButton(
+      "bottom-switch-kanban-session",
+      projectSession.label,
+      () => {
+        if (!isCurrent && !isOffline) {
+          actions.onOpenSession?.(projectSession.name);
+        }
+      },
+      isOffline || !actions.onOpenSession,
+      isCurrent
+        ? `Current group session: ${projectSession.name}`
+        : isOffline
+          ? `Offline saved group session: ${projectSession.name}`
+          : `Switch to group session: ${projectSession.name}`
+    );
+    button.dataset.sessionName = projectSession.name;
+    button.classList.add("terminal-status-project-session");
+
+    if (isCurrent) {
+      button.classList.add("is-active");
+      button.setAttribute("aria-current", "true");
+    }
+
+    if (isOffline) {
+      button.classList.add("is-offline");
+    }
+
+    sessions.append(button);
+  });
+
+  rail.append(sessions);
+
+  return rail;
 }
 
 function renderKanbanProjectSwitches(
@@ -687,6 +766,11 @@ export function renderSessionStatusBar(
       actions.uiTier && actions.uiTier !== "desktop"
         ? renderMobileCursorKeyActions(actions, mobileShiftState)
         : null;
+    const bottomProjectRail =
+      actions.uiTier && actions.uiTier !== "desktop"
+        ? renderBottomProjectRail(session, actions)
+        : null;
+    statusBar.classList.toggle("has-project-rail", Boolean(bottomProjectRail));
     const inlineSoftKeys =
       actions.uiTier && actions.uiTier !== "desktop" && actions.onSendSoftKey
         ? renderSoftKeyActions(
@@ -700,6 +784,7 @@ export function renderSessionStatusBar(
     statusBar.append(
       ...renderLeftStatusActions(session, actions),
       main,
+      ...(bottomProjectRail ? [bottomProjectRail] : []),
       ...(mobileCursorKeys ? [mobileCursorKeys] : []),
       ...(mobileToggle ? [mobileToggle] : []),
       ...(inlineSoftKeys ? [inlineSoftKeys] : []),
@@ -729,6 +814,11 @@ export function renderSessionStatusBar(
     actions.uiTier && actions.uiTier !== "desktop"
       ? renderMobileCursorKeyActions(actions, mobileShiftState)
       : null;
+  const bottomProjectRail =
+    actions.uiTier && actions.uiTier !== "desktop"
+      ? renderBottomProjectRail(session, actions)
+      : null;
+  statusBar.classList.toggle("has-project-rail", Boolean(bottomProjectRail));
   const inlineSoftKeys =
     actions.uiTier && actions.uiTier !== "desktop" && actions.onSendSoftKey
       ? renderSoftKeyActions(
@@ -743,6 +833,7 @@ export function renderSessionStatusBar(
   statusBar.append(
     ...renderLeftStatusActions(session, actions),
     main,
+    ...(bottomProjectRail ? [bottomProjectRail] : []),
     ...(mobileCursorKeys ? [mobileCursorKeys] : []),
     ...(mobileToggle ? [mobileToggle] : []),
     ...(inlineSoftKeys ? [inlineSoftKeys] : []),

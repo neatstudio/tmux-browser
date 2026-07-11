@@ -2058,6 +2058,11 @@ function createSessionStatusActions(tab: BrowserTab, mounted: MountedTerminal) {
     onRename: () => promptRenameSession(tab.sessionName),
     onSendCommand: () => openSendCommandPanel(tab.sessionName),
     onSwitchSession: () => openSwitchSessionPanel(tab.sessionName),
+    onOpenSession: (sessionName: string) => {
+      getOrOpenTab(sessionName);
+      scheduleRender();
+    },
+    onOpenGroupTask: () => openGroupMessagePanel(tab.sessionName),
     onPreviewImage: () => openImagePreviewPanel(tab.sessionName),
     onChooseImage: () => mounted.chooseImage(),
     onCaptureImage: () => mounted.captureImage(),

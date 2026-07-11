@@ -463,6 +463,12 @@ describe("client layout styles", () => {
       /\.terminal-status-action-group\[data-group="mobile-cursor-keys"\]\s*\{[^}]*display:\s*none;/s
     );
     expect(styles).toMatch(
+      /\.terminal-status-project-rail\s*\{[^}]*display:\s*none;/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*1200px\)\s*\{[\s\S]*\.terminal-status-bar\.has-project-rail\s*\{[^}]*height:\s*82px;[^}]*min-height:\s*82px;[^}]*flex-basis:\s*82px;[^}]*grid-template-rows:\s*26px\s+24px\s+22px;/s
+    );
+    expect(styles).toMatch(
       /@media\s*\(max-width:\s*1200px\)\s*\{[\s\S]*\.terminal-status-bar\s*\{[^}]*--terminal-status-soft-key-width:\s*1\.95rem;[^}]*--terminal-status-soft-key-height:\s*24px;/s
     );
     expect(styles).toMatch(
@@ -489,12 +495,33 @@ describe("client layout styles", () => {
     expect(styles).toMatch(
       /@media\s*\(max-width:\s*1200px\)\s*\{[\s\S]*\.terminal-status-inline-soft-keys\s+\.terminal-status-soft-key\.is-active\s*\{[^}]*border-color:\s*rgba\(94,\s*255,\s*130,\s*0\.72\);[^}]*background:\s*linear-gradient\(\s*180deg,\s*rgba\(94,\s*255,\s*130,\s*0\.34\),\s*rgba\(94,\s*255,\s*130,\s*0\.16\)\s*\);[^}]*color:\s*#f3fff4;[^}]*box-shadow:\s*0\s+0\s+0\s+1px\s+rgba\(94,\s*255,\s*130,\s*0\.24\)\s+inset,\s*0\s+0\s+12px\s+rgba\(94,\s*255,\s*130,\s*0\.22\);/s
     );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*1200px\)\s*\{[\s\S]*\.terminal-status-project-rail\s*\{[^}]*display:\s*grid;[^}]*grid-column:\s*1\s*\/\s*4;[^}]*grid-row:\s*3;[^}]*grid-template-columns:\s*auto\s+auto\s+minmax\(0,\s*1fr\);[^}]*border-top:\s*1px\s+solid\s+rgba\(217,\s*226,\s*234,\s*0\.11\);/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*1200px\)\s*\{[\s\S]*\.terminal-status-project-label\s*\{[^}]*font-size:\s*0\.62rem;[^}]*text-transform:\s*uppercase;/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*1200px\)\s*\{[\s\S]*\.terminal-status-project-session\s*\{[^}]*max-width:\s*4\.8rem;[^}]*min-height:\s*20px;[^}]*font-size:\s*0\.58rem;/s
+    );
   });
 
   it("uses an adaptive narrow-phone layout for the top-right menu and terminal action sheet", () => {
     expect(styles).toMatch(/@media\s*\(max-width:\s*430px\)\s*\{/);
     expect(styles).toMatch(
       /@media\s*\(max-width:\s*430px\)\s*\{[\s\S]*\.terminal-status-bar\s*\{[^}]*height:\s*54px;[^}]*min-height:\s*54px;[^}]*flex-basis:\s*54px;[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+minmax\(10\.8rem,\s*52vw\)\s+auto;[^}]*grid-template-rows:\s*24px\s+22px;[^}]*gap:\s*0\.12rem\s+0\.18rem;[^}]*padding:\s*0\.16rem\s+0\.24rem;/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*430px\)\s*\{[\s\S]*\.terminal-status-bar\.has-project-rail\s*\{[^}]*height:\s*76px;[^}]*min-height:\s*76px;[^}]*flex-basis:\s*76px;[^}]*grid-template-rows:\s*24px\s+22px\s+20px;/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*430px\)\s*\{[\s\S]*\.terminal-status-project-rail\s*\{[^}]*gap:\s*0\.08rem;[^}]*padding-top:\s*0\.06rem;/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*430px\)\s*\{[\s\S]*\.terminal-status-project-label\s*\{[^}]*max-width:\s*4\.8rem;[^}]*font-size:\s*0\.54rem;/s
+    );
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*430px\)\s*\{[\s\S]*\.terminal-status-project-action,\s*\.terminal-status-project-session\s*\{[^}]*min-height:\s*18px;[^}]*font-size:\s*0\.52rem;/s
     );
     expect(styles).toMatch(
       /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.terminal-session-rail\s*\{[^}]*overflow-x:\s*auto;[^}]*padding:\s*0\.24rem\s+3\.1rem\s+0\.24rem\s+0\.42rem;/s

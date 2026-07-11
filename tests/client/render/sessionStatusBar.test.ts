@@ -495,6 +495,54 @@ describe("sessionStatusBar", () => {
     ).toBeNull();
   });
 
+  it("renders current project sessions in the bottom toolbar on phone screens", () => {
+    const root = document.createElement("div");
+    const onOpenSession = vi.fn();
+    const onOpenGroupTask = vi.fn();
+
+    renderSessionStatusBar(root, { ...SESSION, name: "xxvisa-pm" }, {
+      uiTier: "phone",
+      kanbanProject: {
+        name: "xxvisa",
+        sessions: [
+          { name: "xxvisa-pm", label: "pm" },
+          { name: "xxvisa-review", label: "review" },
+          { name: "xxvisa-codex", label: "codex" }
+        ]
+      },
+      onOpenSession,
+      onOpenGroupTask,
+      onSendSoftKey: vi.fn()
+    });
+
+    const projectRail = root.querySelector<HTMLElement>(
+      ".terminal-status-project-rail"
+    );
+    const sessionButtons = [
+      ...root.querySelectorAll<HTMLButtonElement>(
+        "[data-action='bottom-switch-kanban-session']"
+      )
+    ];
+
+    expect(projectRail).not.toBeNull();
+    expect(projectRail?.textContent).toContain("xxvisa");
+    expect(sessionButtons.map((button) => button.textContent)).toEqual([
+      "pm",
+      "review",
+      "codex"
+    ]);
+    expect(sessionButtons[0]?.classList.contains("is-active")).toBe(true);
+    expect(root.querySelector("[data-action='top-switch-kanban-session']")).toBeNull();
+
+    sessionButtons[1]?.click();
+    root
+      .querySelector<HTMLButtonElement>("[data-action='bottom-open-group-task']")
+      ?.click();
+
+    expect(onOpenSession).toHaveBeenCalledWith("xxvisa-review");
+    expect(onOpenGroupTask).toHaveBeenCalledOnce();
+  });
+
   it("keeps focused mobile text input active when pressing cursor keys", () => {
     const root = document.createElement("div");
     const input = document.createElement("textarea");
