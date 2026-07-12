@@ -122,7 +122,7 @@ type Preferences = {
   kanbanProjects: KanbanProject[];
 };
 
-type TimelineEvent = {
+type BaseTimelineEvent = {
   id: string;
   type:
     | "session-created"
@@ -140,6 +140,27 @@ type TimelineEvent = {
   createdAt: string;
   metadata?: Record<string, string | number | boolean | null>;
 };
+
+type ConversationMessageRole = "user" | "assistant" | "tool";
+type ConversationMessageContentType = "text" | "code" | "image" | "command";
+type ConversationMessageStatus = "streaming" | "complete" | "failed";
+
+type ConversationMessageTimelineEvent = {
+  id: string;
+  type: "conversation-message";
+  messageId: string;
+  sessionName: string;
+  role: ConversationMessageRole;
+  contentType: ConversationMessageContentType;
+  content: string;
+  status: ConversationMessageStatus;
+  createdAt: string;
+  toolName: string | null;
+  parentMessageId: string | null;
+  metadata?: Record<string, string | number | boolean | null>;
+};
+
+type TimelineEvent = BaseTimelineEvent | ConversationMessageTimelineEvent;
 ```
 
 ## Health, Status, Timeline
@@ -149,6 +170,56 @@ type TimelineEvent = {
 | `GET` | `/api/health` | none | `AppHealth` |
 | `GET` | `/api/server-status` | none | `ServerStatus` |
 | `GET` | `/api/timeline?limit=20` | optional `limit` query | `{ events: TimelineEvent[] }` |
+
+Timeline contains generic operational events plus structured
+`conversation-message` events. Use conversation messages for Android/native chat
+views instead of parsing `/ws/terminal` ANSI output.
+
+## Conversation Messages
+
+Records a structured chat/message event into timeline and broadcasts the same
+message object over `/ws/events`. This is intentionally separate from
+`/ws/terminal`: terminal websocket remains the raw TUI stream for keyboard and
+screen interaction, while conversation messages are the stable API for native
+left/right chat rendering.
+
+```ts
+type ConversationMessageRequest = {
+  messageId?: string; // generated when omitted
+  sessionName: string;
+  role?: ConversationMessageRole; // default: "assistant"
+  contentType?: ConversationMessageContentType; // default: "text"
+  content: string;
+  status?: ConversationMessageStatus; // default: "complete"
+  toolName?: string | null;
+  parentMessageId?: string | null;
+  metadata?: Record<string, string | number | boolean | null>;
+};
+
+type ConversationMessageResponse = {
+  ok: true;
+  message: ConversationMessageTimelineEvent;
+};
+```
+
+| Method | Path | Request | Response |
+| --- | --- | --- | --- |
+| `POST` | `/api/conversation/messages` | `ConversationMessageRequest` | `ConversationMessageResponse` |
+
+Example:
+
+```json
+{
+  "messageId": "msg_123",
+  "sessionName": "codex",
+  "role": "assistant",
+  "contentType": "text",
+  "content": "已经完成修改",
+  "status": "complete",
+  "toolName": "apply_patch",
+  "parentMessageId": "msg_122"
+}
+```
 
 ## Sessions
 
@@ -578,7 +649,8 @@ type AppEventSocketMessage =
     } & { id: string; createdAt: string })
   | ({
       type: "hook-event";
-    } & HookEvent & { id: string; createdAt: string });
+    } & HookEvent & { id: string; createdAt: string })
+  | ConversationMessageTimelineEvent;
 ```
 
 ### `GET /ws/terminal`
@@ -639,5 +711,18 @@ curl -fsS "$BASE/api/hooks/events" \
       { "id": "deny", "label": "Deny", "input": "n\r", "style": "danger" },
       { "id": "open", "label": "Open", "open": true }
     ]
+  }'
+
+curl -fsS "$BASE/api/conversation/messages" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "messageId": "msg_123",
+    "sessionName": "codex",
+    "role": "assistant",
+    "contentType": "text",
+    "content": "已经完成修改",
+    "status": "complete",
+    "toolName": "apply_patch",
+    "parentMessageId": "msg_122"
   }'
 ```

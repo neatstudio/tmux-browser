@@ -116,6 +116,70 @@ describe("createApp", () => {
     ]);
   });
 
+  it("records structured conversation messages in timeline and broadcasts app events", async () => {
+    const timelineStore = createTimelineStore();
+    const eventHub = createAppEventHub();
+    const received: unknown[] = [];
+    eventHub.subscribe((event) => received.push(event));
+    const app = createApp({
+      timelineStore,
+      eventHub,
+      tmuxService: {
+        listSessions: vi.fn(),
+        getSessionStatus: vi.fn(),
+        createSession: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    const response = await request(app)
+      .post("/api/conversation/messages")
+      .send({
+        messageId: "msg_123",
+        sessionName: "codex",
+        role: "assistant",
+        contentType: "text",
+        content: "已经完成修改",
+        status: "complete",
+        toolName: "apply_patch",
+        parentMessageId: "msg_122"
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body.message).toMatchObject({
+      type: "conversation-message",
+      messageId: "msg_123",
+      sessionName: "codex",
+      role: "assistant",
+      contentType: "text",
+      content: "已经完成修改",
+      status: "complete",
+      toolName: "apply_patch",
+      parentMessageId: "msg_122",
+      id: expect.any(String),
+      createdAt: expect.any(String)
+    });
+    expect(timelineStore.listEvents({ limit: 1 })[0]).toMatchObject(
+      response.body.message
+    );
+    expect(received).toEqual([
+      expect.objectContaining({
+        type: "conversation-message",
+        messageId: "msg_123",
+        sessionName: "codex",
+        role: "assistant",
+        contentType: "text",
+        content: "已经完成修改",
+        status: "complete"
+      })
+    ]);
+  });
+
   it("accepts authenticated hook events, records timeline, and broadcasts app events", async () => {
     const timelineStore = createTimelineStore();
     const eventHub = createAppEventHub();

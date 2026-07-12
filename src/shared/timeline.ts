@@ -3,6 +3,7 @@ export type TimelineEventType =
   | "session-renamed"
   | "session-killed"
   | "command-sent"
+  | "conversation-message"
   | "group-message-sent"
   | "group-message-replied"
   | "pane-split"
@@ -10,13 +11,42 @@ export type TimelineEventType =
   | "pane-killed"
   | "hook-event";
 
-export type TimelineEvent = {
+export type ConversationMessageRole = "user" | "assistant" | "tool";
+
+export type ConversationMessageContentType =
+  | "text"
+  | "code"
+  | "image"
+  | "command";
+
+export type ConversationMessageStatus = "streaming" | "complete" | "failed";
+
+export type BaseTimelineEvent = {
   id: string;
-  type: TimelineEventType;
+  type: Exclude<TimelineEventType, "conversation-message">;
   sessionName: string | null;
   message: string;
   createdAt: string;
   metadata?: Record<string, string | number | boolean | null>;
 };
 
-export type TimelineEventDraft = Omit<TimelineEvent, "id" | "createdAt">;
+export type ConversationMessageTimelineEvent = {
+  id: string;
+  type: "conversation-message";
+  messageId: string;
+  sessionName: string;
+  role: ConversationMessageRole;
+  contentType: ConversationMessageContentType;
+  content: string;
+  status: ConversationMessageStatus;
+  createdAt: string;
+  toolName: string | null;
+  parentMessageId: string | null;
+  metadata?: Record<string, string | number | boolean | null>;
+};
+
+export type TimelineEvent = BaseTimelineEvent | ConversationMessageTimelineEvent;
+
+export type TimelineEventDraft =
+  | Omit<BaseTimelineEvent, "id" | "createdAt">
+  | Omit<ConversationMessageTimelineEvent, "id" | "createdAt">;

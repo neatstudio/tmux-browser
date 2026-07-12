@@ -1,4 +1,5 @@
 import type { HookEvent } from "./hookEvents.js";
+import type { ConversationMessageTimelineEvent } from "./timeline.js";
 
 export type SessionsInvalidatedReason =
   | "session-created"
@@ -19,7 +20,8 @@ export type AppEventDraft =
     }
   | ({
       type: "hook-event";
-    } & HookEvent);
+    } & HookEvent)
+  | ConversationMessageTimelineEvent;
 
 export type AppEvent = AppEventDraft & {
   id: string;

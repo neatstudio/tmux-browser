@@ -13,9 +13,9 @@ export function createAppEventHub(): AppEventHub {
     publish(draft) {
       nextId += 1;
       const event: AppEvent = {
-        ...draft,
         id: `evt-${nextId}`,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        ...draft,
       };
 
       listeners.forEach((listener) => listener(event));

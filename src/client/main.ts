@@ -297,6 +297,11 @@ const appEventSocket = createAppEventSocket({
       }
 
       void store.refreshTimeline().then(() => scheduleRender());
+      return;
+    }
+
+    if (event.type === "conversation-message") {
+      void store.refreshTimeline().then(() => scheduleRender());
     }
   }
 });

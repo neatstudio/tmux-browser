@@ -110,6 +110,41 @@ describe("createAppEventSocket", () => {
     );
   });
 
+  it("forwards structured conversation messages from the global app event socket", () => {
+    FakeWebSocket.instances = [];
+    const onEvent = vi.fn();
+    const socket = createAppEventSocket({
+      WebSocketCtor: FakeWebSocket as unknown as typeof WebSocket,
+      location: { protocol: "http:", host: "127.0.0.1:3000" },
+      onEvent
+    });
+
+    socket.connect();
+    FakeWebSocket.instances[0]?.emitMessage({
+      type: "conversation-message",
+      messageId: "msg_123",
+      sessionName: "codex",
+      role: "assistant",
+      contentType: "text",
+      content: "已经完成修改",
+      status: "complete",
+      toolName: "apply_patch",
+      parentMessageId: "msg_122",
+      id: "evt-3",
+      createdAt: "2026-07-12T10:00:00.000Z"
+    });
+
+    expect(onEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "conversation-message",
+        messageId: "msg_123",
+        role: "assistant",
+        contentType: "text",
+        status: "complete"
+      })
+    );
+  });
+
   it("reconnects after a close while enabled", () => {
     vi.useFakeTimers();
     FakeWebSocket.instances = [];
