@@ -1755,6 +1755,25 @@ select {
   padding-right: 0.22rem;
 }
 
+.session-floating-menu-bottom-pane {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 0.32rem;
+  min-width: 0;
+  border-top: 1px solid rgba(217, 226, 234, 0.11);
+  padding-top: 0.36rem;
+}
+
+.app-shell[data-ui-tier="desktop"] .session-floating-menu-bottom-pane {
+  gap: 0.46rem;
+  padding-top: 0.5rem;
+}
+
+.app-shell[data-ui-tier="phone"] .session-floating-menu-bottom-pane {
+  gap: 0.18rem;
+  padding-top: 0.18rem;
+}
+
 .session-floating-menu-section {
   display: flex;
   flex-wrap: wrap;
@@ -2292,7 +2311,7 @@ select {
   flex: 1 1 100%;
   gap: 0.24rem;
   min-width: 0;
-  margin-top: 0.08rem;
+  margin-top: 0;
 }
 
 .session-floating-menu-create input {
@@ -2618,10 +2637,6 @@ select {
   display: none;
 }
 
-.terminal-status-project-rail {
-  display: none;
-}
-
 .terminal-status-action {
   border: 1px solid rgba(217, 226, 234, 0.24);
   border-radius: 3px;
@@ -2675,12 +2690,6 @@ select {
   border-color: rgba(191, 255, 196, 0.46);
   background: rgba(94, 255, 130, 0.13);
   color: #d5ffd8;
-}
-
-.terminal-status-project-session.is-offline {
-  border-style: dashed;
-  cursor: not-allowed;
-  opacity: 0.52;
 }
 
 .terminal-status-action:disabled {
@@ -3734,13 +3743,6 @@ select {
     scrollbar-width: thin;
   }
 
-  .terminal-status-bar.has-project-rail {
-    height: 82px;
-    min-height: 82px;
-    flex-basis: 82px;
-    grid-template-rows: 26px 24px 22px;
-  }
-
   .terminal-status-main {
     grid-column: 1;
     grid-row: 1;
@@ -3854,70 +3856,6 @@ select {
     box-shadow:
       0 0 0 1px rgba(94, 255, 130, 0.24) inset,
       0 0 12px rgba(94, 255, 130, 0.22);
-  }
-
-  .terminal-status-project-rail {
-    display: grid;
-    grid-column: 1 / 4;
-    grid-row: 3;
-    grid-template-columns: auto auto minmax(0, 1fr);
-    align-items: center;
-    gap: 0.12rem;
-    min-width: 0;
-    overflow: hidden;
-    border-top: 1px solid rgba(217, 226, 234, 0.11);
-    padding-top: 0.08rem;
-  }
-
-  .terminal-status-project-label {
-    min-width: 0;
-    max-width: 6.5rem;
-    overflow: hidden;
-    color: #ffe2a7;
-    font-size: 0.62rem;
-    font-weight: 820;
-    letter-spacing: 0.04em;
-    line-height: 1;
-    text-overflow: ellipsis;
-    text-transform: uppercase;
-    white-space: nowrap;
-  }
-
-  .terminal-status-project-action {
-    justify-content: center;
-    min-height: 20px;
-    border-color: rgba(143, 217, 255, 0.26);
-    background: rgba(91, 192, 255, 0.11);
-    color: #d8f3ff;
-    font-size: 0.58rem;
-    padding: 0 0.28rem;
-  }
-
-  .terminal-status-project-sessions {
-    display: flex;
-    align-items: center;
-    gap: 0.08rem;
-    min-width: 0;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scrollbar-width: none;
-  }
-
-  .terminal-status-project-sessions::-webkit-scrollbar {
-    display: none;
-  }
-
-  .terminal-status-project-session {
-    flex: 0 0 auto;
-    justify-content: center;
-    max-width: 4.8rem;
-    min-height: 20px;
-    border-color: rgba(255, 211, 122, 0.24);
-    background: rgba(255, 211, 122, 0.08);
-    color: #ffe2a7;
-    font-size: 0.58rem;
-    font-weight: 760;
-    padding: 0 0.28rem;
   }
 
   .terminal-status-mobile-sheet {
@@ -4151,13 +4089,6 @@ select {
     padding: 0.16rem 0.24rem;
   }
 
-  .terminal-status-bar.has-project-rail {
-    height: 76px;
-    min-height: 76px;
-    flex-basis: 76px;
-    grid-template-rows: 24px 22px 20px;
-  }
-
   .terminal-status-main {
     font-size: 11px;
   }
@@ -4229,28 +4160,6 @@ select {
     font-size: 0.62rem;
     padding-right: 0.06rem;
     padding-left: 0.06rem;
-  }
-
-  .terminal-status-project-rail {
-    gap: 0.08rem;
-    padding-top: 0.06rem;
-  }
-
-  .terminal-status-project-label {
-    max-width: 4.8rem;
-    font-size: 0.54rem;
-  }
-
-  .terminal-status-project-action,
-  .terminal-status-project-session {
-    min-height: 18px;
-    font-size: 0.52rem;
-    padding-right: 0.18rem;
-    padding-left: 0.18rem;
-  }
-
-  .terminal-status-project-session {
-    max-width: 3.9rem;
   }
 
   .kanban-template-item {

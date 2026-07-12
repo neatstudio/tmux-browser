@@ -794,6 +794,25 @@ describe("sessionFloatingMenu", () => {
       )
       ?.click();
 
+    const panel = root.querySelector<HTMLElement>(".session-floating-menu-panel")!;
+    const actionsPane = panel.querySelector<HTMLElement>(
+      ".session-floating-menu-actions-pane"
+    );
+    const bottomPane = panel.querySelector<HTMLElement>(
+      ".session-floating-menu-bottom-pane"
+    );
+
+    expect(bottomPane).not.toBeNull();
+    expect(panel.children[2]).toBe(bottomPane);
+    expect(
+      bottomPane?.querySelector(".session-floating-menu-create")
+    ).not.toBeNull();
+    expect(
+      bottomPane?.querySelector(".session-floating-menu-projects")
+    ).not.toBeNull();
+    expect(actionsPane?.querySelector(".session-floating-menu-create")).toBeNull();
+    expect(actionsPane?.querySelector(".session-floating-menu-projects")).toBeNull();
+
     const projectPanel = root.querySelector<HTMLElement>(
       ".session-floating-menu-projects .kanban-create-panel-content"
     )!;

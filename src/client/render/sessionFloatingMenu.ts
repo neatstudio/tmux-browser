@@ -693,6 +693,8 @@ function renderPanel(
   actionsPane.className = "session-floating-menu-actions-pane";
   const sessionsPane = document.createElement("div");
   sessionsPane.className = "session-floating-menu-sessions-pane";
+  const bottomPane = document.createElement("div");
+  bottomPane.className = "session-floating-menu-bottom-pane";
 
   const actions = createMenuSection("Actions");
   actions.classList.add("session-floating-menu-actions");
@@ -785,10 +787,10 @@ function renderPanel(
   if (softKeys) {
     actionsPane.append(softKeys);
   }
-  actionsPane.append(renderCreateSessionForm(state, closePanel));
+  bottomPane.append(renderCreateSessionForm(state, closePanel));
   const projectManagement = renderProjectManagementSection(state, closePanel);
   if (projectManagement) {
-    actionsPane.append(projectManagement);
+    bottomPane.append(projectManagement);
   }
 
   const boards = renderBoardsSection(state, closePanel, openSessionActionMenu);
@@ -830,6 +832,7 @@ function renderPanel(
 
   panel.append(actionsPane);
   panel.append(sessionsPane);
+  panel.append(bottomPane);
 
   container.append(panel);
 

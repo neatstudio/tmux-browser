@@ -177,7 +177,7 @@ describe("sessionGroupRail", () => {
     expect(root.classList.contains("has-session-rail")).toBe(true);
   });
 
-  it("does not render the top rail on phone sized screens", () => {
+  it("renders the top rail on phone sized screens", () => {
     const root = document.createElement("div");
 
     renderSessionGroupRail(
@@ -196,7 +196,7 @@ describe("sessionGroupRail", () => {
       }
     );
 
-    expect(root.querySelector(".terminal-session-rail")).toBeNull();
-    expect(root.classList.contains("has-session-rail")).toBe(false);
+    expect(root.querySelector(".terminal-session-rail")).not.toBeNull();
+    expect(root.classList.contains("has-session-rail")).toBe(true);
   });
 });
