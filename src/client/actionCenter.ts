@@ -3,6 +3,7 @@ import type { InputPromptNotice } from "./state/inputPromptRegistry";
 import type { TerminalInputPromptAction } from "../shared/inputPromptDetector";
 import type {
   HookEventAction,
+  HookEventContentBlock,
   HookEventTarget
 } from "../shared/hookEvents";
 import type { TimelineEvent } from "../shared/timeline";
@@ -35,6 +36,7 @@ export type ActionCenterHookEventItem = {
   status: string;
   title: string;
   body: string | null;
+  content?: HookEventContentBlock[];
   taskId: string | null;
   target: HookEventTarget;
   actions: HookEventAction[];
@@ -146,6 +148,64 @@ function readHookActions(value: unknown): HookEventAction[] {
   });
 }
 
+function readHookContentBlocks(value: unknown): HookEventContentBlock[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap<HookEventContentBlock>((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      return [];
+    }
+
+    const block = entry as Record<string, unknown>;
+    const text =
+      typeof block.text === "string" && block.text.trim()
+        ? block.text.trim()
+        : "";
+
+    if (!text) {
+      return [];
+    }
+
+    if (block.type === "summary" || block.type === "text") {
+      return [{ type: block.type, text }];
+    }
+
+    if (block.type === "code") {
+      return [
+        {
+          type: "code",
+          text,
+          ...(typeof block.title === "string" && block.title.trim()
+            ? { title: block.title.trim() }
+            : {}),
+          ...(typeof block.language === "string" && block.language.trim()
+            ? { language: block.language.trim() }
+            : {}),
+          collapsed: block.collapsed !== false
+        }
+      ];
+    }
+
+    if (block.type === "details") {
+      return [
+        {
+          type: "details",
+          title:
+            typeof block.title === "string" && block.title.trim()
+              ? block.title.trim()
+              : "Details",
+          text,
+          collapsed: block.collapsed !== false
+        }
+      ];
+    }
+
+    return [];
+  });
+}
+
 export function deriveActionCenterItems(input: {
   prompts: InputPromptNotice[];
   sessions: SessionSummary[];
@@ -203,8 +263,10 @@ export function deriveActionCenterItems(input: {
           return [];
         }
 
-        return [
-          {
+        const content = readHookContentBlocks(
+          readMetadataJson(event.metadata, "content")
+        );
+        const item: ActionCenterHookEventItem = {
             type: "hook-event",
             id: `hook:${event.id}`,
             sessionName: event.sessionName ?? "",
@@ -219,8 +281,13 @@ export function deriveActionCenterItems(input: {
               event.sessionName ?? ""
             ),
             actions: readHookActions(readMetadataJson(event.metadata, "actions"))
-          }
-        ];
+          };
+
+        if (content.length > 0) {
+          item.content = content;
+        }
+
+        return [item];
       }) ?? [];
 
   return [...promptItems, ...hookItems, ...deadPaneItems];

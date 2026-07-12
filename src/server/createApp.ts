@@ -49,6 +49,7 @@ import type {
   HookEvent,
   HookEventAction,
   HookEventActionStyle,
+  HookEventContentBlock,
   HookEventTarget,
   HookEventTargetView,
   HookEventSeverity,
@@ -74,6 +75,9 @@ const HOOK_METADATA_LIMIT = 24;
 const HOOK_ACTION_LIMIT = 8;
 const HOOK_ACTION_LABEL_LIMIT = 80;
 const HOOK_TARGET_LIMIT = 128;
+const HOOK_CONTENT_BLOCK_LIMIT = 12;
+const HOOK_CONTENT_TITLE_LIMIT = 120;
+const HOOK_CONTENT_LANGUAGE_LIMIT = 32;
 const HOOK_STATUSES = new Set<HookEventStatus>([
   "waiting",
   "blocked",
@@ -404,6 +408,67 @@ function normalizeHookActions(value: unknown): HookEventAction[] {
   return actions;
 }
 
+function normalizeHookContentBlocks(value: unknown): HookEventContentBlock[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const blocks: HookEventContentBlock[] = [];
+
+  for (const entry of value) {
+    if (blocks.length >= HOOK_CONTENT_BLOCK_LIMIT) {
+      break;
+    }
+
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      continue;
+    }
+
+    const payload = entry as Record<string, unknown>;
+    const type = payload.type;
+    const text = readNullableString(payload.text);
+
+    if (!text) {
+      continue;
+    }
+
+    if (type === "summary" || type === "text") {
+      blocks.push({ type, text });
+      continue;
+    }
+
+    if (type === "code") {
+      const title = readNullableString(payload.title, HOOK_CONTENT_TITLE_LIMIT);
+      const language = readNullableString(
+        payload.language,
+        HOOK_CONTENT_LANGUAGE_LIMIT
+      );
+      blocks.push({
+        type: "code",
+        text,
+        ...(title ? { title } : {}),
+        ...(language ? { language } : {}),
+        collapsed: readBoolean(payload.collapsed, true)
+      });
+      continue;
+    }
+
+    if (type === "details") {
+      blocks.push({
+        type: "details",
+        title: readString(payload.title, {
+          fallback: "Details",
+          maxLength: HOOK_CONTENT_TITLE_LIMIT
+        }),
+        text,
+        collapsed: readBoolean(payload.collapsed, true)
+      });
+    }
+  }
+
+  return blocks;
+}
+
 function normalizeHookMetadata(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return undefined;
@@ -470,6 +535,7 @@ function normalizeHookEventPayload(body: unknown): HookEvent {
     severity: normalizeHookSeverity(payload.severity),
     target: normalizeHookTarget(payload.target, sessionName),
     actions: normalizeHookActions(payload.actions),
+    content: normalizeHookContentBlocks(payload.content),
     metadata: normalizeHookMetadata(payload.metadata)
   };
 }
@@ -993,7 +1059,10 @@ export function createApp(options: {
           cwd: hookEvent.cwd,
           body: hookEvent.body,
           target: JSON.stringify(hookEvent.target),
-          actions: JSON.stringify(hookEvent.actions)
+          actions: JSON.stringify(hookEvent.actions),
+          ...(hookEvent.content.length > 0
+            ? { content: JSON.stringify(hookEvent.content) }
+            : {})
         }
       });
       const appEvent = options.eventHub?.publish({

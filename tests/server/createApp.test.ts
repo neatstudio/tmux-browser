@@ -279,6 +279,77 @@ describe("createApp", () => {
     ]);
   });
 
+  it("accepts structured hook content blocks for compact mobile rendering", async () => {
+    const timelineStore = createTimelineStore();
+    const app = createApp({
+      hookToken: "secret-token",
+      timelineStore,
+      tmuxService: {
+        listSessions: vi.fn(),
+        createSession: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+
+    const response = await request(app)
+      .post("/api/hooks/events")
+      .set("Authorization", "Bearer secret-token")
+      .send({
+        source: "codex",
+        sessionName: "local-pets",
+        eventType: "approval-required",
+        status: "waiting",
+        title: "Review patch",
+        body: "Legacy fallback body",
+        content: [
+          { type: "summary", text: "Two files changed; approve patch?" },
+          {
+            type: "code",
+            title: "src/app.ts",
+            language: "ts",
+            text: "export const answer = 42;",
+            collapsed: true
+          },
+          {
+            type: "details",
+            title: "Why",
+            text: "The patch updates the mobile hook UI.",
+            collapsed: true
+          },
+          { type: "unknown", text: "ignored" },
+          { type: "summary", text: "" }
+        ]
+      });
+
+    expect(response.status).toBe(202);
+    expect(response.body.event.content).toEqual([
+      { type: "summary", text: "Two files changed; approve patch?" },
+      {
+        type: "code",
+        title: "src/app.ts",
+        language: "ts",
+        text: "export const answer = 42;",
+        collapsed: true
+      },
+      {
+        type: "details",
+        title: "Why",
+        text: "The patch updates the mobile hook UI.",
+        collapsed: true
+      }
+    ]);
+
+    const timelineEvent = timelineStore.listEvents({ limit: 1 })[0];
+    expect(timelineEvent?.metadata?.content).toBe(
+      JSON.stringify(response.body.event.content)
+    );
+  });
+
   it("does not trust spoofable X-Forwarded-For values for hook auth", () => {
     const address = getHookRemoteAddress({
       ip: "203.0.113.20",

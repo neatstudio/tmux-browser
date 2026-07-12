@@ -2911,6 +2911,66 @@ select {
   white-space: pre-wrap;
 }
 
+.hook-event-content {
+  display: grid;
+  gap: 0.32rem;
+  min-width: 0;
+}
+
+.hook-event-content-summary,
+.hook-event-content-text {
+  margin: 0;
+  color: rgba(239, 246, 252, 0.84);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.hook-event-content-summary {
+  color: #ffe2a7;
+  font-weight: 760;
+}
+
+.hook-event-content-details {
+  min-width: 0;
+  border: 1px solid rgba(217, 226, 234, 0.11);
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.16);
+  overflow: hidden;
+}
+
+.hook-event-content-details summary {
+  overflow: hidden;
+  color: rgba(239, 246, 252, 0.84);
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 760;
+  line-height: 1.1;
+  padding: 0.38rem 0.46rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hook-event-content-details[data-content-type="code"] summary {
+  color: #bfffc4;
+}
+
+.hook-event-content-code,
+.hook-event-content-details-body {
+  max-height: 12rem;
+  overflow: auto;
+  margin: 0;
+  border-top: 1px solid rgba(217, 226, 234, 0.1);
+  background: rgba(0, 0, 0, 0.2);
+  color: rgba(239, 246, 252, 0.84);
+  font:
+    0.68rem/1.42 "Iosevka Term",
+    Menlo,
+    "PingFang SC",
+    monospace;
+  padding: 0.45rem;
+  white-space: pre-wrap;
+}
+
 .action-center-actions {
   display: flex;
   flex-wrap: wrap;

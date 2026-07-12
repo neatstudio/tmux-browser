@@ -199,6 +199,68 @@ describe("renderActionCenterPanel", () => {
     expect(onRunHookAction).toHaveBeenCalledWith("hook:1", "approve");
   });
 
+  it("renders structured hook content with collapsible code blocks", () => {
+    const root = document.createElement("div");
+
+    renderActionCenterPanel(root, {
+      open: true,
+      items: [
+        {
+          type: "hook-event",
+          id: "hook:1",
+          sessionName: "codex",
+          source: "codex",
+          eventType: "approval-required",
+          status: "waiting",
+          title: "Need approval",
+          body: "Legacy body fallback",
+          content: [
+            { type: "summary", text: "Two files changed; approve patch?" },
+            { type: "text", text: "The patch updates mobile hook rendering." },
+            {
+              type: "code",
+              title: "src/app.ts",
+              language: "ts",
+              text: "export const answer = 42;",
+              collapsed: true
+            },
+            {
+              type: "details",
+              title: "Full reason",
+              text: "Long context can stay folded on mobile.",
+              collapsed: true
+            }
+          ],
+          taskId: "task-1",
+          target: {
+            sessionName: "project-codex",
+            projectName: "project",
+            view: "terminal"
+          },
+          actions: []
+        }
+      ],
+      onClose: vi.fn(),
+      onOpenSession: vi.fn(),
+      onDismissPrompt: vi.fn(),
+      onSendPrompt: vi.fn(),
+      onRunHookAction: vi.fn()
+    });
+
+    const details = [
+      ...root.querySelectorAll<HTMLDetailsElement>(".hook-event-content-details")
+    ];
+
+    expect(root.textContent).toContain("Two files changed; approve patch?");
+    expect(root.textContent).toContain("The patch updates mobile hook rendering.");
+    expect(root.textContent).toContain("src/app.ts");
+    expect(root.textContent).toContain("export const answer = 42;");
+    expect(root.textContent).not.toContain("Legacy body fallback");
+    expect(details).toHaveLength(2);
+    expect(details[0]?.open).toBe(false);
+    expect(details[0]?.dataset.contentType).toBe("code");
+  });
+
   it("shows an empty state while open without actions", () => {
     const root = document.createElement("div");
 

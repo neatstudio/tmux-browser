@@ -304,7 +304,9 @@ tmux-ui hooks-uninstall
 
 `hooks-install` 会合并写入 `~/.codex/hooks.json` 的 `PermissionRequest` 和 `~/.claude/settings.json` 的 `Notification(permission_prompt|idle_prompt)`，不会覆盖已有 hook。安装的 adapter 会输出标准 `tmux-ui.hook/v1` 事件，后续增加 opencode、kimi、qwecn、qodercli 等工具时，只需要新增安装适配器，不需要改 UI。
 
-标准 hook 事件可以带跨 group target 和明确按钮：
+标准 hook 事件可以带跨 group target、适合移动端的结构化内容和明确按钮。
+Toast 会优先显示 `summary`，Action Center 会把占空间的 `code` 和
+`details` 折叠起来：
 
 ```json
 {
@@ -315,6 +317,16 @@ tmux-ui hooks-uninstall
   "status": "waiting",
   "title": "Need confirmation",
   "body": "Approve file edit?",
+  "content": [
+    { "type": "summary", "text": "Two files changed; approve patch?" },
+    {
+      "type": "code",
+      "title": "src/app.ts",
+      "language": "ts",
+      "text": "export const answer = 42;",
+      "collapsed": true
+    }
+  ],
   "target": {
     "sessionName": "project-codex",
     "projectName": "project",

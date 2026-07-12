@@ -30,6 +30,29 @@ export type HookEventAction = {
   style: HookEventActionStyle;
 };
 
+export type HookEventContentBlock =
+  | {
+      type: "summary";
+      text: string;
+    }
+  | {
+      type: "text";
+      text: string;
+    }
+  | {
+      type: "code";
+      text: string;
+      title?: string;
+      language?: string;
+      collapsed: boolean;
+    }
+  | {
+      type: "details";
+      title: string;
+      text: string;
+      collapsed: boolean;
+    };
+
 export type HookEvent = {
   schemaVersion: typeof HOOK_EVENT_SCHEMA_VERSION;
   source: string;
@@ -43,5 +66,6 @@ export type HookEvent = {
   severity: HookEventSeverity;
   target: HookEventTarget;
   actions: HookEventAction[];
+  content: HookEventContentBlock[];
   metadata?: Record<string, string | number | boolean | null>;
 };

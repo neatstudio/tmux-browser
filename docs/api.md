@@ -436,6 +436,23 @@ type HookEventAction = {
   style: "primary" | "secondary" | "danger";
 };
 
+type HookEventContentBlock =
+  | { type: "summary"; text: string }
+  | { type: "text"; text: string }
+  | {
+      type: "code";
+      text: string;
+      title?: string;
+      language?: string;
+      collapsed: boolean;
+    }
+  | {
+      type: "details";
+      title: string;
+      text: string;
+      collapsed: boolean;
+    };
+
 type HookEvent = {
   schemaVersion: "tmux-ui.hook/v1";
   source: string;
@@ -449,6 +466,7 @@ type HookEvent = {
   severity: HookEventSeverity;
   target: HookEventTarget;
   actions: HookEventAction[];
+  content: HookEventContentBlock[];
   metadata?: Record<string, string | number | boolean | null>;
 };
 ```
@@ -476,13 +494,44 @@ type Response = {
 Defaults: `schemaVersion` is `"tmux-ui.hook/v1"`, `source` is `"custom"`,
 `eventType` is `"event"`, `status` is `"info"`, `severity` is `"info"`,
 `title` is `"<source> <eventType>"`, `target.sessionName` is `sessionName`,
-and `actions` is `[]`.
+and `actions` / `content` are `[]`.
 
 `target` lets tmux-ui jump to the correct terminal or Kanban group when the event
 belongs to a different group than the current page. `actions` renders explicit
 buttons in the toast and Action Center. For example, an approval hook can send
 `"y\r"` or `"n\r"` directly to the target tmux session instead of relying on
 screen-content guessing.
+
+Use `content` for mobile-friendly structured display. Toasts show the first
+`summary` or `text` block instead of large raw bodies. Action Center renders
+`code` and `details` blocks as collapsible sections, defaulting to collapsed
+unless `collapsed: false` is provided. `body` remains a legacy fallback for
+simple tools.
+
+```json
+{
+  "schemaVersion": "tmux-ui.hook/v1",
+  "source": "codex",
+  "sessionName": "project-codex",
+  "eventType": "approval-required",
+  "status": "waiting",
+  "title": "Review patch",
+  "body": "Legacy fallback body",
+  "content": [
+    { "type": "summary", "text": "Two files changed; approve patch?" },
+    {
+      "type": "code",
+      "title": "src/app.ts",
+      "language": "ts",
+      "text": "export const answer = 42;",
+      "collapsed": true
+    }
+  ],
+  "actions": [
+    { "id": "approve", "label": "Approve", "input": "y\r", "style": "primary" }
+  ]
+}
+```
 
 ## Uploads And Image Preview
 

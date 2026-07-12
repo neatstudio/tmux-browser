@@ -203,6 +203,7 @@ function toStandardEvent(payload) {
         : typeof payload.message === "string"
           ? payload.message
           : "",
+    content: Array.isArray(payload.content) ? payload.content : [],
     taskId:
       typeof payload.taskId === "string"
         ? payload.taskId

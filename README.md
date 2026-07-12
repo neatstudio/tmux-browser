@@ -344,7 +344,9 @@ adapter emits standard `tmux-ui.hook/v1` events, so future tool adapters such as
 opencode, kimi, qwecn, or qodercli can map into the same payload without
 changing the UI.
 
-Standard hook events can include a cross-group target and explicit buttons:
+Standard hook events can include a cross-group target, compact structured
+content, and explicit buttons. Toasts show the `summary` block; Action Center
+keeps bulky `code` and `details` blocks collapsible for mobile screens:
 
 ```json
 {
@@ -355,6 +357,16 @@ Standard hook events can include a cross-group target and explicit buttons:
   "status": "waiting",
   "title": "Need confirmation",
   "body": "Approve file edit?",
+  "content": [
+    { "type": "summary", "text": "Two files changed; approve patch?" },
+    {
+      "type": "code",
+      "title": "src/app.ts",
+      "language": "ts",
+      "text": "export const answer = 42;",
+      "collapsed": true
+    }
+  ],
   "target": {
     "sessionName": "project-codex",
     "projectName": "project",

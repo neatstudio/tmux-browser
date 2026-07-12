@@ -135,6 +135,7 @@ describe("run release scripts", () => {
     expect(agentHookScript).toContain("tmux-ui.hook/v1");
     expect(agentHookScript).toContain("actions");
     expect(agentHookScript).toContain("target");
+    expect(agentHookScript).toContain("Array.isArray(payload.content)");
     expect(installAgentHooksScript).toContain("PermissionRequest");
     expect(installAgentHooksScript).toContain("permission_prompt|idle_prompt");
     expect(installAgentHooksScript).toContain("standard tmux-ui.hook/v1 events");

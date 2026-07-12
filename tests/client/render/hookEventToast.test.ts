@@ -89,6 +89,40 @@ describe("renderHookEventToast", () => {
     expect(onDismiss).toHaveBeenCalledWith("hook:1");
   });
 
+  it("uses structured summaries in the toast and hides bulky code blocks", () => {
+    const root = document.createElement("div");
+
+    renderHookEventToast(
+      root,
+      [
+        hookItem({
+          body: "Legacy body with too much detail",
+          content: [
+            { type: "summary", text: "Two files changed; approve patch?" },
+            {
+              type: "code",
+              title: "src/app.ts",
+              language: "ts",
+              text: "export const answer = 42;",
+              collapsed: true
+            }
+          ]
+        })
+      ],
+      {
+        onDismiss: vi.fn(),
+        onOpenSession: vi.fn(),
+        onOpenActions: vi.fn(),
+        onSendEnter: vi.fn(),
+        onRunAction: vi.fn()
+      }
+    );
+
+    expect(root.textContent).toContain("Two files changed; approve patch?");
+    expect(root.textContent).not.toContain("Legacy body with too much detail");
+    expect(root.textContent).not.toContain("export const answer");
+  });
+
   it("removes stale toast when no hook events remain", () => {
     const root = document.createElement("div");
     const handlers = {

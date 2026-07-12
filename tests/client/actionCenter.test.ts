@@ -201,4 +201,57 @@ describe("deriveActionCenterItems", () => {
       }
     ]);
   });
+
+  it("preserves structured hook content blocks from timeline metadata", () => {
+    const items = deriveActionCenterItems({
+      prompts: [],
+      sessions: [BASE_SESSION],
+      timelineEvents: [
+        {
+          id: "hook-structured",
+          type: "hook-event",
+          sessionName: "codex",
+          message: "Review patch",
+          createdAt: "2026-06-29T10:00:00.000Z",
+          metadata: {
+            source: "codex",
+            eventType: "approval-required",
+            status: "waiting",
+            content: JSON.stringify([
+              { type: "summary", text: "Two files changed; approve patch?" },
+              {
+                type: "code",
+                title: "src/app.ts",
+                language: "ts",
+                text: "export const answer = 42;",
+                collapsed: true
+              }
+            ]),
+            target: JSON.stringify({
+              sessionName: "codex",
+              projectName: "project"
+            }),
+            actions: JSON.stringify([])
+          }
+        }
+      ]
+    });
+
+    expect(items).toMatchObject([
+      {
+        type: "hook-event",
+        id: "hook:hook-structured",
+        content: [
+          { type: "summary", text: "Two files changed; approve patch?" },
+          {
+            type: "code",
+            title: "src/app.ts",
+            language: "ts",
+            text: "export const answer = 42;",
+            collapsed: true
+          }
+        ]
+      }
+    ]);
+  });
 });

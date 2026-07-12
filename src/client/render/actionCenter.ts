@@ -135,6 +135,72 @@ function renderDeadPaneItem(
   return card;
 }
 
+function renderHookEventContentBlock(
+  block: NonNullable<Extract<ActionCenterItem, { type: "hook-event" }>["content"]>[number]
+) {
+  if (block.type === "summary") {
+    const summary = document.createElement("p");
+    summary.className = "hook-event-content-summary";
+    summary.textContent = block.text;
+    return summary;
+  }
+
+  if (block.type === "text") {
+    const text = document.createElement("p");
+    text.className = "hook-event-content-text";
+    text.textContent = block.text;
+    return text;
+  }
+
+  const details = document.createElement("details");
+  details.className = "hook-event-content-details";
+  details.dataset.contentType = block.type;
+  details.open = block.collapsed === false;
+
+  const summary = document.createElement("summary");
+  summary.textContent =
+    block.type === "code"
+      ? [
+          block.title ?? "Code",
+          block.language ? `.${block.language}` : null
+        ]
+          .filter(Boolean)
+          .join(" ")
+      : block.title;
+
+  const body = document.createElement("pre");
+  body.className =
+    block.type === "code"
+      ? "hook-event-content-code"
+      : "hook-event-content-details-body";
+  body.textContent = block.text;
+
+  details.append(summary, body);
+  return details;
+}
+
+function renderHookEventContent(
+  item: Extract<ActionCenterItem, { type: "hook-event" }>
+) {
+  if (item.content && item.content.length > 0) {
+    const content = document.createElement("div");
+    content.className = "hook-event-content";
+    item.content.forEach((block) => {
+      content.append(renderHookEventContentBlock(block));
+    });
+    return content;
+  }
+
+  if (!item.body) {
+    return null;
+  }
+
+  const body = document.createElement("pre");
+  body.className = "action-center-snippet";
+  body.textContent = item.body;
+  return body;
+}
+
 function renderHookEventItem(
   item: Extract<ActionCenterItem, { type: "hook-event" }>,
   options: ActionCenterPanelOptions
@@ -165,9 +231,7 @@ function renderHookEventItem(
     .filter(Boolean)
     .join(" · ");
 
-  const body = document.createElement("pre");
-  body.className = "action-center-snippet";
-  body.textContent = item.body ?? "";
+  const content = renderHookEventContent(item);
 
   const actions = document.createElement("div");
   actions.className = "action-center-actions";
@@ -196,8 +260,8 @@ function renderHookEventItem(
 
   card.append(header, meta);
 
-  if (item.body) {
-    card.append(body);
+  if (content) {
+    card.append(content);
   }
 
   card.append(actions);

@@ -229,6 +229,21 @@ describe("client layout styles", () => {
     );
   });
 
+  it("keeps structured hook event code blocks compact and collapsible", () => {
+    expect(styles).toMatch(
+      /\.hook-event-content\s*\{[^}]*display:\s*grid;[^}]*gap:\s*0\.32rem;/s
+    );
+    expect(styles).toMatch(
+      /\.hook-event-content-details\s*\{[^}]*overflow:\s*hidden;/s
+    );
+    expect(styles).toMatch(
+      /\.hook-event-content-details\[data-content-type="code"\]\s+summary\s*\{[^}]*color:\s*#bfffc4;/s
+    );
+    expect(styles).toMatch(
+      /\.hook-event-content-code,\s*\.hook-event-content-details-body\s*\{[^}]*max-height:\s*12rem;[^}]*overflow:\s*auto;/s
+    );
+  });
+
   it("makes desktop cards visibly larger than the default scale", () => {
     expect(styles).toContain("--dashboard-card-name-size: clamp(1.32rem, 0.92vw + 1.04rem, 2.08rem);");
     expect(styles).toContain("--dashboard-card-meta-size: clamp(1rem, 0.42vw + 0.84rem, 1.25rem);");

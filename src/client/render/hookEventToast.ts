@@ -8,6 +8,27 @@ export type HookEventToastActions = {
   onRunAction: (id: string, actionId: string) => void;
 };
 
+function getCompactEventBody(event: ActionCenterHookEventItem) {
+  const content = event.content ?? [];
+  const summary = content.find((block) => block.type === "summary");
+
+  if (summary) {
+    return summary.text;
+  }
+
+  const text = content.find((block) => block.type === "text");
+
+  if (text) {
+    return text.text;
+  }
+
+  if (content.length > 0) {
+    return null;
+  }
+
+  return event.body;
+}
+
 export function renderHookEventToast(
   root: HTMLElement,
   events: ActionCenterHookEventItem[],
@@ -58,10 +79,12 @@ export function renderHookEventToast(
   header.append(titleWrap, closeButton);
   toast.append(header);
 
-  if (event.body) {
-    const body = document.createElement("pre");
+  const compactBody = getCompactEventBody(event);
+
+  if (compactBody) {
+    const body = document.createElement("p");
     body.className = "hook-event-toast-body";
-    body.textContent = event.body;
+    body.textContent = compactBody;
     toast.append(body);
   }
 
