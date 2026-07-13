@@ -6,8 +6,6 @@ import { fileURLToPath } from "node:url";
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const manifestPath = process.argv[2]
   ? resolve(process.argv[2])
-  : process.env.STRUCTURED_EVENTS_COMPAT_MANIFEST
-    ? resolve(process.env.STRUCTURED_EVENTS_COMPAT_MANIFEST)
   : join(rootDir, "config", "structured-events-compat.json");
 const categoryNames = ["strictDecoders", "repeatedMessageStreamingProducers"];
 
@@ -78,6 +76,19 @@ try {
   }
   const errors = [];
   categoryNames.forEach((name) => validateCategory(manifest, name, errors));
+  const entryIds = new Set();
+  categoryNames.forEach((name) => {
+    const entries = manifest[name]?.entries;
+    if (!Array.isArray(entries)) return;
+    entries.forEach((entry) => {
+      if (!nonemptyString(entry?.id)) return;
+      if (entryIds.has(entry.id)) {
+        errors.push(`duplicate entry id "${entry.id}"`);
+      } else {
+        entryIds.add(entry.id);
+      }
+    });
+  });
   if (errors.length > 0) {
     throw new Error(`Structured events compatibility gate failed:\n${errors.join("\n")}`);
   }

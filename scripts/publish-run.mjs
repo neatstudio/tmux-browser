@@ -8,6 +8,11 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const rootDir = resolve(scriptDir, "..");
 const defaultRunFile = join(rootDir, "release", "release.run");
 const defaultConfigFile = join(rootDir, ".tmux-ui.publish.json");
+const structuredEventsCompatFile = join(
+  rootDir,
+  "config",
+  "structured-events-compat.json"
+);
 
 function parseArgs(argv) {
   const options = {
@@ -175,7 +180,12 @@ try {
     process.exit(0);
   }
 
-  run("npm", ["run", "check:structured-events-compat"]);
+  run("npm", [
+    "run",
+    "check:structured-events-compat",
+    "--",
+    structuredEventsCompatFile
+  ]);
 
   const targets = options.targets.length > 0 ? options.targets : readConfigTargets();
 

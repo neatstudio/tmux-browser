@@ -248,7 +248,12 @@ deterministic core SemVer form `major.minor.patch` (for example, `1.2.3`): all
 three identifiers are required, leading zeroes are forbidden except for `0`, and
 prerelease/build suffixes are not accepted. A category may remain empty only when
 its repository audit is recorded with an ISO `auditedAt` date and nonempty
-`owner`.
+`owner`. Entry `id` values must be unique across both categories.
+
+The checker accepts an explicit manifest path for isolated validation, but
+`npm run publish` always passes the repository's canonical
+`config/structured-events-compat.json` path. Environment variables cannot
+redirect the production publish gate to another manifest.
 
 Before a Phase 1 server production release, update the manifest for every known
 consumer and producer, deploy the recorded minimum compatible versions, set

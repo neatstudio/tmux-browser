@@ -1,4 +1,10 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -101,6 +107,32 @@ describe("structured events compatibility gate", () => {
     }
   );
 
+  it("rejects duplicate ids within one category", () => {
+    const result = checkManifest({
+      strictDecoders: {
+        entries: [readyEntry("duplicate"), readyEntry("duplicate")]
+      },
+      repeatedMessageStreamingProducers: {
+        entries: [readyEntry("producer")]
+      }
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('duplicate entry id "duplicate"');
+  });
+
+  it("rejects duplicate ids across categories", () => {
+    const result = checkManifest({
+      strictDecoders: { entries: [readyEntry("shared-id")] },
+      repeatedMessageStreamingProducers: {
+        entries: [readyEntry("shared-id")]
+      }
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('duplicate entry id "shared-id"');
+  });
+
   it("rejects malformed JSON deterministically", () => {
     const directory = mkdtempSync(join(tmpdir(), "structured-events-compat-"));
     const manifestPath = join(directory, "compat.json");
@@ -144,16 +176,50 @@ describe("structured events compatibility gate", () => {
     expect(invalid.stderr).toContain("strictDecoders");
   });
 
-  it("stops publish before run-file or remote side effects when the gate fails", () => {
+  it("publish ignores a manifest environment override and checks canonical config", () => {
     const directory = mkdtempSync(join(tmpdir(), "structured-events-compat-"));
-    const manifestPath = join(directory, "compat.json");
+    const scriptsDirectory = join(directory, "scripts");
+    const configDirectory = join(directory, "config");
+    const readyManifestPath = join(directory, "ready.json");
     tempDirectories.push(directory);
-    writeFileSync(manifestPath, JSON.stringify({}), "utf8");
+    mkdirSync(scriptsDirectory);
+    mkdirSync(configDirectory);
+    copyFileSync("scripts/publish-run.mjs", join(scriptsDirectory, "publish-run.mjs"));
+    copyFileSync(
+      "scripts/check-structured-events-compat.mjs",
+      join(scriptsDirectory, "check-structured-events-compat.mjs")
+    );
+    writeFileSync(
+      join(directory, "package.json"),
+      JSON.stringify({
+        type: "module",
+        scripts: {
+          "check:structured-events-compat":
+            "node scripts/check-structured-events-compat.mjs"
+        }
+      }),
+      "utf8"
+    );
+    writeFileSync(
+      join(configDirectory, "structured-events-compat.json"),
+      JSON.stringify({}),
+      "utf8"
+    );
+    writeFileSync(
+      readyManifestPath,
+      JSON.stringify({
+        strictDecoders: { entries: [readyEntry("decoder")] },
+        repeatedMessageStreamingProducers: {
+          entries: [readyEntry("producer")]
+        }
+      }),
+      "utf8"
+    );
 
     const result = spawnSync(
       process.execPath,
       [
-        "scripts/publish-run.mjs",
+        join(scriptsDirectory, "publish-run.mjs"),
         "--target",
         "unused-host:/tmp/tmux-ui",
         "--run-file",
@@ -163,7 +229,7 @@ describe("structured events compatibility gate", () => {
         encoding: "utf8",
         env: {
           ...process.env,
-          STRUCTURED_EVENTS_COMPAT_MANIFEST: manifestPath
+          STRUCTURED_EVENTS_COMPAT_MANIFEST: readyManifestPath
         }
       }
     );
