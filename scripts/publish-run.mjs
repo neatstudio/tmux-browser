@@ -175,6 +175,8 @@ try {
     process.exit(0);
   }
 
+  run("npm", ["run", "check:structured-events-compat"]);
+
   const targets = options.targets.length > 0 ? options.targets : readConfigTargets();
 
   if (targets.length === 0) {

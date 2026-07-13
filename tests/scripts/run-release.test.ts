@@ -167,6 +167,9 @@ describe("run release scripts", () => {
     expect(packageJson.scripts["release:notes"]).toBe(
       "node scripts/generate-release-notes.mjs"
     );
+    expect(packageJson.scripts["check:structured-events-compat"]).toBe(
+      "node scripts/check-structured-events-compat.mjs"
+    );
     expect(packageJson.scripts.release).toBeUndefined();
   });
 
@@ -487,6 +490,16 @@ describe("run release scripts", () => {
     expect(publishScript).not.toContain('host: "vn"');
   });
 
+  it("checks structured event compatibility before publish side effects", () => {
+    const gate = publishScript.indexOf("check:structured-events-compat");
+    const runFileCheck = publishScript.indexOf("existsSync(options.runFile)");
+    const publishLoop = publishScript.indexOf("targets.forEach");
+
+    expect(gate).toBeGreaterThan(-1);
+    expect(gate).toBeLessThan(runFileCheck);
+    expect(gate).toBeLessThan(publishLoop);
+  });
+
   it("builds GitHub Release artifacts from pack:run", () => {
     expect(workflow).toContain("npm run pack:run");
     expect(workflow).toContain(
@@ -508,6 +521,16 @@ describe("run release scripts", () => {
     expect(workflow).toContain("--target \"$GITHUB_SHA\"");
     expect(workflow).toContain("--notes-file release/release-notes.combined.md");
     expect(workflow).not.toContain("skip publishing");
+  });
+
+  it("checks structured event compatibility before packing or uploading", () => {
+    const gate = workflow.indexOf("npm run check:structured-events-compat");
+    const pack = workflow.indexOf("npm run pack:run");
+    const upload = workflow.indexOf("actions/upload-artifact");
+
+    expect(gate).toBeGreaterThan(-1);
+    expect(gate).toBeLessThan(pack);
+    expect(gate).toBeLessThan(upload);
   });
 
   it("opts GitHub-hosted JavaScript actions into the Node 24 runtime", () => {

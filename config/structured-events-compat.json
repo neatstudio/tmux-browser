@@ -1,0 +1,14 @@
+{
+  "strictDecoders": {
+    "entries": [],
+    "auditedAt": "2026-07-14",
+    "owner": "tmux-ui maintainers",
+    "evidence": "No strict structured-event decoder is bundled in this repository. The browser client accepts the shared AppEvent union without runtime rejection of new fields. External native clients are not claimed ready."
+  },
+  "repeatedMessageStreamingProducers": {
+    "entries": [],
+    "auditedAt": "2026-07-14",
+    "owner": "tmux-ui maintainers",
+    "evidence": "No bundled producer repeatedly sends conversation-message updates for one messageId. Hook scripts produce hook events, not conversation messages. External producers are not claimed ready."
+  }
+}

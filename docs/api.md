@@ -231,6 +231,26 @@ Legacy producers that create each message only once remain compatible without
 `updatedAt`. Legacy streaming producers that reuse a message id must upgrade to
 the explicit monotonically increasing revision contract before using this API.
 
+### Phase 1 production compatibility gate
+
+Production publishing is blocked by `npm run check:structured-events-compat`.
+The command reads `config/structured-events-compat.json` locally and performs no
+network access. Local publishing runs it before checking the run file or invoking
+`ssh`/`scp`; the release workflow runs it before packing or uploading artifacts.
+
+Register every strict decoder of structured `/ws/events` payloads under
+`strictDecoders.entries`, and every producer that sends multiple
+`conversation-message` snapshots for one `messageId` under
+`repeatedMessageStreamingProducers.entries`. Each entry requires a stable `id`,
+an `owner`, the deployed `minimumCompatibleVersion`, and `compatible: true` only
+after compatibility has been verified. A category may remain empty only when its
+repository audit is recorded with an ISO `auditedAt` date and nonempty `owner`.
+
+Before a Phase 1 server production release, update the manifest for every known
+consumer and producer, deploy the recorded minimum compatible versions, set
+`compatible: true`, and run the gate. Do not use an empty repository inventory as
+evidence that an unregistered external native client or producer is ready.
+
 | Status | Code | Meaning |
 | --- | --- | --- |
 | `400` | `invalid_revision` | A new message did not start at revision 1, or revision is not a finite integer. |
