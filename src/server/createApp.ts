@@ -28,6 +28,11 @@ import {
 } from "./services/timeline/createTimelineStore.js";
 import type { AppEventHub } from "./services/events/createAppEventHub.js";
 import {
+  ConversationMessageNormalizationError,
+  normalizeConversationMessage
+} from "./services/events/normalizeConversationMessage.js";
+import { TimelineStoreConflictError } from "./services/timeline/createTimelineStore.js";
+import {
   createPreferenceStore,
   type KanbanProject,
   type PreferenceStore
@@ -56,13 +61,6 @@ import type {
   HookEventStatus
 } from "../shared/hookEvents.js";
 import { HOOK_EVENT_SCHEMA_VERSION } from "../shared/hookEvents.js";
-import type {
-  ConversationMessageContentType,
-  ConversationMessageRole,
-  ConversationMessageStatus,
-  ConversationMessageTimelineEventDraft,
-  ConversationMessageTimelineEvent
-} from "../shared/timeline.js";
 
 const faviconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#15181c"/><path d="M14 14h36v10H37v28H27V24H14z" fill="#b7ffb0"/></svg>`;
 const UNGROUPED_PROJECT_NAME = "ungrouped";
@@ -85,9 +83,6 @@ const HOOK_TARGET_LIMIT = 128;
 const HOOK_CONTENT_BLOCK_LIMIT = 12;
 const HOOK_CONTENT_TITLE_LIMIT = 120;
 const HOOK_CONTENT_LANGUAGE_LIMIT = 32;
-const CONVERSATION_CONTENT_LIMIT = 20_000;
-const CONVERSATION_ID_LIMIT = 160;
-const CONVERSATION_TOOL_LIMIT = 120;
 const HOOK_STATUSES = new Set<HookEventStatus>([
   "waiting",
   "blocked",
@@ -110,22 +105,6 @@ const HOOK_ACTION_STYLES = new Set<HookEventActionStyle>([
 const HOOK_TARGET_VIEWS = new Set<HookEventTargetView>([
   "terminal",
   "kanban"
-]);
-const CONVERSATION_ROLES = new Set<ConversationMessageRole>([
-  "user",
-  "assistant",
-  "tool"
-]);
-const CONVERSATION_CONTENT_TYPES = new Set<ConversationMessageContentType>([
-  "text",
-  "code",
-  "image",
-  "command"
-]);
-const CONVERSATION_STATUSES = new Set<ConversationMessageStatus>([
-  "streaming",
-  "complete",
-  "failed"
 ]);
 
 class HttpError extends Error {
@@ -562,89 +541,6 @@ function normalizeHookEventPayload(body: unknown): HookEvent {
     target: normalizeHookTarget(payload.target, sessionName),
     actions: normalizeHookActions(payload.actions),
     content: normalizeHookContentBlocks(payload.content),
-    metadata: normalizeHookMetadata(payload.metadata)
-  };
-}
-
-function createConversationMessageId() {
-  return `msg_${Date.now().toString(36)}_${Math.random()
-    .toString(36)
-    .slice(2, 8)}`;
-}
-
-function normalizeConversationRole(value: unknown): ConversationMessageRole {
-  const normalized = readString(value, {
-    fallback: "assistant",
-    maxLength: 40
-  });
-
-  return CONVERSATION_ROLES.has(normalized as ConversationMessageRole)
-    ? (normalized as ConversationMessageRole)
-    : "assistant";
-}
-
-function normalizeConversationContentType(
-  value: unknown
-): ConversationMessageContentType {
-  const normalized = readString(value, {
-    fallback: "text",
-    maxLength: 40
-  });
-
-  return CONVERSATION_CONTENT_TYPES.has(
-    normalized as ConversationMessageContentType
-  )
-    ? (normalized as ConversationMessageContentType)
-    : "text";
-}
-
-function normalizeConversationStatus(value: unknown): ConversationMessageStatus {
-  const normalized = readString(value, {
-    fallback: "complete",
-    maxLength: 40
-  });
-
-  return CONVERSATION_STATUSES.has(normalized as ConversationMessageStatus)
-    ? (normalized as ConversationMessageStatus)
-    : "complete";
-}
-
-function normalizeConversationMessagePayload(
-  body: unknown
-): ConversationMessageTimelineEventDraft {
-  const payload =
-    body && typeof body === "object" ? (body as Record<string, unknown>) : {};
-  const sessionName = readString(payload.sessionName, { maxLength: 128 });
-  const content = readOptionalRawString(
-    payload.content,
-    CONVERSATION_CONTENT_LIMIT
-  );
-
-  try {
-    validateSessionName(sessionName);
-  } catch {
-    throw new HttpError("Invalid conversation session name", 400);
-  }
-
-  if (!content) {
-    throw new HttpError("Conversation content is required", 400);
-  }
-
-  return {
-    type: "conversation-message",
-    messageId:
-      readNullableString(payload.messageId, CONVERSATION_ID_LIMIT) ??
-      createConversationMessageId(),
-    sessionName,
-    role: normalizeConversationRole(payload.role),
-    contentType: normalizeConversationContentType(payload.contentType),
-    content,
-    status: normalizeConversationStatus(payload.status),
-    toolName: readNullableString(payload.toolName, CONVERSATION_TOOL_LIMIT),
-    parentMessageId: readNullableString(
-      payload.parentMessageId,
-      CONVERSATION_ID_LIMIT
-    ),
     metadata: normalizeHookMetadata(payload.metadata)
   };
 }
@@ -1152,10 +1048,9 @@ export function createApp(options: {
 
   app.post("/api/conversation/messages", (req, res, next) => {
     try {
-      const conversationMessage = normalizeConversationMessagePayload(req.body);
-      const timelineEvent = timelineStore.addEvent(
-        conversationMessage
-      ) as ConversationMessageTimelineEvent;
+      const conversationMessage = normalizeConversationMessage(req.body);
+      const timelineEvent =
+        timelineStore.upsertConversationMessage(conversationMessage);
       const appEvent = options.eventHub?.publish(timelineEvent);
 
       res.status(201).json({
@@ -1163,6 +1058,25 @@ export function createApp(options: {
         message: appEvent ?? timelineEvent
       });
     } catch (error) {
+      if (
+        error instanceof ConversationMessageNormalizationError &&
+        error.code
+      ) {
+        res
+          .status(error.statusCode)
+          .json({ error: error.message, code: error.code });
+        return;
+      }
+      if (error instanceof TimelineStoreConflictError) {
+        const status =
+          error.code === "invalid_revision"
+            ? 400
+            : error.code === "revision_required"
+              ? 428
+              : 409;
+        res.status(status).json({ error: error.message, code: error.code });
+        return;
+      }
       next(error);
     }
   });

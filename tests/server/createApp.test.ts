@@ -144,8 +144,9 @@ describe("createApp", () => {
         sessionName: "codex",
         role: "assistant",
         contentType: "text",
-        content: "已经完成修改",
-        status: "complete",
+        content: "正在修改",
+        summary: "  修改中  ",
+        status: "streaming",
         toolName: "apply_patch",
         parentMessageId: "msg_122"
       });
@@ -157,11 +158,12 @@ describe("createApp", () => {
       sessionName: "codex",
       role: "assistant",
       contentType: "text",
-      content: "已经完成修改",
-      status: "complete",
+      content: "正在修改",
+      summary: "修改中",
+      status: "streaming",
       toolName: "apply_patch",
       parentMessageId: "msg_122",
-      summary: null,
+      summary: "修改中",
       revision: 1,
       id: expect.any(String),
       createdAt: expect.any(String),
@@ -180,13 +182,124 @@ describe("createApp", () => {
         sessionName: "codex",
         role: "assistant",
         contentType: "text",
-        content: "已经完成修改",
-        status: "complete",
-        summary: null,
+        content: "正在修改",
+        status: "streaming",
+        summary: "修改中",
         revision: 1,
         updatedAt: response.body.message.createdAt
       })
     ]);
+    expect(received[0]).toEqual(response.body.message);
+
+    const updated = await request(app)
+      .post("/api/conversation/messages")
+      .send({
+        messageId: "msg_123",
+        sessionName: "codex",
+        role: "assistant",
+        contentType: "text",
+        content: "已经完成修改",
+        summary: "修改完成",
+        status: "complete",
+        toolName: "apply_patch",
+        parentMessageId: "msg_122",
+        revision: 2
+      });
+
+    expect(updated.status).toBe(201);
+    expect(updated.body.message).toMatchObject({
+      id: response.body.message.id,
+      createdAt: response.body.message.createdAt,
+      revision: 2,
+      summary: "修改完成",
+      status: "complete"
+    });
+    expect(received[1]).toEqual(updated.body.message);
+    expect(timelineStore.listEvents({ limit: 1 })).toEqual([
+      updated.body.message
+    ]);
+  });
+
+  it("maps conversation revision conflicts to stable HTTP codes without broadcasting", async () => {
+    const timelineStore = createTimelineStore();
+    const eventHub = createAppEventHub();
+    const received: unknown[] = [];
+    eventHub.subscribe((event) => received.push(event));
+    const app = createApp({ timelineStore, eventHub });
+    const base = {
+      messageId: "message-1",
+      sessionName: "build",
+      role: "assistant",
+      contentType: "text",
+      content: "working",
+      status: "streaming",
+      toolName: null,
+      parentMessageId: null
+    };
+
+    const invalid = await request(app)
+      .post("/api/conversation/messages")
+      .send({ ...base, revision: 2 });
+    expect(invalid.status).toBe(400);
+    expect(invalid.body.code).toBe("invalid_revision");
+    expect(received).toHaveLength(0);
+
+    const invalidType = await request(app)
+      .post("/api/conversation/messages")
+      .send({ ...base, revision: "1" });
+    expect(invalidType.status).toBe(400);
+    expect(invalidType.body.code).toBe("invalid_revision");
+    expect(received).toHaveLength(0);
+
+    const created = await request(app).post("/api/conversation/messages").send(base);
+    expect(created.status).toBe(201);
+    expect(received).toHaveLength(1);
+
+    const required = await request(app)
+      .post("/api/conversation/messages")
+      .send({ ...base, content: "changed" });
+    expect(required.status).toBe(428);
+    expect(required.body.code).toBe("revision_required");
+
+    const cases = [
+      [{ ...base, revision: 1, content: "changed" }, "stale_revision"],
+      [{ ...base, revision: 3, content: "changed" }, "revision_gap"],
+      [{ ...base, revision: 2, role: "tool" }, "immutable_field"]
+    ] as const;
+    for (const [payload, code] of cases) {
+      const rejected = await request(app)
+        .post("/api/conversation/messages")
+        .send(payload);
+      expect(rejected.status).toBe(409);
+      expect(rejected.body.code).toBe(code);
+    }
+    expect(received).toHaveLength(1);
+
+    const completePayload = {
+      ...base,
+      revision: 2,
+      content: "done",
+      status: "complete"
+    };
+    const complete = await request(app)
+      .post("/api/conversation/messages")
+      .send(completePayload);
+    expect(complete.status).toBe(201);
+    expect(received).toHaveLength(2);
+
+    const retry = await request(app)
+      .post("/api/conversation/messages")
+      .send(completePayload);
+    expect(retry.status).toBe(201);
+    expect(retry.body.message).toEqual(complete.body.message);
+    expect(received).toHaveLength(3);
+
+    const terminal = await request(app)
+      .post("/api/conversation/messages")
+      .send({ ...base, revision: 3, content: "again" });
+    expect(terminal.status).toBe(409);
+    expect(terminal.body.code).toBe("terminal_conflict");
+    expect(received).toHaveLength(3);
   });
 
   it("accepts authenticated hook events, records timeline, and broadcasts app events", async () => {

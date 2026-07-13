@@ -12,7 +12,7 @@ export type SessionsInvalidatedReason =
   | "pane-selected"
   | "pane-killed";
 
-export type AppEventDraft =
+export type GeneratedAppEventDraft =
   | {
       type: "sessions-invalidated";
       reason: SessionsInvalidatedReason;
@@ -20,12 +20,14 @@ export type AppEventDraft =
     }
   | ({
       type: "hook-event";
-    } & HookEvent)
+    } & HookEvent);
+
+export type AppEventDraft =
+  | GeneratedAppEventDraft
   | ConversationMessageTimelineEvent;
 
-export type AppEvent = AppEventDraft & {
-  id: string;
-  createdAt: string;
-};
+export type AppEvent =
+  | (GeneratedAppEventDraft & { id: string; createdAt: string })
+  | ConversationMessageTimelineEvent;
 
 export type AppEventSocketMessage = { type: "hello" } | AppEvent;

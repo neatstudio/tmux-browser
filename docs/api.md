@@ -153,8 +153,11 @@ type ConversationMessageTimelineEvent = {
   role: ConversationMessageRole;
   contentType: ConversationMessageContentType;
   content: string;
+  summary: string | null;
   status: ConversationMessageStatus;
   createdAt: string;
+  revision: number;
+  updatedAt: string;
   toolName: string | null;
   parentMessageId: string | null;
   metadata?: Record<string, string | number | boolean | null>;
@@ -190,10 +193,12 @@ type ConversationMessageRequest = {
   role?: ConversationMessageRole; // default: "assistant"
   contentType?: ConversationMessageContentType; // default: "text"
   content: string;
+  summary?: string | null; // trimmed, max 320 characters
   status?: ConversationMessageStatus; // default: "complete"
   toolName?: string | null;
   parentMessageId?: string | null;
   metadata?: Record<string, string | number | boolean | null>;
+  revision?: number;
 };
 
 type ConversationMessageResponse = {
@@ -206,6 +211,27 @@ type ConversationMessageResponse = {
 | --- | --- | --- | --- |
 | `POST` | `/api/conversation/messages` | `ConversationMessageRequest` | `ConversationMessageResponse` |
 
+The logical key is `(sessionName, messageId)`. A first write defaults to
+`revision: 1`; if supplied on the first write, revision must equal `1`. Producers
+that update a streaming message must send the complete content snapshot with the
+next consecutive revision. Successful updates preserve `id` and `createdAt`, set
+a new `updatedAt`, and replace the mutable snapshot fields. Retrying the exact
+same normalized payload at the same revision is idempotent.
+
+Legacy producers that create each message only once remain compatible without
+`summary` or `revision`; the response contains `summary: null`, `revision: 1`, and
+`updatedAt`. Legacy streaming producers that reuse a message id must upgrade to
+the explicit monotonically increasing revision contract before using this API.
+
+| Status | Code | Meaning |
+| --- | --- | --- |
+| `400` | `invalid_revision` | A new message did not start at revision 1, or revision is not a finite integer. |
+| `428` | `revision_required` | An existing message update omitted revision. |
+| `409` | `stale_revision` | Revision is older, or repeats a revision with different normalized payload. |
+| `409` | `revision_gap` | Revision skipped the next consecutive value. |
+| `409` | `immutable_field` | An update changed identity, role, content type, tool, or parent fields. |
+| `409` | `terminal_conflict` | An update attempted to change a complete or failed message. |
+
 Example:
 
 ```json
@@ -215,6 +241,7 @@ Example:
   "role": "assistant",
   "contentType": "text",
   "content": "已经完成修改",
+  "summary": "修改完成",
   "status": "complete",
   "toolName": "apply_patch",
   "parentMessageId": "msg_122"

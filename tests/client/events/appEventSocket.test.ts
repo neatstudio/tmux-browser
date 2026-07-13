@@ -127,11 +127,14 @@ describe("createAppEventSocket", () => {
       role: "assistant",
       contentType: "text",
       content: "已经完成修改",
+      summary: "修改完成",
       status: "complete",
       toolName: "apply_patch",
       parentMessageId: "msg_122",
       id: "evt-3",
-      createdAt: "2026-07-12T10:00:00.000Z"
+      createdAt: "2026-07-12T10:00:00.000Z",
+      revision: 2,
+      updatedAt: "2026-07-12T10:00:01.000Z"
     });
 
     expect(onEvent).toHaveBeenCalledWith(
@@ -140,7 +143,10 @@ describe("createAppEventSocket", () => {
         messageId: "msg_123",
         role: "assistant",
         contentType: "text",
-        status: "complete"
+        status: "complete",
+        summary: "修改完成",
+        revision: 2,
+        updatedAt: "2026-07-12T10:00:01.000Z"
       })
     );
   });

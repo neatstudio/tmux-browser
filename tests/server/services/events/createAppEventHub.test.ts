@@ -35,4 +35,26 @@ describe("createAppEventHub", () => {
 
     expect(received).toHaveLength(1);
   });
+
+  it("preserves canonical identity and timestamps supplied by timeline records", () => {
+    const hub = createAppEventHub();
+    const canonical = {
+      type: "conversation-message" as const,
+      messageId: "message-1",
+      sessionName: "build",
+      role: "assistant" as const,
+      contentType: "text" as const,
+      content: "done",
+      summary: "Build complete",
+      status: "complete" as const,
+      toolName: null,
+      parentMessageId: null,
+      revision: 2,
+      id: "17",
+      createdAt: "2026-07-13T01:00:00.000Z",
+      updatedAt: "2026-07-13T01:00:01.000Z"
+    };
+
+    expect(hub.publish(canonical)).toEqual(canonical);
+  });
 });
