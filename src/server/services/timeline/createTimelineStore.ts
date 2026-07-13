@@ -1,6 +1,7 @@
 import type {
   ConversationMessageTimelineEvent,
   ConversationMessageUpsertDraft,
+  HookEventTimelineEvent,
   TimelineEvent,
   TimelineEventDraft
 } from "../../../shared/timeline.js";
@@ -24,7 +25,10 @@ export class TimelineStoreConflictError extends Error {
 }
 
 export type TimelineStore = {
-  addEvent: (event: TimelineEventDraft) => TimelineEvent;
+  addEvent: {
+    (event: Omit<HookEventTimelineEvent, "id" | "createdAt">): HookEventTimelineEvent;
+    (event: TimelineEventDraft): TimelineEvent;
+  };
   upsertConversationMessage: (
     event: ConversationMessageUpsertDraft
   ) => ConversationMessageTimelineEvent;
@@ -223,7 +227,7 @@ export function createTimelineStore(options: { maxEvents?: number } = {}): Timel
   }
 
   return {
-    addEvent(event) {
+    addEvent: ((event: TimelineEventDraft) => {
       const createdAt = new Date().toISOString();
       const recordedEvent: TimelineEvent =
         event.type === "conversation-message"
@@ -245,7 +249,7 @@ export function createTimelineStore(options: { maxEvents?: number } = {}): Timel
       trimEvents();
 
       return recordedEvent;
-    },
+    }) as TimelineStore["addEvent"],
     upsertConversationMessage,
     listEvents(options = {}) {
       return events.slice(0, normalizeLimit(options.limit));

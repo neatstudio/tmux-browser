@@ -53,6 +53,16 @@ export type HookEventContentBlock =
       collapsed: boolean;
     };
 
+export type HookEventMetadata = Record<
+  string,
+  string | number | boolean | null
+> & {
+  filesChanged?: number;
+  testsPassed?: number;
+  testsFailed?: number;
+  durationMs?: number;
+};
+
 export type HookEvent = {
   schemaVersion: typeof HOOK_EVENT_SCHEMA_VERSION;
   source: string;
@@ -67,5 +77,5 @@ export type HookEvent = {
   target: HookEventTarget;
   actions: HookEventAction[];
   content: HookEventContentBlock[];
-  metadata?: Record<string, string | number | boolean | null>;
+  metadata?: HookEventMetadata;
 };

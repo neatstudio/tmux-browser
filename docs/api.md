@@ -133,8 +133,7 @@ type BaseTimelineEvent = {
     | "group-message-replied"
     | "pane-split"
     | "pane-selected"
-    | "pane-killed"
-    | "hook-event";
+    | "pane-killed";
   sessionName: string | null;
   message: string;
   createdAt: string;
@@ -163,7 +162,16 @@ type ConversationMessageTimelineEvent = {
   metadata?: Record<string, string | number | boolean | null>;
 };
 
-type TimelineEvent = BaseTimelineEvent | ConversationMessageTimelineEvent;
+type HookEventTimelineEvent = HookEvent & {
+  type: "hook-event";
+  id: string;
+  createdAt: string;
+};
+
+type TimelineEvent =
+  | BaseTimelineEvent
+  | ConversationMessageTimelineEvent
+  | HookEventTimelineEvent;
 ```
 
 ## Health, Status, Timeline
@@ -572,7 +580,8 @@ type HookEvent = {
 ### `POST /api/hooks/events`
 
 Records an agent/tool event, adds a timeline event, and broadcasts over
-`/ws/events`.
+`/ws/events`. The response, stored timeline record, and websocket event are the
+same canonical typed record, including the same `id` and `createdAt`.
 
 ```ts
 type Request = Partial<HookEvent> & {
@@ -593,6 +602,22 @@ Defaults: `schemaVersion` is `"tmux-ui.hook/v1"`, `source` is `"custom"`,
 `eventType` is `"event"`, `status` is `"info"`, `severity` is `"info"`,
 `title` is `"<source> <eventType>"`, `target.sessionName` is `sessionName`,
 and `actions` / `content` are `[]`.
+
+Hook metadata accepts scalar values only. Keys are processed in sorted order;
+normalized-key collisions keep the first key and emit a value-free diagnostic.
+Keys whose lowercase alphanumeric
+form contains `token`, `secret`, `password`, `authorization`, or `cookie`, or
+ends in `key`, are stored as `[redacted]`. Strings are limited to 2 KiB of UTF-8
+data and receive `[truncated]` when shortened. User metadata is limited to 16
+KiB and receives `_truncated: true` when the limit is reached. The optional
+display statistics are validated as follows: `filesChanged` is an integer from
+0 to 100000, `testsPassed` and `testsFailed` are integers from 0 to 1000000, and
+`durationMs` is a finite number from 0 to 86400000.
+
+For compatibility, the record metadata also contains reserved legacy
+projections for `status`, `source`, `eventType`, `severity`, `body`, `taskId`,
+`cwd`, `target`, `actions`, and `content`. These reserved fields do not consume
+the user metadata budget; typed top-level fields are canonical.
 
 `target` lets tmux-ui jump to the correct terminal or Kanban group when the event
 belongs to a different group than the current page. `actions` renders explicit

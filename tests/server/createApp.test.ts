@@ -336,6 +336,7 @@ describe("createApp", () => {
         body: "Approve file edit?",
         taskId: "task-1",
         metadata: {
+          "Api Token": "raw-secret",
           tool: "apply_patch",
           ignored: { nested: true }
         },
@@ -402,6 +403,7 @@ describe("createApp", () => {
         }
       ],
       metadata: {
+        "Api Token": "[redacted]",
         tool: "apply_patch"
       }
     });
@@ -409,8 +411,9 @@ describe("createApp", () => {
     expect(timelineEvent).toMatchObject({
       type: "hook-event",
       sessionName: "local-pets",
-      message: "Need confirmation",
       metadata: {
+        "Api Token": "[redacted]",
+        tool: "apply_patch",
         source: "codex",
         eventType: "approval-required",
         status: "waiting",
@@ -463,6 +466,9 @@ describe("createApp", () => {
         }
       })
     ]);
+    expect(timelineEvent).toEqual(response.body.event);
+    expect(received[0]).toEqual(response.body.event);
+    expect(JSON.stringify(response.body)).not.toContain("raw-secret");
   });
 
   it("accepts structured hook content blocks for compact mobile rendering", async () => {

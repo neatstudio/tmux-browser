@@ -31,6 +31,7 @@ import {
   ConversationMessageNormalizationError,
   normalizeConversationMessage
 } from "./services/events/normalizeConversationMessage.js";
+import { normalizeHookEvent } from "./services/events/normalizeHookEvent.js";
 import { TimelineStoreConflictError } from "./services/timeline/createTimelineStore.js";
 import {
   createPreferenceStore,
@@ -50,17 +51,6 @@ import type {
   GroupMessageKind,
   GroupMessageTarget
 } from "../shared/groupMessages.js";
-import type {
-  HookEvent,
-  HookEventAction,
-  HookEventActionStyle,
-  HookEventContentBlock,
-  HookEventTarget,
-  HookEventTargetView,
-  HookEventSeverity,
-  HookEventStatus
-} from "../shared/hookEvents.js";
-import { HOOK_EVENT_SCHEMA_VERSION } from "../shared/hookEvents.js";
 
 const faviconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#15181c"/><path d="M14 14h36v10H37v28H27V24H14z" fill="#b7ffb0"/></svg>`;
 const UNGROUPED_PROJECT_NAME = "ungrouped";
@@ -73,38 +63,6 @@ const IMAGE_MIME_TYPES = new Map([
   [".png", "image/png"],
   [".svg", "image/svg+xml"],
   [".webp", "image/webp"]
-]);
-const HOOK_TEXT_LIMIT = 4_000;
-const HOOK_TITLE_LIMIT = 160;
-const HOOK_METADATA_LIMIT = 24;
-const HOOK_ACTION_LIMIT = 8;
-const HOOK_ACTION_LABEL_LIMIT = 80;
-const HOOK_TARGET_LIMIT = 128;
-const HOOK_CONTENT_BLOCK_LIMIT = 12;
-const HOOK_CONTENT_TITLE_LIMIT = 120;
-const HOOK_CONTENT_LANGUAGE_LIMIT = 32;
-const HOOK_STATUSES = new Set<HookEventStatus>([
-  "waiting",
-  "blocked",
-  "need-input",
-  "running",
-  "done",
-  "failed",
-  "info"
-]);
-const HOOK_SEVERITIES = new Set<HookEventSeverity>([
-  "info",
-  "warning",
-  "error"
-]);
-const HOOK_ACTION_STYLES = new Set<HookEventActionStyle>([
-  "primary",
-  "secondary",
-  "danger"
-]);
-const HOOK_TARGET_VIEWS = new Set<HookEventTargetView>([
-  "terminal",
-  "kanban"
 ]);
 
 class HttpError extends Error {
@@ -229,319 +187,6 @@ function normalizeKanbanProjectPayload(body: unknown): {
       agents
     },
     selectedAgentNames
-  };
-}
-
-function readString(
-  value: unknown,
-  options: { fallback?: string; maxLength?: number } = {}
-) {
-  const fallback = options.fallback ?? "";
-  const maxLength = options.maxLength ?? HOOK_TEXT_LIMIT;
-
-  if (typeof value !== "string") {
-    return fallback;
-  }
-
-  const normalized = value.trim();
-
-  if (!normalized) {
-    return fallback;
-  }
-
-  return normalized.slice(0, maxLength);
-}
-
-function readNullableString(value: unknown, maxLength = HOOK_TEXT_LIMIT) {
-  const normalized = readString(value, { maxLength });
-
-  return normalized || null;
-}
-
-function readOptionalRawString(value: unknown, maxLength = HOOK_TEXT_LIMIT) {
-  if (typeof value !== "string" || value.length === 0) {
-    return null;
-  }
-
-  return value.slice(0, maxLength);
-}
-
-function readBoolean(value: unknown, fallback = false) {
-  return typeof value === "boolean" ? value : fallback;
-}
-
-function normalizeHookStatus(value: unknown): HookEventStatus {
-  const normalized = readString(value, { fallback: "info", maxLength: 40 });
-
-  return HOOK_STATUSES.has(normalized as HookEventStatus)
-    ? (normalized as HookEventStatus)
-    : "info";
-}
-
-function normalizeHookSeverity(value: unknown): HookEventSeverity {
-  const normalized = readString(value, { fallback: "info", maxLength: 40 });
-
-  return HOOK_SEVERITIES.has(normalized as HookEventSeverity)
-    ? (normalized as HookEventSeverity)
-    : "info";
-}
-
-function normalizeHookTargetView(value: unknown): HookEventTargetView {
-  const normalized = readString(value, {
-    fallback: "terminal",
-    maxLength: 40
-  });
-
-  return HOOK_TARGET_VIEWS.has(normalized as HookEventTargetView)
-    ? (normalized as HookEventTargetView)
-    : "terminal";
-}
-
-function normalizeHookActionStyle(value: unknown): HookEventActionStyle {
-  const normalized = readString(value, {
-    fallback: "secondary",
-    maxLength: 40
-  });
-
-  return HOOK_ACTION_STYLES.has(normalized as HookEventActionStyle)
-    ? (normalized as HookEventActionStyle)
-    : "secondary";
-}
-
-function readHookTargetString(
-  payload: Record<string, unknown>,
-  keys: string[]
-) {
-  for (const key of keys) {
-    const value = readNullableString(payload[key], HOOK_TARGET_LIMIT);
-
-    if (value) {
-      return value;
-    }
-  }
-
-  return null;
-}
-
-function normalizeOptionalHookTarget(value: unknown): HookEventTarget | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-
-  const payload = value as Record<string, unknown>;
-  const sessionName = readHookTargetString(payload, [
-    "sessionName",
-    "session",
-    "session_name"
-  ]);
-
-  if (sessionName) {
-    try {
-      validateSessionName(sessionName);
-    } catch {
-      throw new HttpError("Invalid hook target session name", 400);
-    }
-  }
-
-  return {
-    sessionName,
-    projectName: readHookTargetString(payload, [
-      "projectName",
-      "project",
-      "groupName",
-      "group"
-    ]),
-    view: normalizeHookTargetView(payload.view)
-  };
-}
-
-function normalizeHookTarget(
-  value: unknown,
-  fallbackSessionName: string
-): HookEventTarget {
-  return normalizeOptionalHookTarget(value) ?? {
-    sessionName: fallbackSessionName,
-    projectName: null,
-    view: "terminal"
-  };
-}
-
-function normalizeHookActions(value: unknown): HookEventAction[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  const actions: HookEventAction[] = [];
-  const seenIds = new Set<string>();
-
-  for (const [index, entry] of value.entries()) {
-    if (actions.length >= HOOK_ACTION_LIMIT) {
-      break;
-    }
-
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-      continue;
-    }
-
-    const payload = entry as Record<string, unknown>;
-    const fallbackId = `action-${index + 1}`;
-    let id = readString(payload.id, {
-      fallback: fallbackId,
-      maxLength: HOOK_ACTION_LABEL_LIMIT
-    });
-
-    if (seenIds.has(id)) {
-      id = `${id}-${index + 1}`;
-    }
-
-    seenIds.add(id);
-    const label = readString(payload.label, {
-      fallback: id,
-      maxLength: HOOK_ACTION_LABEL_LIMIT
-    });
-
-    actions.push({
-      id,
-      label,
-      input: readOptionalRawString(payload.input),
-      open: readBoolean(payload.open),
-      target: normalizeOptionalHookTarget(payload.target),
-      style: normalizeHookActionStyle(payload.style)
-    });
-  }
-
-  return actions;
-}
-
-function normalizeHookContentBlocks(value: unknown): HookEventContentBlock[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  const blocks: HookEventContentBlock[] = [];
-
-  for (const entry of value) {
-    if (blocks.length >= HOOK_CONTENT_BLOCK_LIMIT) {
-      break;
-    }
-
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-      continue;
-    }
-
-    const payload = entry as Record<string, unknown>;
-    const type = payload.type;
-    const text = readNullableString(payload.text);
-
-    if (!text) {
-      continue;
-    }
-
-    if (type === "summary" || type === "text") {
-      blocks.push({ type, text });
-      continue;
-    }
-
-    if (type === "code") {
-      const title = readNullableString(payload.title, HOOK_CONTENT_TITLE_LIMIT);
-      const language = readNullableString(
-        payload.language,
-        HOOK_CONTENT_LANGUAGE_LIMIT
-      );
-      blocks.push({
-        type: "code",
-        text,
-        ...(title ? { title } : {}),
-        ...(language ? { language } : {}),
-        collapsed: readBoolean(payload.collapsed, true)
-      });
-      continue;
-    }
-
-    if (type === "details") {
-      blocks.push({
-        type: "details",
-        title: readString(payload.title, {
-          fallback: "Details",
-          maxLength: HOOK_CONTENT_TITLE_LIMIT
-        }),
-        text,
-        collapsed: readBoolean(payload.collapsed, true)
-      });
-    }
-  }
-
-  return blocks;
-}
-
-function normalizeHookMetadata(value: unknown) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return undefined;
-  }
-
-  const metadata: Record<string, string | number | boolean | null> = {};
-
-  for (const [key, entry] of Object.entries(value).slice(0, HOOK_METADATA_LIMIT)) {
-    const normalizedKey = key.trim().slice(0, 80);
-
-    if (!normalizedKey) {
-      continue;
-    }
-
-    if (
-      typeof entry === "string" ||
-      typeof entry === "number" ||
-      typeof entry === "boolean" ||
-      entry === null
-    ) {
-      metadata[normalizedKey] =
-        typeof entry === "string" ? entry.slice(0, HOOK_TEXT_LIMIT) : entry;
-    }
-  }
-
-  return Object.keys(metadata).length > 0 ? metadata : undefined;
-}
-
-function normalizeHookEventPayload(body: unknown): HookEvent {
-  const payload =
-    body && typeof body === "object" ? (body as Record<string, unknown>) : {};
-  const source = readString(payload.source, {
-    fallback: "custom",
-    maxLength: 40
-  });
-  const sessionName = readString(payload.sessionName, { maxLength: 128 });
-
-  try {
-    validateSessionName(sessionName);
-  } catch {
-    throw new HttpError("Invalid hook session name", 400);
-  }
-
-  const eventType = readString(payload.eventType, {
-    fallback: "event",
-    maxLength: 80
-  });
-  const status = normalizeHookStatus(payload.status);
-  const title = readString(payload.title, {
-    fallback: `${source} ${eventType}`,
-    maxLength: HOOK_TITLE_LIMIT
-  });
-
-  return {
-    schemaVersion: HOOK_EVENT_SCHEMA_VERSION,
-    source,
-    sessionName,
-    eventType,
-    status,
-    title,
-    body: readNullableString(payload.body),
-    cwd: readNullableString(payload.cwd),
-    taskId: readNullableString(payload.taskId, 160),
-    severity: normalizeHookSeverity(payload.severity),
-    target: normalizeHookTarget(payload.target, sessionName),
-    actions: normalizeHookActions(payload.actions),
-    content: normalizeHookContentBlocks(payload.content),
-    metadata: normalizeHookMetadata(payload.metadata)
   };
 }
 
@@ -1084,11 +729,10 @@ export function createApp(options: {
   app.post("/api/hooks/events", (req, res, next) => {
     try {
       assertHookAuthorized(req, hookToken);
-      const hookEvent = normalizeHookEventPayload(req.body);
+      const hookEvent = normalizeHookEvent(req.body);
       const timelineEvent = timelineStore.addEvent({
         type: "hook-event",
-        sessionName: hookEvent.sessionName,
-        message: hookEvent.title,
+        ...hookEvent,
         metadata: {
           ...(hookEvent.metadata ?? {}),
           source: hookEvent.source,
@@ -1100,24 +744,14 @@ export function createApp(options: {
           body: hookEvent.body,
           target: JSON.stringify(hookEvent.target),
           actions: JSON.stringify(hookEvent.actions),
-          ...(hookEvent.content.length > 0
-            ? { content: JSON.stringify(hookEvent.content) }
-            : {})
+          content: JSON.stringify(hookEvent.content)
         }
       });
-      const appEvent = options.eventHub?.publish({
-        type: "hook-event",
-        ...hookEvent
-      });
+      options.eventHub?.publish(timelineEvent);
 
       res.status(202).json({
         ok: true,
-        event: {
-          type: "hook-event",
-          ...hookEvent,
-          id: appEvent?.id ?? timelineEvent.id,
-          createdAt: appEvent?.createdAt ?? timelineEvent.createdAt
-        }
+        event: timelineEvent
       });
     } catch (error) {
       next(error);
