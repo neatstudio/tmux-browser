@@ -10,6 +10,8 @@ import type { TimelineEvent } from "../../shared/timeline";
 import type { BrowserTab } from "./tabState";
 import type { SessionListCache } from "./sessionListCache";
 
+const TIMELINE_LIMIT = 8;
+
 export type DashboardState = {
   sessions: SessionSummary[];
   serverStatus: ServerStatus | null;
@@ -77,6 +79,17 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
   let dashboardTimer: ReturnType<typeof setInterval> | null = null;
   let serverStatusTimer: ReturnType<typeof setInterval> | null = null;
   let kanbanTimer: ReturnType<typeof setInterval> | null = null;
+  let timelineMergeSequence = 0;
+  const timelineMergeSequenceById = new Map<string, number>();
+
+  function pruneTimelineMergeSequences(timelineEvents: TimelineEvent[]) {
+    const retainedIds = new Set(timelineEvents.map((event) => event.id));
+    for (const eventId of timelineMergeSequenceById.keys()) {
+      if (!retainedIds.has(eventId)) {
+        timelineMergeSequenceById.delete(eventId);
+      }
+    }
+  }
 
   function sessionsEqual(previous: SessionSummary[], next: SessionSummary[]) {
     if (previous.length !== next.length) {
@@ -183,11 +196,26 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
     }
 
     try {
-      const timelineEvents = await deps.api.listTimelineEvents(8);
+      const mergeSequenceAtRequest = timelineMergeSequence;
+      const timelineEvents = await deps.api.listTimelineEvents(TIMELINE_LIMIT);
+      const eventsReceivedDuringRefresh = (state.timelineEvents ?? []).filter(
+        (event) =>
+          (timelineMergeSequenceById.get(event.id) ?? 0) > mergeSequenceAtRequest
+      );
+      const refreshedTimelineEvents = [
+        ...eventsReceivedDuringRefresh,
+        ...timelineEvents.filter(
+          (event) =>
+            !eventsReceivedDuringRefresh.some((received) => received.id === event.id)
+        )
+      ]
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+        .slice(0, TIMELINE_LIMIT);
+      pruneTimelineMergeSequences(refreshedTimelineEvents);
 
       commit({
         ...state,
-        timelineEvents,
+        timelineEvents: refreshedTimelineEvents,
         loading: false,
         error: null
       });
@@ -198,6 +226,36 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
         error: error instanceof Error ? error.message : "Failed to refresh timeline"
       });
     }
+  }
+
+  function mergeTimelineEvent(event: TimelineEvent) {
+    const existing = (state.timelineEvents ?? []).find(
+      (candidate) => candidate.id === event.id
+    );
+    if (
+      existing?.type === "conversation-message" &&
+      event.type === "conversation-message" &&
+      event.revision <= existing.revision
+    ) {
+      return;
+    }
+
+    timelineMergeSequence += 1;
+    timelineMergeSequenceById.set(event.id, timelineMergeSequence);
+    const timelineEvents = [
+      event,
+      ...(state.timelineEvents ?? []).filter((existing) => existing.id !== event.id)
+    ]
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+      .slice(0, TIMELINE_LIMIT);
+    pruneTimelineMergeSequences(timelineEvents);
+
+    commit({
+      ...state,
+      timelineEvents,
+      loading: false,
+      error: null
+    });
   }
 
   function mergeSessionStatus(session: SessionSummary) {
@@ -374,6 +432,7 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
     },
     refresh,
     refreshTimeline,
+    mergeTimelineEvent,
     async createSession(name: string) {
       await deps.api.createSession(name);
       await refreshTimeline();

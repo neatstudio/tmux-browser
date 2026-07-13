@@ -40,7 +40,11 @@ import {
 } from "./imagePreviewFocus";
 import { getCompactPageTitle } from "./pageTitle";
 import { getResponsiveSessionDefaults } from "./responsiveSessionSettings";
-import { createAppEventRefreshScheduler } from "./events/appEventRefreshScheduler";
+import {
+  createAppEventRefreshScheduler,
+  createAppEventTimelineHandler,
+  createUnifiedPanelState
+} from "./events/appEventRefreshScheduler";
 import { createAppEventSocket } from "./events/appEventSocket";
 import { createPageActivityController } from "./events/pageActivityController";
 import { fetchAppHealth, isServerVersionNewer } from "./appVersion";
@@ -247,6 +251,7 @@ function refreshCurrentViewState(options: { includeTimeline?: boolean } = {}) {
 const appEventRefreshScheduler = createAppEventRefreshScheduler(() => {
   void store.syncSessionAndKanbanState().then(() => scheduleRender());
 });
+const unifiedPanelState = createUnifiedPanelState();
 
 function shouldOpenActionCenterForHookEvent(event: {
   status?: string;
@@ -281,29 +286,23 @@ async function reloadIfServerVersionIsNewerAfterReconnect() {
   }
 }
 
+const appEventTimelineHandler = createAppEventTimelineHandler({
+  mergeTimelineEvent: (event) => store.mergeTimelineEvent(event),
+  refreshTimeline: () => void store.refreshTimeline().then(() => scheduleRender()),
+  scheduleSessionsRefresh: () => appEventRefreshScheduler.schedule(),
+  onAttentionEvent: (event) => {
+    if (shouldOpenActionCenterForHookEvent(event)) {
+      dismissedHookEventToastIds.delete(`hook:${event.id}`);
+    }
+  }
+});
+
 const appEventSocket = createAppEventSocket({
   onReconnect: () => {
     void reloadIfServerVersionIsNewerAfterReconnect();
+    appEventTimelineHandler.onReconnect();
   },
-  onEvent: (event) => {
-    if (event.type === "sessions-invalidated") {
-      appEventRefreshScheduler.schedule();
-      return;
-    }
-
-    if (event.type === "hook-event") {
-      if (shouldOpenActionCenterForHookEvent(event)) {
-        dismissedHookEventToastIds.delete(`hook:${event.id}`);
-      }
-
-      void store.refreshTimeline().then(() => scheduleRender());
-      return;
-    }
-
-    if (event.type === "conversation-message") {
-      void store.refreshTimeline().then(() => scheduleRender());
-    }
-  }
+  onEvent: (event) => appEventTimelineHandler.onEvent(event)
 });
 const pageActivityController = createPageActivityController({
   document,
@@ -447,6 +446,9 @@ function moveKanbanSession(
 }
 
 function toggleActionCenter() {
+  if (!isActionCenterOpen) {
+    unifiedPanelState.openActivity();
+  }
   setActionCenterOpen(!isActionCenterOpen);
 }
 
@@ -1849,6 +1851,7 @@ function openHookEventSession(id: string) {
 
 function openHookEventActions(id: string) {
   dismissedHookEventToastIds.add(id);
+  unifiedPanelState.openAttention(id.replace(/^hook:/, ""));
   setActionCenterOpen(true);
 }
 
@@ -2285,6 +2288,9 @@ function render() {
 }
 
 store.subscribe(() => {
+  unifiedPanelState.reconcileTimeline(
+    (store.getState().timelineEvents ?? []).map((event) => event.id)
+  );
   refreshKanbanStatusProjectsCache();
   scheduleRender();
 });

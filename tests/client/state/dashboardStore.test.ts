@@ -19,6 +19,185 @@ describe("createDashboardStore", () => {
     vi.useRealTimers();
   });
 
+  it("merges realtime timeline events by stable id in descending order", () => {
+    const store = createDashboardStore({
+      api: {
+        getServerStatus: vi.fn(),
+        listSessions: vi.fn(),
+        listPaneSessions: vi.fn(),
+        listDashboardSessions: vi.fn()
+      },
+      pollMs: 3000
+    });
+
+    store.mergeTimelineEvent({
+      id: "message-1",
+      type: "conversation-message",
+      messageId: "message-1",
+      sessionName: "build",
+      role: "assistant",
+      contentType: "text",
+      content: "draft",
+      summary: "draft",
+      status: "streaming",
+      createdAt: "2026-07-14T01:00:00.000Z",
+      revision: 1,
+      updatedAt: "2026-07-14T01:00:00.000Z",
+      toolName: null,
+      parentMessageId: null
+    });
+    store.mergeTimelineEvent({
+      id: "hook-2",
+      type: "hook-event",
+      sessionName: "build",
+      message: "needs attention",
+      createdAt: "2026-07-14T02:00:00.000Z"
+    });
+    store.mergeTimelineEvent({
+      id: "message-1",
+      type: "conversation-message",
+      messageId: "message-1",
+      sessionName: "build",
+      role: "assistant",
+      contentType: "text",
+      content: "complete",
+      summary: "complete",
+      status: "complete",
+      createdAt: "2026-07-14T01:00:00.000Z",
+      revision: 2,
+      updatedAt: "2026-07-14T02:01:00.000Z",
+      toolName: null,
+      parentMessageId: null
+    });
+
+    expect(store.getState().timelineEvents?.map((event) => event.id)).toEqual([
+      "hook-2",
+      "message-1"
+    ]);
+    expect(store.getState().timelineEvents?.[1]).toMatchObject({
+      id: "message-1",
+      content: "complete",
+      status: "complete",
+      revision: 2
+    });
+  });
+
+  it("keeps the incremental timeline bounded to the authoritative fetch limit", () => {
+    const store = createDashboardStore({
+      api: {
+        getServerStatus: vi.fn(),
+        listSessions: vi.fn(),
+        listPaneSessions: vi.fn(),
+        listDashboardSessions: vi.fn()
+      },
+      pollMs: 3000
+    });
+
+    for (let index = 0; index < 10; index += 1) {
+      store.mergeTimelineEvent({
+        id: `event-${index}`,
+        type: "command-sent",
+        sessionName: "build",
+        message: `command ${index}`,
+        createdAt: `2026-07-14T00:00:${String(index).padStart(2, "0")}.000Z`
+      });
+    }
+
+    expect(store.getState().timelineEvents?.map((event) => event.id)).toEqual([
+      "event-9", "event-8", "event-7", "event-6",
+      "event-5", "event-4", "event-3", "event-2"
+    ]);
+  });
+
+  it("does not let an in-flight authoritative refresh erase a newer realtime event", async () => {
+    let resolveTimeline!: (events: Array<{
+      id: string;
+      type: "command-sent";
+      sessionName: string;
+      message: string;
+      createdAt: string;
+    }>) => void;
+    const timelineResponse = new Promise<Parameters<typeof resolveTimeline>[0]>((resolve) => {
+      resolveTimeline = resolve;
+    });
+    const store = createDashboardStore({
+      api: {
+        getServerStatus: vi.fn(),
+        listSessions: vi.fn(),
+        listPaneSessions: vi.fn(),
+        listDashboardSessions: vi.fn(),
+        listTimelineEvents: vi.fn().mockReturnValue(timelineResponse)
+      },
+      pollMs: 3000
+    });
+
+    const refresh = store.refreshTimeline();
+    store.mergeTimelineEvent({
+      id: "realtime-2",
+      type: "command-sent",
+      sessionName: "build",
+      message: "newer realtime event",
+      createdAt: "2026-07-14T02:00:00.000Z"
+    });
+    resolveTimeline([{
+      id: "snapshot-1",
+      type: "command-sent",
+      sessionName: "build",
+      message: "snapshot event",
+      createdAt: "2026-07-14T01:00:00.000Z"
+    }]);
+    await refresh;
+
+    expect(store.getState().timelineEvents?.map((event) => event.id)).toEqual([
+      "realtime-2",
+      "snapshot-1"
+    ]);
+  });
+
+  it("ignores stale conversation revisions received after a newer revision", () => {
+    const store = createDashboardStore({
+      api: {
+        getServerStatus: vi.fn(),
+        listSessions: vi.fn(),
+        listPaneSessions: vi.fn(),
+        listDashboardSessions: vi.fn()
+      },
+      pollMs: 3000
+    });
+    const baseEvent = {
+      id: "message-1",
+      type: "conversation-message" as const,
+      messageId: "message-1",
+      sessionName: "build",
+      role: "assistant" as const,
+      contentType: "text" as const,
+      summary: "complete",
+      createdAt: "2026-07-14T01:00:00.000Z",
+      updatedAt: "2026-07-14T02:00:00.000Z",
+      toolName: null,
+      parentMessageId: null
+    };
+
+    store.mergeTimelineEvent({
+      ...baseEvent,
+      content: "complete",
+      status: "complete",
+      revision: 2
+    });
+    store.mergeTimelineEvent({
+      ...baseEvent,
+      content: "draft",
+      status: "streaming",
+      revision: 1
+    });
+
+    expect(store.getState().timelineEvents?.[0]).toMatchObject({
+      content: "complete",
+      status: "complete",
+      revision: 2
+    });
+  });
+
   it("hydrates sessions from a cached session list before any network refresh", () => {
     const api = {
       getServerStatus: vi.fn(),
