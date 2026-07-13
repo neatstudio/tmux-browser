@@ -175,6 +175,74 @@ describe("createDashboardStore", () => {
     });
   });
 
+  it("bounds completed pagination and later websocket merges to 1000 newest events", async () => {
+    const event = (id: number) => ({
+      id: String(id), type: "command-sent" as const, sessionName: "build",
+      message: String(id), createdAt: `2026-07-14T00:${String(Math.floor(id / 60)).padStart(2, "0")}:${String(id % 60).padStart(2, "0")}.000Z`
+    });
+    const store = createDashboardStore({
+      api: {
+        getServerStatus: vi.fn(), listSessions: vi.fn(), listPaneSessions: vi.fn(), listDashboardSessions: vi.fn(),
+        listTimelineEvents: vi.fn()
+          .mockResolvedValueOnce({ events: [event(1001)], nextCursor: "older" })
+          .mockResolvedValueOnce({ events: Array.from({ length: 1000 }, (_, index) => event(1000 - index)), nextCursor: null })
+      }, pollMs: 3000
+    });
+    await store.refreshTimeline();
+    await store.loadOlderTimeline();
+    store.mergeTimelineEvent(event(1002));
+
+    expect(store.getState().timelineEvents).toHaveLength(1000);
+    expect(store.getState().timelineEvents?.[0]?.id).toBe("1002");
+    expect(store.getState().timelineEvents?.at(-1)?.id).toBe("3");
+    expect(store.getState().timelineNextCursor).toBeNull();
+  });
+
+  it("preserves websocket overlays while restarting after an expired cursor", async () => {
+    let rejectOlder!: (error: Error) => void;
+    let resolveLatest!: (page: any) => void;
+    const older = new Promise((_, reject) => { rejectOlder = reject; });
+    const latest = new Promise((resolve) => { resolveLatest = resolve; });
+    const listTimelineEvents = vi.fn()
+      .mockResolvedValueOnce({ events: [], nextCursor: "expired" })
+      .mockReturnValueOnce(older)
+      .mockReturnValueOnce(latest);
+    const store = createDashboardStore({
+      api: { getServerStatus: vi.fn(), listSessions: vi.fn(), listPaneSessions: vi.fn(), listDashboardSessions: vi.fn(), listTimelineEvents },
+      pollMs: 3000
+    });
+    await store.refreshTimeline();
+    const pending = store.loadOlderTimeline();
+    rejectOlder(new SessionApiError("expired", 410, "timeline_cursor_expired"));
+    await Promise.resolve();
+    store.mergeTimelineEvent({ id: "ws", type: "command-sent", sessionName: "build", message: "live", createdAt: "2026-07-14T02:00:00.000Z" });
+    const conversation = {
+      id: "message", type: "conversation-message" as const, messageId: "message",
+      sessionName: "build", role: "assistant" as const, contentType: "text" as const,
+      summary: null, status: "streaming" as const, createdAt: "2026-07-14T01:00:00.000Z",
+      updatedAt: "2026-07-14T02:00:00.000Z", toolName: null, parentMessageId: null
+    };
+    store.mergeTimelineEvent({ ...conversation, content: "live revision", revision: 2 });
+    resolveLatest({ events: [{ ...conversation, content: "stale revision", revision: 1 }], nextCursor: null });
+    await pending;
+
+    expect(store.getState().timelineEvents?.map(({ id }) => id)).toEqual(["ws", "message"]);
+    expect(store.getState().timelineEvents?.[1]).toMatchObject({ content: "live revision", revision: 2 });
+    expect(store.getState().timelineHistoryExpired).toBe(true);
+  });
+
+  it("keeps history-expired state and retained history when restart fetch fails", async () => {
+    const retained = { id: "1", type: "command-sent" as const, sessionName: "build", message: "retained", createdAt: "2026-07-14T01:00:00.000Z" };
+    const listTimelineEvents = vi.fn()
+      .mockResolvedValueOnce({ events: [retained], nextCursor: "expired" })
+      .mockRejectedValueOnce(new SessionApiError("expired", 410, "timeline_cursor_expired"))
+      .mockRejectedValueOnce(new Error("restart failed"));
+    const store = createDashboardStore({ api: { getServerStatus: vi.fn(), listSessions: vi.fn(), listPaneSessions: vi.fn(), listDashboardSessions: vi.fn(), listTimelineEvents }, pollMs: 3000 });
+    await store.refreshTimeline();
+    await store.loadOlderTimeline();
+    expect(store.getState()).toMatchObject({ timelineEvents: [retained], timelineHistoryExpired: true, error: "restart failed" });
+  });
+
   it("merges realtime timeline events by stable id in descending order", () => {
     const store = createDashboardStore({
       api: {

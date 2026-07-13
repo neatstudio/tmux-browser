@@ -199,6 +199,9 @@ prior process epoch returns `410 timeline_cursor_expired` without reading or
 accepting its boundary data; malformed, unauthenticated, or integrity-invalid
 cursors return `400 timeline_cursor_invalid`.
 
+The dashboard requests 8 events initially and retains at most 1000 timeline
+events in client state while older pages and websocket updates are merged.
+
 By default the server atomically creates and reuses
 `~/.tmux-ui/timeline-cursor-secret` with file mode `0600`. Deployments may set
 `TMUX_UI_TIMELINE_CURSOR_SECRET` to a canonical base64url value encoding exactly

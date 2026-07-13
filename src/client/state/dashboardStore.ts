@@ -12,6 +12,7 @@ import type { BrowserTab } from "./tabState";
 import type { SessionListCache } from "./sessionListCache";
 
 const TIMELINE_LIMIT = 8;
+const TIMELINE_MAX_EVENTS = 1000;
 
 function compareTimelineIdsDescending(left: string, right: string) {
   const numericIdPattern = /^\d+$/;
@@ -233,7 +234,7 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
     }
   }
 
-  async function refreshTimeline() {
+  async function refreshTimeline(options: { historyExpired?: boolean } = {}) {
     if (!deps.api.listTimelineEvents) {
       return;
     }
@@ -293,7 +294,7 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
           : [])
       ]
         .sort(compareTimelineEventsDescending)
-        .slice(0, hasLoadedOlderTimeline ? undefined : TIMELINE_LIMIT);
+        .slice(0, hasLoadedOlderTimeline ? TIMELINE_MAX_EVENTS : TIMELINE_LIMIT);
       pruneTimelineMergeSequences(refreshedTimelineEvents);
 
       commit({
@@ -302,9 +303,11 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
         timelineNextCursor: hasLoadedOlderTimeline
           ? state.timelineNextCursor
           : page.nextCursor,
-        timelineHistoryExpired: false,
+        timelineHistoryExpired: options.historyExpired ?? false,
         loading: false,
-        error: null
+        error: options.historyExpired
+          ? "Timeline history expired; showing the latest events"
+          : null
       });
     } catch (error) {
       if (refreshGeneration !== timelineRefreshGeneration) {
@@ -345,7 +348,9 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
           byId.set(current.id, current);
         }
       }
-      const timelineEvents = [...byId.values()].sort(compareTimelineEventsDescending);
+      const timelineEvents = [...byId.values()]
+        .sort(compareTimelineEventsDescending)
+        .slice(0, TIMELINE_MAX_EVENTS);
       hasLoadedOlderTimeline = true;
       pruneTimelineMergeSequences(timelineEvents);
       commit({
@@ -362,18 +367,15 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
         error.status === 410 &&
         error.code === "timeline_cursor_expired"
       ) {
-        const latest = normalizeTimelinePage(
-          await deps.api.listTimelineEvents(TIMELINE_LIMIT)
-        );
         hasLoadedOlderTimeline = false;
         commit({
           ...state,
-          timelineEvents: latest.events,
-          timelineNextCursor: latest.nextCursor,
+          timelineNextCursor: null,
           timelineHistoryExpired: true,
           loading: false,
           error: "Timeline history expired; showing the latest events"
         });
+        await refreshTimeline({ historyExpired: true });
         return;
       }
       commit({
@@ -403,7 +405,7 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
       ...(state.timelineEvents ?? []).filter((existing) => existing.id !== event.id)
     ]
       .sort(compareTimelineEventsDescending)
-      .slice(0, hasLoadedOlderTimeline ? undefined : TIMELINE_LIMIT);
+      .slice(0, hasLoadedOlderTimeline ? TIMELINE_MAX_EVENTS : TIMELINE_LIMIT);
     pruneTimelineMergeSequences(timelineEvents);
 
     commit({

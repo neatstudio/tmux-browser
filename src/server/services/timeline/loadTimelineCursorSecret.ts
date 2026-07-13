@@ -1,7 +1,11 @@
 import {
-  chmodSync,
+  closeSync,
+  constants,
+  fchmodSync,
+  fstatSync,
   linkSync,
   mkdirSync,
+  openSync,
   readFileSync,
   unlinkSync,
   writeFileSync
@@ -27,10 +31,22 @@ function decodeSecret(value: string) {
 }
 
 function readPersistedSecret(secretPath: string) {
-  const value = readFileSync(secretPath, "utf8").replace(/\n$/, "");
-  const secret = decodeSecret(value);
-  chmodSync(secretPath, 0o600);
-  return secret;
+  const descriptor = openSync(
+    secretPath,
+    constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0)
+  );
+  try {
+    const metadata = fstatSync(descriptor);
+    if (!metadata.isFile() || metadata.nlink !== 1) {
+      throw new Error("Timeline cursor secret path must be a singly-linked regular file");
+    }
+    const value = readFileSync(descriptor, "utf8").replace(/\n$/, "");
+    const secret = decodeSecret(value);
+    fchmodSync(descriptor, 0o600);
+    return secret;
+  } finally {
+    closeSync(descriptor);
+  }
 }
 
 export function loadTimelineCursorSecret(options: {
@@ -57,16 +73,18 @@ export function loadTimelineCursorSecret(options: {
     flag: "wx",
     mode: 0o600
   });
+  let temporaryExists = true;
   try {
     try {
       linkSync(temporaryPath, secretPath);
-      chmodSync(secretPath, 0o600);
-      return generated;
+      unlinkSync(temporaryPath);
+      temporaryExists = false;
+      return readPersistedSecret(secretPath);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
       return readPersistedSecret(secretPath);
     }
   } finally {
-    unlinkSync(temporaryPath);
+    if (temporaryExists) unlinkSync(temporaryPath);
   }
 }
