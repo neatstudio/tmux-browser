@@ -1,4 +1,4 @@
-import { defineConfig } from "@playwright/test";
+import { defineConfig, devices } from "@playwright/test";
 import { existsSync } from "node:fs";
 
 const localChrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
@@ -13,15 +13,22 @@ export default defineConfig({
   snapshotDir: "tests/e2e/__screenshots__",
   snapshotPathTemplate: "{snapshotDir}/{testFilePath}-snapshots/{arg}{ext}",
   use: {
-    baseURL: "http://127.0.0.1:4173",
-    browserName: "chromium",
+    baseURL: "http://127.0.0.1:4193",
     headless: true,
-    viewport: { width: 1440, height: 900 },
-    launchOptions: { executablePath }
+    viewport: { width: 1440, height: 900 }
   },
+  projects: [
+    {
+      name: "chromium",
+      use: {
+        ...devices["Desktop Chrome"],
+        launchOptions: { executablePath }
+      }
+    }
+  ],
   webServer: {
-    command: "npm run dev:client -- --host 127.0.0.1 --port 4173",
-    url: "http://127.0.0.1:4173",
-    reuseExistingServer: !process.env.CI
+    command: "npm run dev:client -- --host 127.0.0.1 --port 4193",
+    url: "http://127.0.0.1:4193",
+    reuseExistingServer: false
   }
 });

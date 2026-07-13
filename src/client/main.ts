@@ -2249,12 +2249,7 @@ function render() {
     loading: store.getState().loading,
     error: store.getState().error,
     onTabChange: (tab) => {
-      if (tab === "activity") {
-        unifiedPanelState.openActivity();
-      } else {
-        const firstAttention = structuredItems.find((item) => item.attentionRequired);
-        if (firstAttention) unifiedPanelState.openAttention(firstAttention.id);
-      }
+      unifiedPanelState.selectTab(tab);
       scheduleRender();
     },
     onToggleExpanded: (eventId) => {

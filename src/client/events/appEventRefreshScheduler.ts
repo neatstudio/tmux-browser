@@ -76,6 +76,9 @@ export function createUnifiedPanelState() {
     getState() {
       return state;
     },
+    selectTab(activeTab: UnifiedPanelTab) {
+      state = { ...state, activeTab, selectedEventId: null };
+    },
     openActivity() {
       state = { ...state, activeTab: "activity", selectedEventId: null };
     },

@@ -14,7 +14,7 @@
     "toolName": null,
     "revision": 1,
     "summary": "All focused tests passed",
-    "metadata": { "testspassed": 42, "durationms": 1840 }
+    "metadata": { "testspassed": 42, "durationms": 1840, "fixturelongwordcharacters": 2048 }
   },
   {
     "type": "hook-event",

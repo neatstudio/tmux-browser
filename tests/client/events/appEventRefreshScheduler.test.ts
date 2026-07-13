@@ -99,4 +99,25 @@ describe("createUnifiedPanelState", () => {
       selectedEventId: "hook-7"
     });
   });
+
+  it("selects Attention without requiring a structured event to focus", () => {
+    const panel = createUnifiedPanelState();
+
+    panel.selectTab("attention");
+
+    expect(panel.getState()).toMatchObject({
+      activeTab: "attention",
+      selectedEventId: null
+    });
+  });
+
+  it("keeps prompt-only and dead-pane-only Attention selection in production state", () => {
+    const panel = createUnifiedPanelState();
+
+    panel.selectTab("attention");
+    panel.reconcileTimeline([]);
+
+    expect(panel.getState().activeTab).toBe("attention");
+    expect(panel.getState().selectedEventId).toBeNull();
+  });
 });

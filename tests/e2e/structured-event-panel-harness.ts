@@ -10,7 +10,14 @@ let open = false;
 const records = new URLSearchParams(window.location.search).has("benchmark")
   ? ((await fetch("/api/timeline?limit=1000").then((response) => response.json())) as { events: unknown[] }).events
   : fixture;
-const structuredItems = records
+const hydratedRecords = records.map((record) => {
+  const value = record as Record<string, unknown>;
+  const metadata = value.metadata as Record<string, unknown> | undefined;
+  return metadata?.fixturelongwordcharacters === 2048
+    ? { ...value, content: `npm test\n${"x".repeat(2048)}` }
+    : value;
+});
+const structuredItems = hydratedRecords
   .map((record) => adaptStructuredRecord(record))
   .filter((item) => item !== null);
 
@@ -23,8 +30,7 @@ function render() {
     loading: false,
     error: null,
     onTabChange: (tab) => {
-      if (tab === "activity") state.openActivity();
-      else state.openAttention("attention-1");
+      state.selectTab(tab);
       render();
     },
     onToggleExpanded: (id) => {
