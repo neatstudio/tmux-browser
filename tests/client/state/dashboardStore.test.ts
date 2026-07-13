@@ -154,6 +154,166 @@ describe("createDashboardStore", () => {
     ]);
   });
 
+  it.each([
+    { websocketRevision: 2, snapshotRevision: 3, expectedRevision: 3 },
+    { websocketRevision: 4, snapshotRevision: 3, expectedRevision: 4 },
+    { websocketRevision: 3, snapshotRevision: 3, expectedRevision: 3 }
+  ])(
+    "resolves reconnect overlap by conversation revision ($websocketRevision vs $snapshotRevision)",
+    async ({ websocketRevision, snapshotRevision, expectedRevision }) => {
+      type ConversationEvent = {
+        id: string;
+        type: "conversation-message";
+        messageId: string;
+        sessionName: string;
+        role: "assistant";
+        contentType: "text";
+        content: string;
+        summary: string;
+        status: "streaming" | "complete";
+        createdAt: string;
+        revision: number;
+        updatedAt: string;
+        toolName: null;
+        parentMessageId: null;
+      };
+      let resolveTimeline!: (events: ConversationEvent[]) => void;
+      const timelineResponse = new Promise<ConversationEvent[]>((resolve) => {
+        resolveTimeline = resolve;
+      });
+      const store = createDashboardStore({
+        api: {
+          getServerStatus: vi.fn(),
+          listSessions: vi.fn(),
+          listPaneSessions: vi.fn(),
+          listDashboardSessions: vi.fn(),
+          listTimelineEvents: vi.fn().mockReturnValue(timelineResponse)
+        },
+        pollMs: 3000
+      });
+      const makeEvent = (revision: number, source: "snapshot" | "websocket"): ConversationEvent => ({
+        id: "message-1",
+        type: "conversation-message",
+        messageId: "message-1",
+        sessionName: "build",
+        role: "assistant",
+        contentType: "text",
+        content: `${source}-${revision}`,
+        summary: `${source}-${revision}`,
+        status: revision >= 3 ? "complete" : "streaming",
+        createdAt: "2026-07-14T01:00:00.000Z",
+        revision,
+        updatedAt: `2026-07-14T01:00:0${revision}.000Z`,
+        toolName: null,
+        parentMessageId: null
+      });
+
+      const refresh = store.refreshTimeline();
+      store.mergeTimelineEvent(makeEvent(websocketRevision, "websocket"));
+      resolveTimeline([makeEvent(snapshotRevision, "snapshot")]);
+      await refresh;
+
+      expect(store.getState().timelineEvents?.[0]).toMatchObject({
+        revision: expectedRevision,
+        content:
+          websocketRevision > snapshotRevision
+            ? `websocket-${websocketRevision}`
+            : `snapshot-${snapshotRevision}`
+      });
+    }
+  );
+
+  it("sorts equal timestamps by natural numeric id and keeps updates stable", () => {
+    const store = createDashboardStore({
+      api: {
+        getServerStatus: vi.fn(),
+        listSessions: vi.fn(),
+        listPaneSessions: vi.fn(),
+        listDashboardSessions: vi.fn()
+      },
+      pollMs: 3000
+    });
+    const createdAt = "2026-07-14T01:00:00.000Z";
+    const merge = (id: string, message = id) => store.mergeTimelineEvent({
+      id,
+      type: "command-sent",
+      sessionName: "build",
+      message,
+      createdAt
+    });
+
+    merge("2");
+    merge("10");
+    merge("9");
+    expect(store.getState().timelineEvents?.map((event) => event.id)).toEqual([
+      "10", "9", "2"
+    ]);
+
+    merge("9", "updated");
+    expect(store.getState().timelineEvents?.map((event) => event.id)).toEqual([
+      "10", "9", "2"
+    ]);
+  });
+
+  it("uses deterministic string id ordering for equal timestamps", () => {
+    const store = createDashboardStore({
+      api: {
+        getServerStatus: vi.fn(),
+        listSessions: vi.fn(),
+        listPaneSessions: vi.fn(),
+        listDashboardSessions: vi.fn()
+      },
+      pollMs: 3000
+    });
+
+    for (const id of ["event-a", "event-c", "event-b"]) {
+      store.mergeTimelineEvent({
+        id,
+        type: "command-sent",
+        sessionName: "build",
+        message: id,
+        createdAt: "2026-07-14T01:00:00.000Z"
+      });
+    }
+
+    expect(store.getState().timelineEvents?.map((event) => event.id)).toEqual([
+      "event-c", "event-b", "event-a"
+    ]);
+  });
+
+  it("sorts mixed numeric and string ids consistently across insertion order", () => {
+    const permutations = [
+      ["2", "10", "15a"],
+      ["10", "15a", "2"],
+      ["15a", "2", "10"]
+    ];
+
+    for (const ids of permutations) {
+      const store = createDashboardStore({
+        api: {
+          getServerStatus: vi.fn(),
+          listSessions: vi.fn(),
+          listPaneSessions: vi.fn(),
+          listDashboardSessions: vi.fn()
+        },
+        pollMs: 3000
+      });
+      for (const id of ids) {
+        store.mergeTimelineEvent({
+          id,
+          type: "command-sent",
+          sessionName: "build",
+          message: id,
+          createdAt: "2026-07-14T01:00:00.000Z"
+        });
+      }
+
+      expect(store.getState().timelineEvents?.map((event) => event.id)).toEqual([
+        "10", "2", "15a"
+      ]);
+    }
+  });
+
   it("ignores stale conversation revisions received after a newer revision", () => {
     const store = createDashboardStore({
       api: {

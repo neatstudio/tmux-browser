@@ -12,6 +12,33 @@ import type { SessionListCache } from "./sessionListCache";
 
 const TIMELINE_LIMIT = 8;
 
+function compareTimelineIdsDescending(left: string, right: string) {
+  const numericIdPattern = /^\d+$/;
+  const leftIsNumeric = numericIdPattern.test(left);
+  const rightIsNumeric = numericIdPattern.test(right);
+  if (leftIsNumeric !== rightIsNumeric) {
+    return leftIsNumeric ? -1 : 1;
+  }
+
+  if (leftIsNumeric && rightIsNumeric) {
+    const leftNumber = BigInt(left);
+    const rightNumber = BigInt(right);
+    if (leftNumber !== rightNumber) {
+      return leftNumber > rightNumber ? -1 : 1;
+    }
+  }
+
+  return left === right ? 0 : left > right ? -1 : 1;
+}
+
+function compareTimelineEventsDescending(left: TimelineEvent, right: TimelineEvent) {
+  if (left.createdAt !== right.createdAt) {
+    return left.createdAt > right.createdAt ? -1 : 1;
+  }
+
+  return compareTimelineIdsDescending(left.id, right.id);
+}
+
 export type DashboardState = {
   sessions: SessionSummary[];
   serverStatus: ServerStatus | null;
@@ -202,14 +229,31 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
         (event) =>
           (timelineMergeSequenceById.get(event.id) ?? 0) > mergeSequenceAtRequest
       );
+      const receivedDuringRefreshById = new Map(
+        eventsReceivedDuringRefresh.map((event) => [event.id, event])
+      );
       const refreshedTimelineEvents = [
-        ...eventsReceivedDuringRefresh,
-        ...timelineEvents.filter(
-          (event) =>
-            !eventsReceivedDuringRefresh.some((received) => received.id === event.id)
-        )
+        ...timelineEvents.map((snapshotEvent) => {
+          const receivedEvent = receivedDuringRefreshById.get(snapshotEvent.id);
+          if (!receivedEvent) {
+            return snapshotEvent;
+          }
+
+          receivedDuringRefreshById.delete(snapshotEvent.id);
+          if (
+            snapshotEvent.type === "conversation-message" &&
+            receivedEvent.type === "conversation-message"
+          ) {
+            return receivedEvent.revision > snapshotEvent.revision
+              ? receivedEvent
+              : snapshotEvent;
+          }
+
+          return receivedEvent;
+        }),
+        ...receivedDuringRefreshById.values()
       ]
-        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+        .sort(compareTimelineEventsDescending)
         .slice(0, TIMELINE_LIMIT);
       pruneTimelineMergeSequences(refreshedTimelineEvents);
 
@@ -246,7 +290,7 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
       event,
       ...(state.timelineEvents ?? []).filter((existing) => existing.id !== event.id)
     ]
-      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+      .sort(compareTimelineEventsDescending)
       .slice(0, TIMELINE_LIMIT);
     pruneTimelineMergeSequences(timelineEvents);
 
