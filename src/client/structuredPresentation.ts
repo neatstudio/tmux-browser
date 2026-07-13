@@ -87,6 +87,9 @@ const CONVERSATION_ROLES = new Set<ConversationMessageRole>(["user", "assistant"
 const CONVERSATION_CONTENT_TYPES = new Set<ConversationMessageContentType>(["text", "code", "image", "command"]);
 const CONVERSATION_STATUSES = new Set(["streaming", "complete", "failed"]);
 const CORRUPT_TIMESTAMP = "1970-01-01T00:00:00.000Z";
+const LEGACY_HOOK_METADATA_KEYS = new Set([
+  "source", "eventType", "status", "taskId", "body", "target", "actions", "content"
+]);
 
 function trimmed(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
@@ -272,6 +275,14 @@ function validScalarMetadata(value: unknown) {
   });
 }
 
+function typedHookUserMetadata(value: unknown) {
+  const metadata = object(value);
+  if (!metadata) return value === undefined ? undefined : null;
+  return Object.fromEntries(
+    Object.entries(metadata).filter(([key]) => !LEGACY_HOOK_METADATA_KEYS.has(key))
+  );
+}
+
 function validNullableStringField(record: Record<string, unknown>, key: string) {
   return hasOwn(record, key) && (record[key] === null || typeof record[key] === "string");
 }
@@ -406,7 +417,7 @@ function adaptHook(record: Record<string, unknown>, typed: boolean): StructuredP
   if (body && !content.some((block) => block.type === "text" && block.text === body)) {
     details.unshift(detail("text", body));
   }
-  const userMetadata = typed ? object(record.metadata) : null;
+  const userMetadata = typed ? object(typedHookUserMetadata(record.metadata)) : null;
   if (userMetadata && Object.keys(userMetadata).length) details.push(detail("metadata", userMetadata as Record<string, string | number | boolean | null>));
   return {
     id: String(record.id), kind: "hook", sessionName: nullable(record.sessionName), title: title || "事件更新",
@@ -418,12 +429,6 @@ function adaptHook(record: Record<string, unknown>, typed: boolean): StructuredP
 }
 
 function validTypedHook(record: Record<string, unknown>) {
-  const metadata = record.metadata;
-  const metadataValid = metadata === undefined || (
-    object(metadata) !== null && Object.values(metadata as Record<string, unknown>).every((value) =>
-      value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean"
-    )
-  );
   return record.schemaVersion === HOOK_EVENT_SCHEMA_VERSION &&
     !!trimmed(record.id) && !!trimmed(record.createdAt) &&
     typeof record.sessionName === "string" && !!trimmed(record.sessionName) &&
@@ -432,7 +437,8 @@ function validTypedHook(record: Record<string, unknown>) {
     !!trimmed(record.title) && !!trimmed(record.source) && !!trimmed(record.eventType) &&
     nullableStringShape(record.body) && nullableStringShape(record.cwd) && nullableStringShape(record.taskId) &&
     strictTarget(record.target) !== null && normalizeContent(record.content, true) !== null &&
-    normalizeActions(record.actions, strictTarget(record.target), true) !== null && metadataValid;
+    normalizeActions(record.actions, strictTarget(record.target), true) !== null &&
+    validScalarMetadata(typedHookUserMetadata(record.metadata));
 }
 
 export function adaptStructuredRecord(record: TimelineEvent | unknown): StructuredPresentationItem | null {

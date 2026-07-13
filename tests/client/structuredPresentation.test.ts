@@ -165,9 +165,7 @@ describe("adaptStructuredRecord", () => {
         fileschanged: 2,
         testspassed: 8,
         testsfailed: 1,
-        durationms: 1250,
-        filesChanged: 99,
-        invalid: Number.POSITIVE_INFINITY
+        durationms: 1250
       },
       actions: [{
         id: "delete",
@@ -200,6 +198,68 @@ describe("adaptStructuredRecord", () => {
       attentionRequired: false,
       stats: { testsfailed: 2 }
     });
+  });
+
+  it("makes typed hooks with raw sensitive metadata corrupt and detail-free", () => {
+    const item = adaptStructuredRecord(typedHook({
+      metadata: {
+        authorization: "raw-auth",
+        token: "raw-token",
+        note: "safe"
+      }
+    }))!;
+
+    expect(item).toMatchObject({
+      summary: "事件数据损坏",
+      status: "failed",
+      actions: [],
+      details: []
+    });
+    expect(JSON.stringify(materializeStructuredDetails(item, { view: "expanded" })))
+      .not.toMatch(/raw-auth|raw-token/);
+  });
+
+  it("accepts sanitized canonical typed hook metadata", () => {
+    const item = adaptStructuredRecord(typedHook({
+      metadata: {
+        authorization: "[redacted]",
+        token: "[redacted]",
+        fileschanged: 2,
+        note: "safe"
+      }
+    }))!;
+    const metadata = materializeStructuredDetails(item, { view: "expanded" })
+      .find((block) => block.type === "metadata")?.metadata;
+
+    expect(item.summary).toBe("Body");
+    expect(metadata).toEqual({
+      authorization: "[redacted]",
+      token: "[redacted]",
+      fileschanged: 2,
+      note: "safe"
+    });
+  });
+
+  it("accepts but does not display the server legacy metadata projection", () => {
+    const item = adaptStructuredRecord(typedHook({
+      metadata: {
+        apitoken: "[redacted]",
+        tool: "apply_patch",
+        source: "codex",
+        eventType: "approval-required",
+        status: "waiting",
+        taskId: "task-1",
+        body: "Approve?",
+        target: JSON.stringify({ sessionName: "api", projectName: null, view: "terminal" }),
+        actions: "[]",
+        content: "[]"
+      }
+    }))!;
+    const metadata = materializeStructuredDetails(item, { view: "expanded" })
+      .find((block) => block.type === "metadata")?.metadata;
+
+    expect(item.summary).toBe("Body");
+    expect(metadata).toEqual({ apitoken: "[redacted]", tool: "apply_patch" });
   });
 
   it("adapts legacy scalar and JSON metadata without inventing a session", () => {
