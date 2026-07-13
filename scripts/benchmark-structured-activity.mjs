@@ -236,15 +236,17 @@ async function withTargetServer(targetCommit, callback) {
       if (result.status !== 0) throw new Error(`${command[0]} ${command[1].join(" ")} failed`);
     }
     const port = await freePort();
-    server = spawn("npm", ["start"], {
+    server = spawn("npm", ["run", "dev:client", "--", "--host", "127.0.0.1", "--port", String(port)], {
       cwd: worktree,
-      env: { ...process.env, HOST: "127.0.0.1", PORT: String(port) },
+      env: process.env,
       stdio: "inherit",
       detached: process.platform !== "win32"
     });
     const url = `http://127.0.0.1:${port}`;
-    await waitForServer(`${url}/api/health`, server);
-    return await callback(url);
+    await waitForServer(`${url}/tests/e2e/structured-event-panel-harness.html`, server);
+    return await callback(
+      `${url}/tests/e2e/structured-event-panel-harness.html?benchmark`
+    );
   } finally {
     await terminateProcessTree(server);
     spawnSync("git", ["worktree", "remove", "--force", worktree], { cwd: root });

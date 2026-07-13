@@ -1,6 +1,7 @@
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { platform } from "node:os";
+import { resolve } from "node:path";
 
 const consoleErrors = new WeakMap<Page, string[]>();
 
@@ -76,6 +77,29 @@ test("supports wrapped arrow and Home/End tab keyboard navigation", async ({ pag
   await expect(activity).toHaveAttribute("aria-selected", "true");
   await page.keyboard.press("End");
   await expect(attention).toBeFocused();
+});
+
+test("bounds 1,000 history events and keeps 300 streaming revisions on one row", async ({ page }) => {
+  const events = JSON.parse(
+    readFileSync(resolve("tests/fixtures/structured-activity.json"), "utf8")
+  );
+  await page.route("**/api/timeline?limit=1000", (route) =>
+    route.fulfill({ json: { events } })
+  );
+  await page.goto("/tests/e2e/structured-event-panel-harness.html?benchmark");
+  await page.getByRole("button", { name: "Actions" }).click();
+  const dialog = page.getByRole("dialog", { name: "Action Center" });
+  await expect(dialog.locator(".structured-event-row")).toHaveCount(200);
+
+  await page.goto("/tests/e2e/structured-event-panel-harness.html");
+  await page.getByRole("button", { name: "Actions" }).click();
+  const canonical = page.locator("[data-event-id='complete-1']");
+  for (let revision = 1; revision <= 300; revision += 1) {
+    await page.evaluate((value) => window.__structuredActivityTest.streamRevision(value), revision);
+  }
+  await expect(canonical).toHaveCount(1);
+  await expect(canonical).toContainText("Streaming revision 300");
+  await expect(page.locator(".structured-event-row")).toHaveCount(2);
 });
 
 for (const viewport of [

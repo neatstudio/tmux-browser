@@ -13,6 +13,7 @@ import type { SessionListCache } from "./sessionListCache";
 
 const TIMELINE_LIMIT = 8;
 const TIMELINE_MAX_EVENTS = 1000;
+const STREAMING_NOTIFY_INTERVAL_MS = 250;
 
 function compareTimelineIdsDescending(left: string, right: string) {
   const numericIdPattern = /^\d+$/;
@@ -108,6 +109,7 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
     error: null
   };
   const listeners = new Set<(state: DashboardState) => void>();
+  let streamingNotifyTimer: ReturnType<typeof setTimeout> | null = null;
   let timer: ReturnType<typeof setInterval> | null = null;
   let dashboardTimer: ReturnType<typeof setInterval> | null = null;
   let serverStatusTimer: ReturnType<typeof setInterval> | null = null;
@@ -166,7 +168,10 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
     });
   }
 
-  function commit(nextState: DashboardState) {
+  function commit(
+    nextState: DashboardState,
+    notification: "immediate" | "streaming" = "immediate"
+  ) {
     const changed =
       state.loading !== nextState.loading ||
       state.error !== nextState.error ||
@@ -180,9 +185,23 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
 
     state = nextState;
 
-    if (changed) {
-      notify();
+    if (!changed) return;
+
+    if (notification === "streaming") {
+      if (streamingNotifyTimer === null) {
+        streamingNotifyTimer = setTimeout(() => {
+          streamingNotifyTimer = null;
+          notify();
+        }, STREAMING_NOTIFY_INTERVAL_MS);
+      }
+      return;
     }
+
+    if (streamingNotifyTimer !== null) {
+      clearTimeout(streamingNotifyTimer);
+      streamingNotifyTimer = null;
+    }
+    notify();
   }
 
   function notify() {
@@ -408,12 +427,17 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
       .slice(0, hasLoadedOlderTimeline ? TIMELINE_MAX_EVENTS : TIMELINE_LIMIT);
     pruneTimelineMergeSequences(timelineEvents);
 
-    commit({
-      ...state,
-      timelineEvents,
-      loading: false,
-      error: null
-    });
+    commit(
+      {
+        ...state,
+        timelineEvents,
+        loading: false,
+        error: null
+      },
+      event.type === "conversation-message" && event.status === "streaming"
+        ? "streaming"
+        : "immediate"
+    );
   }
 
   function mergeSessionStatus(session: SessionSummary) {

@@ -53,6 +53,99 @@ const ITEMS: ActionCenterItem[] = [
 ];
 
 describe("renderActionCenterPanel", () => {
+  it("bounds 1,000 history rows to 200 while retaining selected and expanded rows", () => {
+    vi.useFakeTimers();
+    const root = document.createElement("div");
+    document.body.append(root);
+    const parents = Array.from({ length: 950 }, (_, index) =>
+      structuredItem({
+        id: `event-${index}`,
+        title: `Event ${index}`,
+        messageKey: `message-${index}`,
+        details: [{
+          type: "metadata",
+          title: "Metadata",
+          collapsed: true,
+          materialize: vi.fn(() => ({ index }))
+        }]
+      })
+    );
+    const structuredItems = [
+      ...parents,
+      ...Array.from({ length: 50 }, (_, index) =>
+        structuredItem({
+          id: `tool-${index}`,
+          title: `Tool ${index}`,
+          role: "tool",
+          toolName: "shell",
+          messageKey: `tool-message-${index}`,
+          parentId: "event-948",
+          parentMessageKey: "message-948"
+        })
+      )
+    ];
+
+    renderActionCenterPanel(root, {
+      open: true,
+      items: [],
+      structuredItems,
+      activeTab: "activity",
+      expandedIds: new Set(["event-948"]),
+      selectedEventId: "event-949",
+      loading: false,
+      error: null,
+      onTabChange: vi.fn(),
+      onToggleExpanded: vi.fn(),
+      onClose: vi.fn(),
+      onOpenSession: vi.fn(),
+      onDismissPrompt: vi.fn(),
+      onSendPrompt: vi.fn(),
+      onRunHookAction: vi.fn()
+    });
+    vi.runAllTimers();
+
+    const eventElements = root.querySelectorAll("[data-event-id]");
+    expect(eventElements.length).toBeLessThanOrEqual(200);
+    expect(
+      root.querySelector("[data-event-id='event-949']")?.classList.contains("is-selected")
+    ).toBe(true);
+    expect(root.querySelector("[data-event-id='event-948'] [aria-expanded='true']")).not.toBeNull();
+    expect(root.querySelector("[data-event-id='tool-0']")).not.toBeNull();
+    expect(root.textContent).toContain('"index": 948');
+    expect(root.textContent).not.toContain('"index": 947');
+  });
+
+  it("leaves no deferred append work that can mutate a detached panel", () => {
+    vi.useFakeTimers();
+    const root = document.createElement("div");
+    document.body.append(root);
+    renderActionCenterPanel(root, {
+      open: true,
+      items: [],
+      structuredItems: Array.from({ length: 1_000 }, (_, index) =>
+        structuredItem({ id: `event-${index}`, title: `Event ${index}` })
+      ),
+      activeTab: "activity",
+      expandedIds: new Set(),
+      selectedEventId: null,
+      loading: false,
+      error: null,
+      onTabChange: vi.fn(),
+      onToggleExpanded: vi.fn(),
+      onClose: vi.fn(),
+      onOpenSession: vi.fn(),
+      onDismissPrompt: vi.fn(),
+      onSendPrompt: vi.fn(),
+      onRunHookAction: vi.fn()
+    });
+    const initialCount = root.querySelectorAll(".structured-event-row").length;
+    expect(vi.getTimerCount()).toBe(0);
+    root.remove();
+    vi.runAllTimers();
+
+    expect(root.querySelectorAll(".structured-event-row")).toHaveLength(initialCount);
+  });
+
   it("renders semantic Activity and Attention tabs with summary-first structured rows", () => {
     const root = document.createElement("div");
     const onTabChange = vi.fn();

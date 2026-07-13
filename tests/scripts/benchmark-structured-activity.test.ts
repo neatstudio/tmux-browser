@@ -209,6 +209,16 @@ describe("structured activity benchmark", () => {
       .toBeLessThan(benchmarkSource.indexOf('spawnSync("git", ["worktree", "remove"'));
   });
 
+  it("launches the deterministic Vite harness for isolated commit measurements", () => {
+    expect(benchmarkSource).toMatch(
+      /server = spawn\("npm", \["run", "dev:client", "--", "--host", "127\.0\.0\.1", "--port", String\(port\)\], \{/
+    );
+    expect(benchmarkSource).toContain("await waitForServer(`${url}/tests/e2e/structured-event-panel-harness.html`, server)");
+    expect(benchmarkSource).toMatch(
+      /return await callback\(\s*`\$\{url\}\/tests\/e2e\/structured-event-panel-harness\.html\?benchmark`\s*\)/
+    );
+  });
+
   it("selects authoritative baseline only from a trusted repository variable", () => {
     expect(workflowSource).toContain("vars.STRUCTURED_ACTIVITY_BASELINE_SHA");
     expect(workflowSource).toContain("git cat-file -e");

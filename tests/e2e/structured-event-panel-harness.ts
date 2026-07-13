@@ -20,10 +20,18 @@ const hydratedRecords = records.map((record) => {
     ? { ...value, content: `npm test\n${"x".repeat(2048)}` }
     : value;
 });
-const structuredItems = applyStructuredActionAvailability(
+let structuredItems = applyStructuredActionAvailability(
   hydratedRecords.map((record) => adaptStructuredRecord(record)).filter((item) => item !== null),
   []
 );
+
+declare global {
+  interface Window {
+    __structuredActivityTest: {
+      streamRevision: (revision: number) => void;
+    };
+  }
+}
 
 function render() {
   renderActionCenterPanel(root, {
@@ -64,6 +72,21 @@ function render() {
     }
   );
 }
+
+window.__structuredActivityTest = {
+  streamRevision(revision) {
+    structuredItems = structuredItems.map((item) =>
+      item.id === "complete-1"
+        ? {
+            ...item,
+            status: "streaming",
+            summary: `Streaming revision ${revision}`
+          }
+        : item
+    );
+    render();
+  }
+};
 
 document.querySelector("#open-panel")?.addEventListener("click", () => {
   open = true;

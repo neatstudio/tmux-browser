@@ -8,6 +8,21 @@ const styles = readFileSync(
 );
 
 describe("client layout styles", () => {
+  it("keeps the bounded structured activity window contained without horizontal shift", () => {
+    expect(styles).toMatch(
+      /\.action-center-panel\s*\{[^}]*width:\s*min\(28rem,\s*calc\(100vw\s*-\s*1\.5rem\)\);[^}]*overflow:\s*hidden;/s
+    );
+    expect(styles).toMatch(
+      /\.action-center-list\s*\{[^}]*min-height:\s*0;[^}]*overflow:\s*auto;/s
+    );
+    expect(styles).toMatch(
+      /\.structured-event-row\s*\{[^}]*min-width:\s*0;[^}]*contain:\s*layout\s+style\s+paint;/s
+    );
+    expect(styles).toMatch(
+      /\.structured-event-details\s+pre\s*\{[^}]*max-height:\s*16rem;[^}]*overflow:\s*auto;[^}]*overflow-wrap:\s*anywhere;/s
+    );
+  });
+
   it("keeps the page shell chrome-free instead of falling back to tabs", () => {
     expect(styles).not.toContain(".app-shell--tabs");
     expect(styles).not.toContain(".app-shell--sidebar");

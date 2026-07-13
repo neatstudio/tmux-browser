@@ -25,6 +25,43 @@ export type ActionCenterPanelOptions = {
   onRunHookAction: (eventId: string, actionId: string) => void;
 };
 
+const STRUCTURED_EVENT_RENDER_LIMIT = 200;
+
+function selectStructuredRenderWindow(
+  items: DerivedStructuredPresentationItem[],
+  options: ActionCenterPanelOptions
+) {
+  const retainedIds = new Set<string>();
+  if (options.selectedEventId) retainedIds.add(options.selectedEventId);
+  for (const id of options.expandedIds ?? []) {
+    if (retainedIds.size >= STRUCTURED_EVENT_RENDER_LIMIT) break;
+    retainedIds.add(id);
+  }
+  const retained = items
+    .filter((item) => retainedIds.has(item.id))
+    .slice(0, STRUCTURED_EVENT_RENDER_LIMIT);
+  let childCapacity = STRUCTURED_EVENT_RENDER_LIMIT - retained.length;
+  const childLimits = new Map<string, number>();
+  for (const item of retained) {
+    if (!options.expandedIds?.has(item.id) || childCapacity === 0) continue;
+    const visibleChildren = Math.min(item.children.length, childCapacity);
+    childLimits.set(item.id, visibleChildren);
+    childCapacity -= visibleChildren;
+  }
+  const visibleChildCount = [...childLimits.values()].reduce(
+    (total, count) => total + count,
+    0
+  );
+  const parentLimit = STRUCTURED_EVENT_RENDER_LIMIT - visibleChildCount;
+  const leading = items
+    .filter((item) => !retainedIds.has(item.id))
+    .slice(0, Math.max(0, parentLimit - retained.length));
+  return {
+    items: [...leading, ...retained].slice(0, parentLimit),
+    childLimits
+  };
+}
+
 function formatActionCount(count: number) {
   return count === 1 ? "1 action" : `${count} actions`;
 }
@@ -86,7 +123,8 @@ function renderStructuredDetails(item: DerivedStructuredPresentationItem) {
 
 function renderStructuredEventItem(
   item: DerivedStructuredPresentationItem,
-  options: ActionCenterPanelOptions
+  options: ActionCenterPanelOptions,
+  visibleChildCount = item.children.length
 ) {
   const expanded = options.expandedIds?.has(item.id) ?? false;
   const row = document.createElement("article");
@@ -143,9 +181,10 @@ function renderStructuredEventItem(
   if (expanded) {
     const details = renderStructuredDetails(item);
     details.id = `structured-event-details-${item.id}`;
-    item.children.forEach((child) => {
+    item.children.slice(0, visibleChildCount).forEach((child) => {
       const childRow = document.createElement("div");
       childRow.className = "structured-event-child";
+      childRow.dataset.eventId = child.id;
       childRow.textContent = `${child.toolName ?? "Tool"}: ${child.summary}`;
       details.prepend(childRow);
     });
@@ -257,19 +296,16 @@ function renderUnifiedPanelContent(
     state.textContent = activeTab === "activity" ? "No activity yet" : "Nothing needs attention";
     content.append(state);
   } else {
-    const initialItems = visibleStructured.slice(0, 100);
-    initialItems.forEach((item) => content.append(renderStructuredEventItem(item, options)));
-    if (visibleStructured.length > initialItems.length) {
-      const remaining = visibleStructured.slice(initialItems.length);
-      const appendChunk = () => {
-        if (!content.isConnected) return;
-        remaining.splice(0, 100).forEach((item) => {
-          content.append(renderStructuredEventItem(item, options));
-        });
-        if (remaining.length > 0) window.setTimeout(appendChunk, 16);
-      };
-      window.setTimeout(appendChunk, 250);
-    }
+    const renderWindow = selectStructuredRenderWindow(visibleStructured, options);
+    renderWindow.items.forEach((item) =>
+      content.append(
+        renderStructuredEventItem(
+          item,
+          options,
+          renderWindow.childLimits.get(item.id) ?? 0
+        )
+      )
+    );
     visibleActions.forEach((item) => content.append(renderActionCenterItem(item, options)));
   }
   panel.append(content);
