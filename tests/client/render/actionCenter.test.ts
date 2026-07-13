@@ -4,6 +4,33 @@ import { describe, expect, it, vi } from "vitest";
 
 import { renderActionCenterPanel } from "../../../src/client/render/actionCenter";
 import type { ActionCenterItem } from "../../../src/client/actionCenter";
+import type { StructuredPresentationItem } from "../../../src/client/structuredPresentation";
+
+function structuredItem(
+  overrides: Partial<StructuredPresentationItem> = {}
+): StructuredPresentationItem {
+  return {
+    id: "event-1",
+    kind: "conversation",
+    sessionName: "codex",
+    title: "Tests completed",
+    summary: "All focused tests passed after updating the renderer.",
+    summarySource: "producer",
+    status: "complete",
+    severity: "info",
+    attentionRequired: false,
+    role: "assistant",
+    toolName: null,
+    parentId: null,
+    messageKey: "[\"codex\",\"message-1\"]",
+    parentMessageKey: null,
+    details: [],
+    actions: [],
+    stats: { testspassed: 42, durationms: 1840 },
+    createdAt: "2026-07-14T08:00:00.000Z",
+    ...overrides
+  };
+}
 
 const ITEMS: ActionCenterItem[] = [
   {
@@ -26,6 +53,189 @@ const ITEMS: ActionCenterItem[] = [
 ];
 
 describe("renderActionCenterPanel", () => {
+  it("renders semantic Activity and Attention tabs with summary-first structured rows", () => {
+    const root = document.createElement("div");
+    const onTabChange = vi.fn();
+
+    renderActionCenterPanel(root, {
+      open: true,
+      items: ITEMS,
+      structuredItems: [
+        structuredItem(),
+        structuredItem({
+          id: "event-2",
+          kind: "hook",
+          title: "Approval needed",
+          summary: "Review the command before it runs.",
+          status: "waiting",
+          severity: "warning",
+          attentionRequired: true,
+          messageKey: null
+        })
+      ],
+      activeTab: "activity",
+      expandedIds: new Set(),
+      selectedEventId: null,
+      loading: false,
+      error: null,
+      onTabChange,
+      onToggleExpanded: vi.fn(),
+      onClose: vi.fn(),
+      onOpenSession: vi.fn(),
+      onDismissPrompt: vi.fn(),
+      onSendPrompt: vi.fn(),
+      onRunHookAction: vi.fn()
+    });
+
+    const tabs = root.querySelectorAll<HTMLButtonElement>("[role='tab']");
+    expect(tabs).toHaveLength(2);
+    expect(tabs[0]?.textContent).toContain("Activity");
+    expect(tabs[0]?.getAttribute("aria-selected")).toBe("true");
+    expect(root.textContent).toContain("Tests completed");
+    expect(root.textContent).toContain("All focused tests passed");
+    expect(root.textContent).toContain("Complete");
+    expect(root.textContent).toContain("42 passed");
+    expect(root.textContent).toContain("1.84 s");
+    expect(root.querySelector("[data-action='run-hook-action']")).toBeNull();
+
+    tabs[1]?.click();
+    expect(onTabChange).toHaveBeenCalledWith("attention");
+  });
+
+  it("shows only attention structured rows plus prompts and dead panes on Attention", () => {
+    const root = document.createElement("div");
+    renderActionCenterPanel(root, {
+      open: true,
+      items: ITEMS,
+      structuredItems: [
+        structuredItem(),
+        structuredItem({
+          id: "event-2",
+          title: "Approval needed",
+          summary: "Review command",
+          status: "waiting",
+          severity: "warning",
+          attentionRequired: true
+        })
+      ],
+      activeTab: "attention",
+      expandedIds: new Set(),
+      selectedEventId: "event-2",
+      loading: false,
+      error: null,
+      onTabChange: vi.fn(),
+      onToggleExpanded: vi.fn(),
+      onClose: vi.fn(),
+      onOpenSession: vi.fn(),
+      onDismissPrompt: vi.fn(),
+      onSendPrompt: vi.fn(),
+      onRunHookAction: vi.fn()
+    });
+
+    expect(root.textContent).not.toContain("Tests completed");
+    expect(root.textContent).toContain("Approval needed");
+    expect(root.textContent).toContain("codex waiting");
+    expect(root.textContent).toContain("api pane %1 exited");
+    expect(root.querySelector("[data-event-id='event-2']")?.classList).toContain("is-selected");
+  });
+
+  it("materializes structured detail payloads only after accessible expansion", () => {
+    const root = document.createElement("div");
+    const materialize = vi.fn(() => "npm test\n42 tests passed");
+    const onToggleExpanded = vi.fn();
+    const item = structuredItem({
+      details: [{ type: "command", title: "Verification", collapsed: true, materialize }]
+    });
+    const base = {
+      open: true,
+      items: [],
+      structuredItems: [item],
+      activeTab: "activity" as const,
+      selectedEventId: null,
+      loading: false,
+      error: null,
+      onTabChange: vi.fn(),
+      onToggleExpanded,
+      onClose: vi.fn(),
+      onOpenSession: vi.fn(),
+      onDismissPrompt: vi.fn(),
+      onSendPrompt: vi.fn(),
+      onRunHookAction: vi.fn()
+    };
+
+    renderActionCenterPanel(root, { ...base, expandedIds: new Set() });
+    const toggle = root.querySelector<HTMLButtonElement>("[data-action='toggle-structured-event']")!;
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(materialize).not.toHaveBeenCalled();
+    expect(root.textContent).not.toContain("npm test");
+    toggle.click();
+    expect(onToggleExpanded).toHaveBeenCalledWith("event-1");
+
+    renderActionCenterPanel(root, { ...base, expandedIds: new Set(["event-1"]) });
+    expect(root.querySelector("[aria-expanded='true']")).not.toBeNull();
+    expect(materialize).toHaveBeenCalledOnce();
+    expect(root.textContent).toContain("npm test");
+  });
+
+  it("renders corrupt structured fallbacks as read-only status rows", () => {
+    const root = document.createElement("div");
+    renderActionCenterPanel(root, {
+      open: true,
+      items: [],
+      structuredItems: [structuredItem({
+        id: "corrupt",
+        title: "损坏的事件",
+        summary: "事件数据损坏",
+        status: "failed",
+        severity: "error",
+        attentionRequired: true,
+        actions: []
+      })],
+      activeTab: "attention",
+      expandedIds: new Set(),
+      selectedEventId: null,
+      loading: false,
+      error: null,
+      onTabChange: vi.fn(),
+      onToggleExpanded: vi.fn(),
+      onClose: vi.fn(),
+      onOpenSession: vi.fn(),
+      onDismissPrompt: vi.fn(),
+      onSendPrompt: vi.fn(),
+      onRunHookAction: vi.fn()
+    });
+
+    expect(root.textContent).toContain("事件数据损坏");
+    expect(root.textContent).toContain("Failed");
+    expect(root.querySelector("[data-action='run-hook-action']")).toBeNull();
+    expect(root.querySelector("[data-action='open-action-session']")).toBeNull();
+  });
+
+  it("renders loading, empty, and reconnect states", () => {
+    const root = document.createElement("div");
+    const common = {
+      open: true,
+      items: [],
+      structuredItems: [],
+      activeTab: "activity" as const,
+      expandedIds: new Set<string>(),
+      selectedEventId: null,
+      onTabChange: vi.fn(),
+      onToggleExpanded: vi.fn(),
+      onClose: vi.fn(),
+      onOpenSession: vi.fn(),
+      onDismissPrompt: vi.fn(),
+      onSendPrompt: vi.fn(),
+      onRunHookAction: vi.fn()
+    };
+    renderActionCenterPanel(root, { ...common, loading: true, error: null });
+    expect(root.textContent).toContain("Loading activity");
+    renderActionCenterPanel(root, { ...common, loading: false, error: null });
+    expect(root.textContent).toContain("No activity yet");
+    renderActionCenterPanel(root, { ...common, loading: false, error: "socket closed" });
+    expect(root.textContent).toContain("Reconnecting");
+    expect(root.textContent).toContain("socket closed");
+  });
   it("renders actionable prompt and dead-pane items", () => {
     const root = document.createElement("div");
     const onOpenSession = vi.fn();

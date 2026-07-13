@@ -2801,17 +2801,43 @@ select {
 
 .action-center-panel {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   align-self: center;
   width: min(28rem, calc(100vw - 1.5rem));
   max-height: min(78dvh, 44rem);
   overflow: hidden;
   border: 1px solid rgba(255, 211, 122, 0.28);
   border-radius: 5px;
-  background:
-    linear-gradient(180deg, rgba(31, 38, 43, 0.98), rgba(10, 14, 18, 0.98));
+  background: rgba(15, 20, 25, 0.985);
   box-shadow: 0 24px 90px rgba(0, 0, 0, 0.48);
   color: rgba(239, 246, 252, 0.92);
+}
+
+.action-center-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-bottom: 1px solid rgba(217, 226, 234, 0.12);
+}
+
+.action-center-tabs button {
+  min-height: 32px;
+  border: 0;
+  border-right: 1px solid rgba(217, 226, 234, 0.1);
+  background: rgba(217, 226, 234, 0.035);
+  color: rgba(217, 226, 234, 0.62);
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 760;
+}
+
+.action-center-tabs button:last-child {
+  border-right: 0;
+}
+
+.action-center-tabs button[aria-selected="true"] {
+  box-shadow: inset 0 -2px 0 #ffd37a;
+  background: rgba(255, 211, 122, 0.08);
+  color: #ffe2a7;
 }
 
 .action-center-header {
@@ -2868,6 +2894,134 @@ select {
   border-radius: 4px;
   background: rgba(217, 226, 234, 0.045);
   padding: 0.56rem;
+}
+
+.structured-event-row {
+  display: grid;
+  gap: 0.34rem;
+  min-width: 0;
+  contain: layout style paint;
+  contain-intrinsic-size: 0 7rem;
+  border-bottom: 1px solid rgba(217, 226, 234, 0.12);
+  padding: 0.52rem 0.58rem;
+}
+
+.structured-event-row.is-selected {
+  box-shadow: inset 3px 0 0 #ffd37a;
+  background: rgba(255, 211, 122, 0.055);
+}
+
+.structured-event-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.structured-event-heading strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.structured-event-status {
+  flex: 0 0 auto;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  color: rgba(217, 226, 234, 0.64);
+  font-size: 0.58rem;
+  font-weight: 780;
+  padding: 0.1rem 0.28rem;
+  text-transform: uppercase;
+}
+
+.structured-event-row[data-status="failed"] .structured-event-status,
+.structured-event-row[data-status="blocked"] .structured-event-status {
+  color: #ffae98;
+}
+
+.structured-event-row[data-status="waiting"] .structured-event-status,
+.structured-event-row[data-status="need-input"] .structured-event-status {
+  color: #ffe2a7;
+}
+
+.structured-event-row[data-status="complete"] .structured-event-status {
+  color: #bfffc4;
+}
+
+.structured-event-summary {
+  min-width: 0;
+  margin: 0;
+  color: rgba(239, 246, 252, 0.78);
+  font-size: 0.74rem;
+  line-height: 1.38;
+  overflow-wrap: anywhere;
+}
+
+.structured-event-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.22rem;
+}
+
+.structured-event-stats span {
+  border-left: 2px solid rgba(143, 217, 255, 0.45);
+  color: rgba(217, 226, 234, 0.58);
+  font-size: 0.62rem;
+  padding-left: 0.28rem;
+}
+
+.structured-event-toggle {
+  justify-self: start;
+  min-height: 24px;
+  border: 1px solid rgba(217, 226, 234, 0.16);
+  border-radius: 3px;
+  background: rgba(217, 226, 234, 0.045);
+  color: rgba(239, 246, 252, 0.78);
+  cursor: pointer;
+  font-size: 0.66rem;
+  padding: 0.14rem 0.38rem;
+}
+
+.structured-event-details {
+  display: grid;
+  gap: 0.32rem;
+  min-width: 0;
+  border-top: 1px solid rgba(217, 226, 234, 0.1);
+  padding-top: 0.38rem;
+}
+
+.structured-event-detail {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.structured-event-detail strong,
+.structured-event-child {
+  color: rgba(217, 226, 234, 0.62);
+  font-size: 0.64rem;
+}
+
+.structured-event-details pre {
+  max-height: 16rem;
+  overflow: auto;
+  margin: 0;
+  border: 1px solid rgba(217, 226, 234, 0.1);
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.22);
+  color: rgba(239, 246, 252, 0.82);
+  font: 0.68rem/1.42 "Iosevka Term", Menlo, "PingFang SC", monospace;
+  overflow-wrap: anywhere;
+  padding: 0.45rem;
+  white-space: pre-wrap;
+}
+
+.action-center-empty.is-reconnecting {
+  color: #ffe2a7;
 }
 
 .action-center-item.is-input-prompt {
@@ -3455,8 +3609,8 @@ select {
 
   .action-center-panel {
     align-self: start;
-    width: min(26rem, calc(100vw - 1rem));
-    max-height: min(52dvh, 24rem);
+    width: min(100%, 32rem);
+    max-height: min(76dvh, 36rem);
   }
 
   .dashboard-root {

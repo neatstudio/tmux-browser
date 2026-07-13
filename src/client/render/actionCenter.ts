@@ -1,8 +1,23 @@
 import type { ActionCenterItem } from "../actionCenter";
+import {
+  deriveStructuredPresentation,
+  materializeStructuredDetails,
+  type DerivedStructuredPresentationItem,
+  type StructuredPresentationItem
+} from "../structuredPresentation";
+import type { UnifiedPanelTab } from "../events/appEventRefreshScheduler";
 
 export type ActionCenterPanelOptions = {
   open: boolean;
   items: ActionCenterItem[];
+  structuredItems?: StructuredPresentationItem[];
+  activeTab?: UnifiedPanelTab;
+  expandedIds?: ReadonlySet<string>;
+  selectedEventId?: string | null;
+  loading?: boolean;
+  error?: string | null;
+  onTabChange?: (tab: UnifiedPanelTab) => void;
+  onToggleExpanded?: (eventId: string) => void;
   onClose: () => void;
   onOpenSession: (sessionName: string) => void;
   onDismissPrompt: (promptKey: string) => void;
@@ -12,6 +27,224 @@ export type ActionCenterPanelOptions = {
 
 function formatActionCount(count: number) {
   return count === 1 ? "1 action" : `${count} actions`;
+}
+
+const STATUS_LABELS = {
+  streaming: "Streaming",
+  complete: "Complete",
+  failed: "Failed",
+  waiting: "Waiting",
+  blocked: "Blocked",
+  "need-input": "Needs input",
+  info: "Info"
+} as const;
+
+function formatDuration(durationMs: number) {
+  return durationMs < 1_000
+    ? `${durationMs} ms`
+    : `${(durationMs / 1_000).toFixed(2)} s`;
+}
+
+function formatStats(item: DerivedStructuredPresentationItem) {
+  return [
+    item.stats.fileschanged === undefined ? null : `${item.stats.fileschanged} files`,
+    item.stats.testspassed === undefined ? null : `${item.stats.testspassed} passed`,
+    item.stats.testsfailed === undefined ? null : `${item.stats.testsfailed} failed`,
+    item.stats.durationms === undefined ? null : formatDuration(item.stats.durationms),
+    item.toolStepCount > 0 ? `${item.toolStepCount} tool steps` : null
+  ].filter((value): value is string => value !== null);
+}
+
+function renderStructuredDetails(item: DerivedStructuredPresentationItem) {
+  const container = document.createElement("div");
+  container.className = "structured-event-details";
+  materializeStructuredDetails(item, { view: "expanded" }).forEach((block) => {
+    const section = document.createElement("section");
+    section.className = "structured-event-detail";
+    section.dataset.detailType = block.type;
+    if (block.title) {
+      const title = document.createElement("strong");
+      title.textContent = block.title;
+      section.append(title);
+    }
+    const body = document.createElement("pre");
+    body.textContent = block.metadata
+      ? JSON.stringify(block.metadata, null, 2)
+      : block.text ?? "";
+    section.append(body);
+    container.append(section);
+  });
+  return container;
+}
+
+function renderStructuredEventItem(
+  item: DerivedStructuredPresentationItem,
+  options: ActionCenterPanelOptions
+) {
+  const expanded = options.expandedIds?.has(item.id) ?? false;
+  const row = document.createElement("article");
+  row.className = "structured-event-row";
+  row.dataset.eventId = item.id;
+  row.tabIndex = -1;
+  row.dataset.status = item.status;
+  row.dataset.severity = item.severity;
+  if (options.selectedEventId === item.id) row.classList.add("is-selected");
+
+  const heading = document.createElement("div");
+  heading.className = "structured-event-heading";
+  const title = document.createElement("strong");
+  title.textContent = item.title;
+  const status = document.createElement("span");
+  status.className = "structured-event-status";
+  status.textContent = STATUS_LABELS[item.status];
+  heading.append(title, status);
+
+  const summary = document.createElement("p");
+  summary.className = "structured-event-summary";
+  summary.textContent = item.summary;
+  row.append(heading, summary);
+
+  const stats = formatStats(item);
+  if (stats.length) {
+    const statsRow = document.createElement("div");
+    statsRow.className = "structured-event-stats";
+    stats.forEach((stat) => {
+      const value = document.createElement("span");
+      value.textContent = stat;
+      statsRow.append(value);
+    });
+    row.append(statsRow);
+  }
+
+  if (item.details.length > 0 || item.children.length > 0) {
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "structured-event-toggle";
+    toggle.dataset.action = "toggle-structured-event";
+    toggle.setAttribute("aria-expanded", String(expanded));
+    toggle.setAttribute("aria-controls", `structured-event-details-${item.id}`);
+    toggle.setAttribute(
+      "aria-label",
+      `${expanded ? "Hide" : "Show"} details for ${item.title}`
+    );
+    toggle.textContent = expanded ? "Hide details" : "Show details";
+    toggle.addEventListener("click", () => options.onToggleExpanded?.(item.id));
+    row.append(toggle);
+  }
+
+  if (expanded) {
+    const details = renderStructuredDetails(item);
+    details.id = `structured-event-details-${item.id}`;
+    item.children.forEach((child) => {
+      const childRow = document.createElement("div");
+      childRow.className = "structured-event-child";
+      childRow.textContent = `${child.toolName ?? "Tool"}: ${child.summary}`;
+      details.prepend(childRow);
+    });
+    row.append(details);
+  }
+
+  const canOpenHook = item.kind === "hook" && item.attentionRequired && item.sessionName && item.summary !== "事件数据损坏";
+  if (item.actions.length > 0 || canOpenHook) {
+    const actions = document.createElement("div");
+    actions.className = "action-center-actions";
+    item.actions.forEach((action) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.action = "run-hook-action";
+      button.disabled = !action.enabled;
+      button.textContent = action.label;
+      if (action.disabledReason) button.title = action.disabledReason;
+      button.addEventListener("click", () => options.onRunHookAction(`hook:${item.id}`, action.id));
+      actions.append(button);
+    });
+    if (canOpenHook) {
+      const open = document.createElement("button");
+      open.type = "button";
+      open.dataset.action = "open-action-session";
+      open.textContent = "Open";
+      open.addEventListener("click", () => options.onOpenSession(item.sessionName!));
+      actions.append(open);
+    }
+    row.append(actions);
+  }
+
+  return row;
+}
+
+function renderUnifiedPanelContent(
+  panel: HTMLElement,
+  options: ActionCenterPanelOptions,
+  presentations: DerivedStructuredPresentationItem[]
+) {
+  const activeTab = options.activeTab ?? "activity";
+  const attention = presentations.filter((item) => item.attentionRequired);
+  const tabs = document.createElement("div");
+  tabs.className = "action-center-tabs";
+  tabs.setAttribute("role", "tablist");
+  (["activity", "attention"] as const).forEach((tabName) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.id = `action-center-tab-${tabName}`;
+    button.setAttribute("role", "tab");
+    button.setAttribute("aria-selected", String(activeTab === tabName));
+    button.setAttribute("aria-controls", "action-center-tabpanel");
+    const count = tabName === "activity" ? presentations.length : attention.length + options.items.filter((item) => item.type !== "hook-event").length;
+    button.textContent = `${tabName === "activity" ? "Activity" : "Attention"} ${count}`;
+    button.addEventListener("click", () => options.onTabChange?.(tabName));
+    tabs.append(button);
+  });
+  panel.append(tabs);
+
+  const content = document.createElement("div");
+  content.id = "action-center-tabpanel";
+  content.className = "action-center-list";
+  content.setAttribute("role", "tabpanel");
+  content.setAttribute("aria-labelledby", `action-center-tab-${activeTab}`);
+  const visibleStructured = activeTab === "activity" ? presentations : attention;
+  const visibleActions = activeTab === "attention"
+    ? options.items.filter((item) => item.type !== "hook-event")
+    : [];
+
+  if (options.loading && visibleStructured.length === 0) {
+    const state = document.createElement("p");
+    state.className = "action-center-empty";
+    state.textContent = "Loading activity…";
+    content.append(state);
+  } else if (options.error && visibleStructured.length === 0) {
+    const state = document.createElement("p");
+    state.className = "action-center-empty is-reconnecting";
+    state.textContent = `Reconnecting… ${options.error}`;
+    content.append(state);
+  } else if (visibleStructured.length === 0 && visibleActions.length === 0) {
+    const state = document.createElement("p");
+    state.className = "action-center-empty";
+    state.textContent = activeTab === "activity" ? "No activity yet" : "Nothing needs attention";
+    content.append(state);
+  } else {
+    const initialItems = visibleStructured.slice(0, 100);
+    initialItems.forEach((item) => content.append(renderStructuredEventItem(item, options)));
+    if (visibleStructured.length > initialItems.length) {
+      const remaining = visibleStructured.slice(initialItems.length);
+      const appendChunk = () => {
+        if (!content.isConnected) return;
+        remaining.splice(0, 100).forEach((item) => {
+          content.append(renderStructuredEventItem(item, options));
+        });
+        if (remaining.length > 0) window.setTimeout(appendChunk, 16);
+      };
+      window.setTimeout(appendChunk, 250);
+    }
+    visibleActions.forEach((item) => content.append(renderActionCenterItem(item, options)));
+  }
+  panel.append(content);
+  const selected = options.selectedEventId
+    ? [...content.querySelectorAll<HTMLElement>("[data-event-id]")].find(
+        (node) => node.dataset.eventId === options.selectedEventId
+      ) ?? null
+    : null;
+  selected?.focus({ preventScroll: true });
+  selected?.scrollIntoView?.({ block: "nearest" });
 }
 
 function formatPromptActionLabel(label: string) {
@@ -316,7 +549,12 @@ export function renderActionCenterPanel(
   title.textContent = "Action Center";
 
   const count = document.createElement("span");
-  count.textContent = formatActionCount(options.items.length);
+  const structuredPresentations = options.structuredItems
+    ? deriveStructuredPresentation(options.structuredItems)
+    : null;
+  count.textContent = structuredPresentations
+    ? `${structuredPresentations.length} events · ${options.items.filter((item) => item.type !== "hook-event").length} actions`
+    : formatActionCount(options.items.length);
 
   titleGroup.append(title, count);
 
@@ -330,7 +568,9 @@ export function renderActionCenterPanel(
   header.append(titleGroup, closeButton);
   panel.append(header);
 
-  if (options.items.length === 0) {
+  if (structuredPresentations) {
+    renderUnifiedPanelContent(panel, options, structuredPresentations);
+  } else if (options.items.length === 0) {
     const empty = document.createElement("p");
     empty.className = "action-center-empty";
     empty.textContent = "No pending actions";

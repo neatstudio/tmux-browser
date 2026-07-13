@@ -61,6 +61,7 @@ import {
   uploadImageForSession
 } from "./imageUpload";
 import { getResponsiveUiTier } from "./responsiveUiTier";
+import { adaptStructuredRecord } from "./structuredPresentation";
 import {
   buildViewUrl,
   getAppShellClasses,
@@ -2102,6 +2103,9 @@ function render() {
     sessions: store.getState().sessions,
     timelineEvents: store.getState().timelineEvents
   });
+  const structuredItems = (store.getState().timelineEvents ?? [])
+    .map((event) => adaptStructuredRecord(event))
+    .filter((item) => item !== null);
   const hookEventToastItems = actionCenterItems.filter(
     (item): item is ActionCenterHookEventItem =>
       item.type === "hook-event" && !dismissedHookEventToastIds.has(item.id)
@@ -2238,6 +2242,25 @@ function render() {
   renderActionCenterPanel(appRoot, {
     open: isActionCenterOpen,
     items: actionCenterItems,
+    structuredItems,
+    activeTab: unifiedPanelState.getState().activeTab,
+    expandedIds: unifiedPanelState.getState().expandedIds,
+    selectedEventId: unifiedPanelState.getState().selectedEventId,
+    loading: store.getState().loading,
+    error: store.getState().error,
+    onTabChange: (tab) => {
+      if (tab === "activity") {
+        unifiedPanelState.openActivity();
+      } else {
+        const firstAttention = structuredItems.find((item) => item.attentionRequired);
+        if (firstAttention) unifiedPanelState.openAttention(firstAttention.id);
+      }
+      scheduleRender();
+    },
+    onToggleExpanded: (eventId) => {
+      unifiedPanelState.toggleExpanded(eventId);
+      scheduleRender();
+    },
     onClose: () => setActionCenterOpen(false),
     onOpenSession: openActionCenterSession,
     onDismissPrompt: closeInputPrompt,

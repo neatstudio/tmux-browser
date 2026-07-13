@@ -1,0 +1,41 @@
+[
+  {
+    "type": "conversation-message",
+    "id": "complete-1",
+    "createdAt": "2026-07-14T08:00:00.000Z",
+    "updatedAt": "2026-07-14T08:00:00.000Z",
+    "sessionName": "codex",
+    "messageId": "message-1",
+    "parentMessageId": null,
+    "role": "assistant",
+    "contentType": "command",
+    "content": "npm test\n42 tests passed",
+    "status": "complete",
+    "toolName": null,
+    "revision": 1,
+    "summary": "All focused tests passed",
+    "metadata": { "testspassed": 42, "durationms": 1840 }
+  },
+  {
+    "type": "hook-event",
+    "schemaVersion": "tmux-ui.hook/v1",
+    "id": "attention-1",
+    "createdAt": "2026-07-14T08:01:00.000Z",
+    "source": "codex",
+    "sessionName": "codex",
+    "eventType": "approval-required",
+    "status": "waiting",
+    "title": "Approval needed",
+    "body": null,
+    "cwd": null,
+    "taskId": "task-1",
+    "severity": "warning",
+    "target": { "sessionName": "codex", "projectName": null, "view": "terminal" },
+    "actions": [],
+    "content": [
+      { "type": "summary", "text": "Review the command before it runs" },
+      { "type": "details", "title": "Command", "text": "rm temporary-output.txt", "collapsed": true }
+    ],
+    "metadata": {}
+  }
+]

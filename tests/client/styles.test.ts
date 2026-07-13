@@ -319,8 +319,17 @@ describe("client layout styles", () => {
       /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.action-center-backdrop\s*\{[^}]*align-items:\s*start;[^}]*padding-top:\s*calc\(0\.7rem\s*\+\s*env\(safe-area-inset-top\)\);/s
     );
     expect(styles).toMatch(
-      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.action-center-panel\s*\{[^}]*align-self:\s*start;[^}]*width:\s*min\(26rem,\s*calc\(100vw\s*-\s*1rem\)\);[^}]*max-height:\s*min\(52dvh,\s*24rem\);/s
+      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.action-center-panel\s*\{[^}]*align-self:\s*start;[^}]*width:\s*min\(100%,\s*32rem\);[^}]*max-height:\s*min\(76dvh,\s*36rem\);/s
     );
+  });
+
+  it("keeps the unified structured panel dense, stable, and overflow-safe", () => {
+    expect(styles).toMatch(/\.action-center-tabs\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/s);
+    expect(styles).toMatch(/\.structured-event-row\s*\{[^}]*min-width:\s*0;[^}]*contain-intrinsic-size:\s*0\s+7rem;/s);
+    expect(styles).toMatch(/\.structured-event-summary\s*\{[^}]*overflow-wrap:\s*anywhere;/s);
+    expect(styles).toMatch(/\.structured-event-details\s+pre\s*\{[^}]*max-height:\s*16rem;[^}]*overflow:\s*auto;/s);
+    expect(styles).toMatch(/@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*\.action-center-panel\s*\{[^}]*width:\s*min\(100%,\s*32rem\);/s);
+    expect(styles).not.toMatch(/\.action-center-panel\s*\{[^}]*linear-gradient/s);
   });
 
   it("styles the kanban route as project and agent cards", () => {

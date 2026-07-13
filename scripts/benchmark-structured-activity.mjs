@@ -282,7 +282,7 @@ async function benchmark(options) {
           start: "pre-activity-action-center-open-start",
           interactive: "pre-activity-action-center-responsive-settled"
         },
-        note: "Pre-Activity comparator: open the existing Action Center, wait for its dialog to render, click its close control, and wait until the dialog is absent. Task 7+ must replace these marks when the Activity panel exists.",
+        note: "Activity comparator: inject the 1,000-record fixture into the deterministic structured-panel harness, open the unified Activity panel, close it, and wait until the dialog is absent.",
         capturedAt: new Date().toISOString(),
         warmRunsMs,
         medianMs: median(warmRunsMs)

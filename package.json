@@ -15,6 +15,7 @@
     "release:notes": "node scripts/generate-release-notes.mjs",
     "start": "node dist/server/index.js",
     "test": "vitest run --passWithNoTests",
+    "test:e2e": "playwright test",
     "test:watch": "vitest"
   },
   "dependencies": {
