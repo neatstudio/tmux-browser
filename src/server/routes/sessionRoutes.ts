@@ -17,6 +17,7 @@ type SessionRoutesDeps = Pick<
   | "killSession"
   | "sendCommand"
   | "sendInput"
+  | "sendInputIfPromptAvailable"
   | "splitPane"
   | "selectPane"
   | "killPane"
@@ -139,29 +140,21 @@ export function createSessionRoutes(
 
   router.post("/:name/input", async (req, res, next) => {
     try {
-      let status;
-      try {
-        status = await deps.getSessionStatus(req.params.name);
-      } catch {
-        res.status(404).json({ code: "target_session_not_found" });
-        return;
-      }
-      if (status.paneDead) {
-        res.status(404).json({ code: "target_session_not_found" });
-        return;
-      }
-      if (!status.inputPrompt) {
-        res.status(409).json({ code: "target_session_unavailable" });
-        return;
-      }
-      try {
-        await deps.sendInput(req.params.name, req.body.input);
-      } catch (error) {
-        if (error instanceof Error && /can't find session|session not found|no server running/i.test(error.message)) {
+      if (req.body.requirePrompt === true) {
+        if (!deps.sendInputIfPromptAvailable) {
+          throw new Error("Fresh prompt input validation is unavailable");
+        }
+        const result = await deps.sendInputIfPromptAvailable(req.params.name, req.body.input);
+        if (result === "not_found") {
           res.status(404).json({ code: "target_session_not_found" });
           return;
         }
-        throw error;
+        if (result === "unavailable") {
+          res.status(409).json({ code: "target_session_unavailable" });
+          return;
+        }
+      } else {
+        await deps.sendInput(req.params.name, req.body.input);
       }
       deps.timeline?.addEvent({
         type: "command-sent",

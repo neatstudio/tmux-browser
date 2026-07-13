@@ -71,6 +71,16 @@ describe("structuredActionRunner", () => {
     expect(order).toEqual(["send", "navigate"]);
   });
 
+  it("requires fresh prompt validation for action input", async () => {
+    const sendInput = vi.fn().mockResolvedValue(undefined);
+    const runner = createStructuredActionRunner({
+      getSessions: () => [session("action-target")], sendInput,
+      navigate: vi.fn(), refreshSessions: vi.fn()
+    });
+    await runner.run(item(), "approve");
+    expect(sendInput).toHaveBeenCalledWith("action-target", "y\r", { requirePrompt: true });
+  });
+
   it("retains the event, refreshes sessions, and never navigates after a coded target failure", async () => {
     const refreshSessions = vi.fn().mockResolvedValue(undefined);
     const navigate = vi.fn();

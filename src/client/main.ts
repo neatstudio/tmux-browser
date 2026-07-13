@@ -1958,7 +1958,7 @@ function navigateStructuredTarget(target: HookEventTarget) {
 
 const structuredActionRunner = createStructuredActionRunner({
   getSessions: () => store.getState().sessions,
-  sendInput: (sessionName, input) => api.sendInput(sessionName, input),
+  sendInput: (sessionName, input, options) => api.sendInput(sessionName, input, options),
   navigate: navigateStructuredTarget,
   refreshSessions: () => refreshCurrentViewState({ includeTimeline: false })
 });

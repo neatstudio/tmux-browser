@@ -514,6 +514,15 @@ describe("createSessionApi", () => {
     });
   });
 
+  it("marks structured action input as requiring a fresh prompt", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true }));
+    const api = createSessionApi();
+    await api.sendInput("build", "y\r", { requirePrompt: true });
+    expect(fetch).toHaveBeenCalledWith("/api/sessions/build/input", expect.objectContaining({
+      body: JSON.stringify({ input: "y\r", requirePrompt: true })
+    }));
+  });
+
   it("splits a tmux session pane", async () => {
     const fetch = vi.fn().mockResolvedValue({
       ok: true

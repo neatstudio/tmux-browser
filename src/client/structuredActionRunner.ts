@@ -50,7 +50,11 @@ export function applyStructuredActionAvailability(
 
 export function createStructuredActionRunner(deps: {
   getSessions: () => SessionSummary[];
-  sendInput: (sessionName: string, input: string) => Promise<void>;
+  sendInput: (
+    sessionName: string,
+    input: string,
+    options: { requirePrompt: true }
+  ) => Promise<void>;
   navigate: (target: HookEventTarget) => void;
   refreshSessions: () => Promise<unknown>;
 }) {
@@ -63,7 +67,7 @@ export function createStructuredActionRunner(deps: {
       const target = action.effectiveTarget!;
       if (action.input !== null) {
         try {
-          await deps.sendInput(target.sessionName!, action.input);
+          await deps.sendInput(target.sessionName!, action.input, { requirePrompt: true });
         } catch (caught) {
           const error = caught as StructuredActionError;
           if (error.code === "target_session_not_found" || error.code === "target_session_unavailable") {

@@ -158,17 +158,36 @@ describe("sessionRoutes", () => {
     expect(sendInput).toHaveBeenCalledWith("build", "\u001b");
   });
 
+  it("uses fresh prompt validation only when structured action input requires it", async () => {
+    const app = express();
+    const sendInput = vi.fn();
+    const sendInputIfPromptAvailable = vi.fn().mockResolvedValue("unavailable");
+    app.use(express.json());
+    app.use("/api/sessions", createSessionRoutes({
+      listSessions: vi.fn(), createSession: vi.fn(), renameSession: vi.fn(),
+      killSession: vi.fn(), sendCommand: vi.fn(), sendInput, sendInputIfPromptAvailable,
+      splitPane: vi.fn(), selectPane: vi.fn(), killPane: vi.fn(), getSessionStatus: vi.fn()
+    }));
+    const response = await request(app).post("/api/sessions/build/input")
+      .send({ input: "y\r", requirePrompt: true });
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({ code: "target_session_unavailable" });
+    expect(sendInputIfPromptAvailable).toHaveBeenCalledWith("build", "y\r");
+    expect(sendInput).not.toHaveBeenCalled();
+  });
+
   it("returns a stable 404 code when the input target no longer exists", async () => {
     const app = express();
     const sendInput = vi.fn();
     app.use(express.json());
     app.use("/api/sessions", createSessionRoutes({
       listSessions: vi.fn(), createSession: vi.fn(), renameSession: vi.fn(),
-      killSession: vi.fn(), sendCommand: vi.fn(), sendInput, splitPane: vi.fn(),
+      killSession: vi.fn(), sendCommand: vi.fn(), sendInput,
+      sendInputIfPromptAvailable: vi.fn().mockResolvedValue("not_found"), splitPane: vi.fn(),
       selectPane: vi.fn(), killPane: vi.fn(),
       getSessionStatus: vi.fn().mockRejectedValue(new Error("Tmux session not found"))
     }));
-    const response = await request(app).post("/api/sessions/gone/input").send({ input: "y" });
+    const response = await request(app).post("/api/sessions/gone/input").send({ input: "y", requirePrompt: true });
     expect(response.status).toBe(404);
     expect(response.body).toEqual({ code: "target_session_not_found" });
     expect(sendInput).not.toHaveBeenCalled();
@@ -180,11 +199,12 @@ describe("sessionRoutes", () => {
     app.use(express.json());
     app.use("/api/sessions", createSessionRoutes({
       listSessions: vi.fn(), createSession: vi.fn(), renameSession: vi.fn(),
-      killSession: vi.fn(), sendCommand: vi.fn(), sendInput, splitPane: vi.fn(),
+      killSession: vi.fn(), sendCommand: vi.fn(), sendInput,
+      sendInputIfPromptAvailable: vi.fn().mockResolvedValue("unavailable"), splitPane: vi.fn(),
       selectPane: vi.fn(), killPane: vi.fn(),
       getSessionStatus: vi.fn().mockResolvedValue({ name: "busy", paneDead: false, inputPrompt: null })
     }));
-    const response = await request(app).post("/api/sessions/busy/input").send({ input: "y" });
+    const response = await request(app).post("/api/sessions/busy/input").send({ input: "y", requirePrompt: true });
     expect(response.status).toBe(409);
     expect(response.body).toEqual({ code: "target_session_unavailable" });
     expect(sendInput).not.toHaveBeenCalled();
@@ -196,13 +216,14 @@ describe("sessionRoutes", () => {
     app.use("/api/sessions", createSessionRoutes({
       listSessions: vi.fn(), createSession: vi.fn(), renameSession: vi.fn(),
       killSession: vi.fn(), sendCommand: vi.fn(),
-      sendInput: vi.fn().mockRejectedValue(new Error("can't find session: vanished")),
+      sendInput: vi.fn(),
+      sendInputIfPromptAvailable: vi.fn().mockResolvedValue("not_found"),
       splitPane: vi.fn(), selectPane: vi.fn(), killPane: vi.fn(),
       getSessionStatus: vi.fn().mockResolvedValue({
         name: "vanished", paneDead: false, inputPrompt: { snippet: "Continue?", actions: [] }
       })
     }));
-    const response = await request(app).post("/api/sessions/vanished/input").send({ input: "y" });
+    const response = await request(app).post("/api/sessions/vanished/input").send({ input: "y", requirePrompt: true });
     expect(response.status).toBe(404);
     expect(response.body).toEqual({ code: "target_session_not_found" });
   });

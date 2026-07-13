@@ -49,6 +49,10 @@ export type TmuxService = {
   killSession: (name: string) => Promise<void>;
   sendCommand: (name: string, command: string) => Promise<void>;
   sendInput: (name: string, input: string) => Promise<void>;
+  sendInputIfPromptAvailable?: (
+    name: string,
+    input: string
+  ) => Promise<"sent" | "not_found" | "unavailable">;
   sendLiteralInput: (name: string, input: string) => Promise<void>;
   captureRecentOutput: (name: string, lineCount?: number) => Promise<string>;
   splitPane: (name: string, direction: SplitPaneDirection) => Promise<void>;
@@ -362,6 +366,32 @@ export function createTmuxService(deps: {
     return prompt;
   }
 
+  async function sendNormalizedInput(name: string, normalizedInput: string) {
+    const key = getTmuxKey(normalizedInput);
+    if (key) {
+      await run("send-keys", ["-t", name, key]);
+      invalidateSessionCaches(name);
+      return;
+    }
+    if (normalizedInput.endsWith("\r")) {
+      const literalInput = normalizedInput.slice(0, -1);
+      if (literalInput) await run("send-keys", ["-t", name, "-l", literalInput]);
+      await run("send-keys", ["-t", name, "Enter"]);
+      invalidateSessionCaches(name);
+      return;
+    }
+    await run("send-keys", ["-t", name, "-l", normalizedInput]);
+    invalidateSessionCaches(name);
+  }
+
+  function isMissingSessionError(error: unknown) {
+    return error instanceof Error && /can't find (?:session|pane)|session not found|no server running/i.test(error.message);
+  }
+
+  function isUnavailableInputError(error: unknown) {
+    return error instanceof Error && /pane.*dead|no longer accepts input|not accepting input|unavailable/i.test(error.message);
+  }
+
   async function getCachedGitSummary(cwd: string | null | undefined) {
     if (!cwd) {
       return null;
@@ -579,28 +609,30 @@ export function createTmuxService(deps: {
     async sendInput(name: string, input: string) {
       validateSessionName(name);
       const normalizedInput = validateInput(input);
-      const key = getTmuxKey(normalizedInput);
-
-      if (key) {
-        await run("send-keys", ["-t", name, key]);
-        invalidateSessionCaches(name);
-        return;
+      await sendNormalizedInput(name, normalizedInput);
+    },
+    async sendInputIfPromptAvailable(name: string, input: string) {
+      validateSessionName(name);
+      const normalizedInput = validateInput(input);
+      let output: string;
+      try {
+        const captured = await run("capture-pane", [
+          "-p", "-t", name, "-S", `-${PREVIEW_LINE_LIMIT}`
+        ]);
+        output = captured.stdout;
+      } catch (error) {
+        if (isMissingSessionError(error)) return "not_found";
+        throw error;
       }
-
-      if (normalizedInput.endsWith("\r")) {
-        const literalInput = normalizedInput.slice(0, -1);
-
-        if (literalInput) {
-          await run("send-keys", ["-t", name, "-l", literalInput]);
-        }
-
-        await run("send-keys", ["-t", name, "Enter"]);
-        invalidateSessionCaches(name);
-        return;
+      if (!detectTerminalInputPrompt(output)) return "unavailable";
+      try {
+        await sendNormalizedInput(name, normalizedInput);
+        return "sent";
+      } catch (error) {
+        if (isMissingSessionError(error)) return "not_found";
+        if (isUnavailableInputError(error)) return "unavailable";
+        throw error;
       }
-
-      await run("send-keys", ["-t", name, "-l", normalizedInput]);
-      invalidateSessionCaches(name);
     },
     async sendLiteralInput(name: string, input: string) {
       validateSessionName(name);

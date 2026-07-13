@@ -1246,6 +1246,7 @@ export function createApp(options: {
       killSession: options.killSession ?? tmuxService.killSession,
       sendCommand: tmuxService.sendCommand,
       sendInput: tmuxService.sendInput,
+      sendInputIfPromptAvailable: tmuxService.sendInputIfPromptAvailable,
       splitPane: tmuxService.splitPane,
       selectPane: tmuxService.selectPane,
       killPane: tmuxService.killPane,

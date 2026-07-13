@@ -571,6 +571,53 @@ describe("createTmuxService", () => {
     ]);
   });
 
+  it("rejects action input when a cached prompt exists but a fresh capture is no longer eligible", async () => {
+    const run = vi.fn()
+      .mockResolvedValueOnce({ stdout: "build\t1\t0\t1714200000", stderr: "" })
+      .mockResolvedValueOnce({ stdout: "build\t%1\t0\tshell\t1\t0\t1\tcodex\t/tmp\t0\t\t100", stderr: "" })
+      .mockResolvedValueOnce({ stdout: "Continue? [y/N]", stderr: "" })
+      .mockResolvedValueOnce({ stdout: "command completed", stderr: "" });
+    const service = createTmuxService({ run, getGitSummary: vi.fn().mockResolvedValue(null) });
+    await service.listSessions({ includeInputPrompt: true });
+
+    await expect(service.sendInputIfPromptAvailable("build", "y\r")).resolves.toBe("unavailable");
+    expect(run).toHaveBeenCalledTimes(4);
+    expect(run).not.toHaveBeenCalledWith("send-keys", expect.anything());
+  });
+
+  it("freshly validates and sends eligible action input", async () => {
+    const run = vi.fn()
+      .mockResolvedValueOnce({ stdout: "Continue? [y/N]", stderr: "" })
+      .mockResolvedValue({ stdout: "", stderr: "" });
+    const service = createTmuxService({ run });
+    await expect(service.sendInputIfPromptAvailable("build", "y\r")).resolves.toBe("sent");
+    expect(run).toHaveBeenNthCalledWith(1, "capture-pane", ["-p", "-t", "build", "-S", "-20"]);
+    expect(run).toHaveBeenNthCalledWith(2, "send-keys", ["-t", "build", "-l", "y"]);
+    expect(run).toHaveBeenNthCalledWith(3, "send-keys", ["-t", "build", "Enter"]);
+  });
+
+  it("maps a target disappearing after fresh eligibility to not_found", async () => {
+    const run = vi.fn()
+      .mockResolvedValueOnce({ stdout: "Continue? [y/N]", stderr: "" })
+      .mockRejectedValueOnce(new Error("can't find pane: build"));
+    const service = createTmuxService({ run });
+    await expect(service.sendInputIfPromptAvailable("build", "y")).resolves.toBe("not_found");
+  });
+
+  it("maps a missing pane during fresh capture to not_found", async () => {
+    const run = vi.fn().mockRejectedValueOnce(new Error("can't find pane: build"));
+    const service = createTmuxService({ run });
+    await expect(service.sendInputIfPromptAvailable("build", "y")).resolves.toBe("not_found");
+  });
+
+  it("maps a target becoming unavailable during send to unavailable", async () => {
+    const run = vi.fn()
+      .mockResolvedValueOnce({ stdout: "Continue? [y/N]", stderr: "" })
+      .mockRejectedValueOnce(new Error("pane no longer accepts input"));
+    const service = createTmuxService({ run });
+    await expect(service.sendInputIfPromptAvailable("build", "y")).resolves.toBe("unavailable");
+  });
+
   it("captures recent session output with a bounded line count", async () => {
     const run = vi.fn().mockResolvedValue({ stdout: "recent output\n", stderr: "" });
     const service = createTmuxService({ run });
