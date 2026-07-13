@@ -6,6 +6,8 @@ import { describe, expect, it } from "vitest";
 import {
   compareBenchmarkArtifacts,
   parseBenchmarkArguments,
+  terminateProcessTree,
+  validateBenchmarkArtifact,
   validateFixture
 } from "../../scripts/benchmark-structured-activity.mjs";
 
@@ -14,6 +16,14 @@ const fixture = JSON.parse(
 );
 const harnessSource = readFileSync(
   resolve("tests/e2e/structured-activity-harness.ts"),
+  "utf8"
+);
+const benchmarkSource = readFileSync(
+  resolve("scripts/benchmark-structured-activity.mjs"),
+  "utf8"
+);
+const workflowSource = readFileSync(
+  resolve(".github/workflows/structured-activity-benchmark.yml"),
   "utf8"
 );
 
@@ -70,6 +80,13 @@ describe("structured activity benchmark", () => {
         { evidenceScope: "ci" }
       )
     ).toThrow("authoritative CI baseline required");
+    expect(() =>
+      compareBenchmarkArtifacts(
+        artifact(),
+        artifact({ evidence: "provisional-local" }),
+        { evidenceScope: "ci" }
+      )
+    ).toThrow("authoritative CI candidate required");
   });
 
   it("allows explicitly local comparison of matching provisional evidence", () => {
@@ -91,24 +108,61 @@ describe("structured activity benchmark", () => {
     ).toThrow("runner fingerprint mismatch");
   });
 
+  it.each([
+    ["null", null, "artifact must be an object"],
+    ["schema", artifact({ schemaVersion: 2 }), "schemaVersion"],
+    ["evidence", artifact({ evidence: "maybe" }), "evidence"],
+    ["commit", artifact({ targetCommit: "" }), "targetCommit"],
+    ["fingerprint", artifact({ runnerFingerprint: "" }), "runnerFingerprint"],
+    ["marks", artifact({ marks: { start: "", interactive: "end" } }), "marks"],
+    ["run count", artifact({ warmRunsMs: [1, 2, 3, 4] }), "warmRunsMs"],
+    ["negative run", artifact({ warmRunsMs: [1, 2, -1, 4, 5] }), "warmRunsMs"],
+    ["non-finite run", artifact({ warmRunsMs: [1, 2, Infinity, 4, 5] }), "warmRunsMs"],
+    ["median mismatch", artifact({ medianMs: 999 }), "medianMs mismatch"]
+  ])("rejects malformed artifact: %s", (_name, value, message) => {
+    expect(typeof validateBenchmarkArtifact).toBe("function");
+    expect(() => validateBenchmarkArtifact(value)).toThrow(message as string);
+  });
+
+  it("requires expected baseline and candidate commits", () => {
+    expect(() =>
+      compareBenchmarkArtifacts(artifact(), artifact(), {
+        expectedBaselineCommit: "trusted-baseline",
+        expectedCandidateCommit: artifact().targetCommit
+      })
+    ).toThrow("baseline targetCommit mismatch");
+    expect(() =>
+      compareBenchmarkArtifacts(artifact(), artifact(), {
+        expectedBaselineCommit: artifact().targetCommit,
+        expectedCandidateCommit: "trusted-candidate"
+      })
+    ).toThrow("candidate targetCommit mismatch");
+  });
+
   it("rejects relative regressions above 1.25x", () => {
     expect(() =>
-      compareBenchmarkArtifacts(artifact(), artifact({ medianMs: 128 }))
+      compareBenchmarkArtifacts(
+        artifact(),
+        artifact({ warmRunsMs: [126, 127, 128, 129, 130], medianMs: 128 })
+      )
     ).toThrow("1.25x");
   });
 
   it("rejects candidate medians above the absolute 300ms ceiling", () => {
     expect(() =>
       compareBenchmarkArtifacts(
-        artifact({ medianMs: 300 }),
-        artifact({ medianMs: 301 })
+        artifact({ warmRunsMs: [298, 299, 300, 301, 302], medianMs: 300 }),
+        artifact({ warmRunsMs: [299, 300, 301, 302, 303], medianMs: 301 })
       )
     ).toThrow("absolute 300ms ceiling");
   });
 
   it("accepts five warm runs within both budgets", () => {
     expect(
-      compareBenchmarkArtifacts(artifact(), artifact({ medianMs: 125 }))
+      compareBenchmarkArtifacts(
+        artifact(),
+        artifact({ warmRunsMs: [123, 124, 125, 126, 127], medianMs: 125 })
+      )
     ).toMatchObject({ passed: true, relativeRatio: 125 / 102 });
   });
 
@@ -127,5 +181,31 @@ describe("structured activity benchmark", () => {
     expect(dialogRender).toBeLessThan(responseClick);
     expect(responseClick).toBeLessThan(hidden);
     expect(hidden).toBeLessThan(endMark);
+  });
+
+  it("terminates the server process group before cleanup with escalation", async () => {
+    const calls: string[] = [];
+    const child = { pid: 123, exitCode: null };
+    let waits = 0;
+    await terminateProcessTree(child, {
+      platform: "linux",
+      killGroup: (_pid: number, signal: string) => calls.push(signal),
+      waitForExit: async () => {
+        calls.push("wait");
+        waits += 1;
+        return waits === 2;
+      },
+      timeoutMs: 1
+    });
+    expect(calls).toEqual(["SIGTERM", "wait", "SIGKILL", "wait"]);
+    expect(benchmarkSource.indexOf("await terminateProcessTree(server)"))
+      .toBeLessThan(benchmarkSource.indexOf('spawnSync("git", ["worktree", "remove"'));
+  });
+
+  it("selects authoritative baseline only from a trusted repository variable", () => {
+    expect(workflowSource).toContain("vars.STRUCTURED_ACTIVITY_BASELINE_SHA");
+    expect(workflowSource).toContain("git cat-file -e");
+    expect(workflowSource).not.toContain("jq -r .targetCommit performance/");
+    expect(workflowSource).toContain("generated baseline targetCommit mismatch");
   });
 });

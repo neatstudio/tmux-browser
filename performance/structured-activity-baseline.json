@@ -8,13 +8,13 @@
     "interactive": "pre-activity-action-center-responsive-settled"
   },
   "note": "Pre-Activity comparator: open the existing Action Center, wait for its dialog to render, click its close control, and wait until the dialog is absent. Task 7+ must replace these marks when the Activity panel exists.",
-  "capturedAt": "2026-07-13T17:48:21.394Z",
+  "capturedAt": "2026-07-13T17:56:36.824Z",
   "warmRunsMs": [
-    86.2000002861023,
-    109.80000019073486,
-    86.30000019073486,
-    96.5,
-    102.59999990463257
+    95.5,
+    82.40000009536743,
+    86.90000009536743,
+    81.80000019073486,
+    93.09999990463257
   ],
-  "medianMs": 96.5
+  "medianMs": 86.90000009536743
 }

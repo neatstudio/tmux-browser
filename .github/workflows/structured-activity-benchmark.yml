@@ -18,10 +18,15 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - name: Benchmark baseline and candidate on one runner
         shell: bash
+        env:
+          BASELINE_SHA: ${{ vars.STRUCTURED_ACTIVITY_BASELINE_SHA }}
         run: |
-          BASELINE_SHA="$(jq -r .targetCommit performance/structured-activity-baseline.json)"
+          test -n "$BASELINE_SHA" || { echo "STRUCTURED_ACTIVITY_BASELINE_SHA repository variable is required" >&2; exit 1; }
+          [[ "$BASELINE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "invalid trusted baseline SHA" >&2; exit 1; }
+          git cat-file -e "$BASELINE_SHA^{commit}" || { echo "trusted baseline commit does not exist" >&2; exit 1; }
           npm run benchmark:activity -- --mode baseline --evidence-scope ci --target-commit "$BASELINE_SHA" --output /tmp/baseline.json
-          npm run benchmark:activity -- --mode compare --evidence-scope ci --target-commit "$GITHUB_SHA" --baseline /tmp/baseline.json --output /tmp/candidate.json --report /tmp/report.json
+          test "$(jq -r .targetCommit /tmp/baseline.json)" = "$BASELINE_SHA" || { echo "generated baseline targetCommit mismatch" >&2; exit 1; }
+          npm run benchmark:activity -- --mode compare --evidence-scope ci --target-commit "$GITHUB_SHA" --expected-baseline-commit "$BASELINE_SHA" --baseline /tmp/baseline.json --output /tmp/candidate.json --report /tmp/report.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -39,7 +39,8 @@ export function parseBenchmarkArguments(args) {
     baseline: values.get("baseline") ?? null,
     output: values.get("output") ?? DEFAULT_OUTPUT,
     report: values.get("report") ?? null,
-    evidenceScope: values.get("evidence-scope") ?? "local"
+    evidenceScope: values.get("evidence-scope") ?? "local",
+    expectedBaselineCommit: values.get("expected-baseline-commit") ?? null
   };
 }
 
@@ -74,13 +75,76 @@ export function validateFixture(fixture) {
   return result;
 }
 
+function median(values) {
+  return [...values].sort((left, right) => left - right)[2];
+}
+
+export function validateBenchmarkArtifact(artifact) {
+  if (!artifact || typeof artifact !== "object" || Array.isArray(artifact)) {
+    throw new Error("artifact must be an object");
+  }
+  if (artifact.schemaVersion !== 1) throw new Error("invalid schemaVersion");
+  if (!new Set(["provisional-local", "authoritative-ci"]).has(artifact.evidence)) {
+    throw new Error("invalid evidence");
+  }
+  if (typeof artifact.targetCommit !== "string" || !/^[0-9a-f]{40}$/.test(artifact.targetCommit)) {
+    throw new Error("invalid targetCommit");
+  }
+  if (typeof artifact.runnerFingerprint !== "string" || artifact.runnerFingerprint.length === 0) {
+    throw new Error("invalid runnerFingerprint");
+  }
+  if (
+    !artifact.marks ||
+    typeof artifact.marks !== "object" ||
+    typeof artifact.marks.start !== "string" ||
+    artifact.marks.start.length === 0 ||
+    typeof artifact.marks.interactive !== "string" ||
+    artifact.marks.interactive.length === 0
+  ) {
+    throw new Error("invalid marks");
+  }
+  if (
+    !Array.isArray(artifact.warmRunsMs) ||
+    artifact.warmRunsMs.length !== 5 ||
+    artifact.warmRunsMs.some(
+      (value) => typeof value !== "number" || !Number.isFinite(value) || value < 0
+    )
+  ) {
+    throw new Error("invalid warmRunsMs");
+  }
+  if (
+    typeof artifact.medianMs !== "number" ||
+    !Number.isFinite(artifact.medianMs) ||
+    artifact.medianMs < 0 ||
+    artifact.medianMs !== median(artifact.warmRunsMs)
+  ) {
+    throw new Error("medianMs mismatch");
+  }
+  return artifact;
+}
+
 export function compareBenchmarkArtifacts(
   baseline,
   candidate,
-  { evidenceScope = "local" } = {}
+  {
+    evidenceScope = "local",
+    expectedBaselineCommit = null,
+    expectedCandidateCommit = null
+  } = {}
 ) {
+  validateBenchmarkArtifact(baseline);
+  validateBenchmarkArtifact(candidate);
   if (evidenceScope === "ci" && baseline.evidence !== "authoritative-ci") {
     throw new Error("authoritative CI baseline required");
+  }
+  if (evidenceScope === "ci" && candidate.evidence !== "authoritative-ci") {
+    throw new Error("authoritative CI candidate required");
+  }
+  if (expectedBaselineCommit && baseline.targetCommit !== expectedBaselineCommit) {
+    throw new Error("baseline targetCommit mismatch");
+  }
+  if (expectedCandidateCommit && candidate.targetCommit !== expectedCandidateCommit) {
+    throw new Error("candidate targetCommit mismatch");
   }
   if (baseline.runnerFingerprint !== candidate.runnerFingerprint) {
     throw new Error("runner fingerprint mismatch");
@@ -117,6 +181,46 @@ async function waitForServer(url, processHandle) {
   throw new Error(`target server did not become ready: ${url}`);
 }
 
+async function defaultWaitForExit(child, timeoutMs) {
+  if (child.exitCode !== null) return true;
+  return await new Promise((resolveExit) => {
+    const timer = setTimeout(() => resolveExit(false), timeoutMs);
+    child.once("exit", () => {
+      clearTimeout(timer);
+      resolveExit(true);
+    });
+  });
+}
+
+export async function terminateProcessTree(child, overrides = {}) {
+  if (!child || child.exitCode !== null || !child.pid) return;
+  const platform = overrides.platform ?? process.platform;
+  const timeoutMs = overrides.timeoutMs ?? 5000;
+  const killGroup =
+    overrides.killGroup ??
+    ((pid, signal) => {
+      if (platform === "win32") child.kill(signal);
+      else process.kill(-pid, signal);
+    });
+  const waitForExit = overrides.waitForExit ?? defaultWaitForExit;
+  try {
+    killGroup(child.pid, "SIGTERM");
+  } catch (error) {
+    if (error?.code !== "ESRCH") throw error;
+    return;
+  }
+  if (await waitForExit(child, timeoutMs)) return;
+  try {
+    killGroup(child.pid, "SIGKILL");
+  } catch (error) {
+    if (error?.code !== "ESRCH") throw error;
+    return;
+  }
+  if (!(await waitForExit(child, timeoutMs))) {
+    throw new Error("target server process group did not exit after SIGKILL");
+  }
+}
+
 async function withTargetServer(targetCommit, callback) {
   const directory = mkdtempSync(join(tmpdir(), "tmux-ui-activity-baseline-"));
   const worktree = join(directory, "checkout");
@@ -135,13 +239,14 @@ async function withTargetServer(targetCommit, callback) {
     server = spawn("npm", ["start"], {
       cwd: worktree,
       env: { ...process.env, HOST: "127.0.0.1", PORT: String(port) },
-      stdio: "inherit"
+      stdio: "inherit",
+      detached: process.platform !== "win32"
     });
     const url = `http://127.0.0.1:${port}`;
     await waitForServer(`${url}/api/health`, server);
     return await callback(url);
   } finally {
-    server?.kill("SIGTERM");
+    await terminateProcessTree(server);
     spawnSync("git", ["worktree", "remove", "--force", worktree], { cwd: root });
     rmSync(directory, { recursive: true, force: true });
   }
@@ -167,8 +272,7 @@ async function benchmark(options) {
     });
     try {
       const warmRunsMs = await runStructuredActivityHarness(browser, targetUrl, fixture);
-      const sorted = [...warmRunsMs].sort((a, b) => a - b);
-      return {
+      const artifact = {
         schemaVersion: 1,
         targetCommit: options.targetCommit,
         evidence:
@@ -181,8 +285,9 @@ async function benchmark(options) {
         note: "Pre-Activity comparator: open the existing Action Center, wait for its dialog to render, click its close control, and wait until the dialog is absent. Task 7+ must replace these marks when the Activity panel exists.",
         capturedAt: new Date().toISOString(),
         warmRunsMs,
-        medianMs: sorted[2]
+        medianMs: median(warmRunsMs)
       };
+      return validateBenchmarkArtifact(artifact);
     } finally {
       await browser.close();
     }
@@ -195,7 +300,9 @@ async function benchmark(options) {
   if (options.mode === "compare") {
     const baseline = JSON.parse(readFileSync(resolve(options.baseline), "utf8"));
     const report = compareBenchmarkArtifacts(baseline, artifact, {
-      evidenceScope: options.evidenceScope
+      evidenceScope: options.evidenceScope,
+      expectedBaselineCommit: options.expectedBaselineCommit,
+      expectedCandidateCommit: options.targetCommit
     });
     if (options.report) {
       mkdirSync(dirname(resolve(options.report)), { recursive: true });
