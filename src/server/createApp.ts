@@ -60,6 +60,7 @@ import type {
   ConversationMessageContentType,
   ConversationMessageRole,
   ConversationMessageStatus,
+  ConversationMessageTimelineEventDraft,
   ConversationMessageTimelineEvent
 } from "../shared/timeline.js";
 
@@ -610,7 +611,7 @@ function normalizeConversationStatus(value: unknown): ConversationMessageStatus 
 
 function normalizeConversationMessagePayload(
   body: unknown
-): Omit<ConversationMessageTimelineEvent, "id" | "createdAt"> {
+): ConversationMessageTimelineEventDraft {
   const payload =
     body && typeof body === "object" ? (body as Record<string, unknown>) : {};
   const sessionName = readString(payload.sessionName, { maxLength: 128 });

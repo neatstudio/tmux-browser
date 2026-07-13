@@ -1,3 +1,5 @@
+import type { HookEvent } from "./hookEvents.js";
+
 export type TimelineEventType =
   | "session-created"
   | "session-renamed"
@@ -23,7 +25,7 @@ export type ConversationMessageStatus = "streaming" | "complete" | "failed";
 
 export type BaseTimelineEvent = {
   id: string;
-  type: Exclude<TimelineEventType, "conversation-message">;
+  type: Exclude<TimelineEventType, "conversation-message" | "hook-event">;
   sessionName: string | null;
   message: string;
   createdAt: string;
@@ -38,15 +40,50 @@ export type ConversationMessageTimelineEvent = {
   role: ConversationMessageRole;
   contentType: ConversationMessageContentType;
   content: string;
+  summary: string | null;
   status: ConversationMessageStatus;
   createdAt: string;
+  revision: number;
+  updatedAt: string;
   toolName: string | null;
   parentMessageId: string | null;
   metadata?: Record<string, string | number | boolean | null>;
 };
 
-export type TimelineEvent = BaseTimelineEvent | ConversationMessageTimelineEvent;
+export type HookEventTimelineEvent = HookEvent & {
+  type: "hook-event";
+  id: string;
+  createdAt: string;
+};
+
+export type LegacyHookEventTimelineEvent = {
+  type: "hook-event";
+  id: string;
+  sessionName: string | null;
+  message: string;
+  createdAt: string;
+  metadata?: Record<string, string | number | boolean | null>;
+};
+
+export type TimelineEvent =
+  | BaseTimelineEvent
+  | ConversationMessageTimelineEvent
+  | HookEventTimelineEvent
+  | LegacyHookEventTimelineEvent;
+
+export type ConversationMessageTimelineEventDraft = Omit<
+  ConversationMessageTimelineEvent,
+  "id" | "createdAt" | "updatedAt" | "revision" | "summary"
+> & {
+  summary?: string | null;
+  revision?: number;
+};
+
+export type ConversationMessageUpsertDraft =
+  ConversationMessageTimelineEventDraft;
 
 export type TimelineEventDraft =
   | Omit<BaseTimelineEvent, "id" | "createdAt">
-  | Omit<ConversationMessageTimelineEvent, "id" | "createdAt">;
+  | ConversationMessageTimelineEventDraft
+  | Omit<HookEventTimelineEvent, "id" | "createdAt">
+  | Omit<LegacyHookEventTimelineEvent, "id" | "createdAt">;

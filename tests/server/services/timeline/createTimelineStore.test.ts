@@ -1,0 +1,194 @@
+import { describe, expect, expectTypeOf, it } from "vitest";
+
+import {
+  createTimelineStore,
+  TimelineStoreConflictError
+} from "../../../../src/server/services/timeline/createTimelineStore";
+import type {
+  BaseTimelineEvent,
+  ConversationMessageTimelineEvent,
+  HookEventTimelineEvent,
+  LegacyHookEventTimelineEvent,
+  TimelineEvent
+} from "../../../../src/shared/timeline";
+
+const message = (
+  overrides: Partial<Parameters<ReturnType<typeof createTimelineStore>["upsertConversationMessage"]>[0]> = {}
+) => ({
+  type: "conversation-message" as const,
+  messageId: "message-1",
+  sessionName: "build",
+  role: "assistant" as const,
+  contentType: "text" as const,
+  content: "working",
+  summary: null,
+  status: "streaming" as const,
+  toolName: null,
+  parentMessageId: null,
+  metadata: { nested: "value", count: 1 },
+  ...overrides
+});
+
+function expectConflict(
+  operation: () => unknown,
+  code:
+    | "revision_required"
+    | "stale_revision"
+    | "revision_gap"
+    | "immutable_field"
+    | "terminal_conflict"
+) {
+  try {
+    operation();
+    throw new Error("expected timeline conflict");
+  } catch (error) {
+    expect(error).toBeInstanceOf(TimelineStoreConflictError);
+    expect((error as TimelineStoreConflictError).code).toBe(code);
+  }
+}
+
+describe("createTimelineStore", () => {
+  it("creates a canonical conversation record at revision one", () => {
+    const store = createTimelineStore();
+
+    const created = store.upsertConversationMessage(message());
+
+    expect(created).toMatchObject({
+      id: expect.any(String),
+      revision: 1,
+      summary: null
+    });
+    expect(created.createdAt).toBe(created.updatedAt);
+    expect(store.listEvents()).toEqual([created]);
+  });
+
+  it("upserts by session and message while preserving record identity", () => {
+    const store = createTimelineStore();
+    const created = store.upsertConversationMessage(message());
+
+    const updated = store.upsertConversationMessage(
+      message({
+        revision: 2,
+        content: "done",
+        summary: "Completed build",
+        status: "complete"
+      })
+    );
+
+    expect(updated).toMatchObject({
+      id: created.id,
+      createdAt: created.createdAt,
+      revision: 2,
+      content: "done",
+      summary: "Completed build",
+      status: "complete"
+    });
+    expect(store.listEvents()).toEqual([updated]);
+  });
+
+  it("requires an explicit next revision for an existing message", () => {
+    const store = createTimelineStore();
+    store.upsertConversationMessage(message());
+
+    expectConflict(
+      () => store.upsertConversationMessage(message({ content: "changed" })),
+      "revision_required"
+    );
+  });
+
+  it("rejects stale revisions and revision gaps", () => {
+    const store = createTimelineStore();
+    store.upsertConversationMessage(message());
+    store.upsertConversationMessage(message({ revision: 2, content: "new" }));
+
+    expectConflict(
+      () => store.upsertConversationMessage(message({ revision: 1 })),
+      "stale_revision"
+    );
+    expectConflict(
+      () => store.upsertConversationMessage(message({ revision: 4 })),
+      "revision_gap"
+    );
+  });
+
+  it("rejects changes to immutable conversation fields", () => {
+    const store = createTimelineStore();
+    store.upsertConversationMessage(message());
+
+    expectConflict(
+      () =>
+        store.upsertConversationMessage(
+          message({ revision: 2, role: "tool" })
+        ),
+      "immutable_field"
+    );
+  });
+
+  it("treats same-revision semantic retries as idempotent regardless of metadata key order", () => {
+    const store = createTimelineStore();
+    store.upsertConversationMessage(message());
+    const updated = store.upsertConversationMessage(
+      message({
+        revision: 2,
+        content: "still working",
+        metadata: { alpha: true, beta: 2 }
+      })
+    );
+
+    const retry = store.upsertConversationMessage(
+      message({
+        revision: 2,
+        content: "still working",
+        metadata: { beta: 2, alpha: true }
+      })
+    );
+
+    expect(retry).toBe(updated);
+    expectConflict(
+      () =>
+        store.upsertConversationMessage(
+          message({ revision: 2, content: "different" })
+        ),
+      "stale_revision"
+    );
+  });
+
+  it("does not allow terminal records to regress or be overwritten", () => {
+    const store = createTimelineStore();
+    const complete = store.upsertConversationMessage(
+      message({ status: "complete", content: "done" })
+    );
+
+    expect(
+      store.upsertConversationMessage(
+        message({ status: "complete", content: "done", revision: 1 })
+      )
+    ).toBe(complete);
+    expectConflict(
+      () =>
+        store.upsertConversationMessage(
+          message({ revision: 2, status: "streaming", content: "again" })
+        ),
+      "terminal_conflict"
+    );
+    expectConflict(
+      () =>
+        store.upsertConversationMessage(
+          message({ revision: 2, status: "failed", content: "failed" })
+        ),
+      "terminal_conflict"
+    );
+  });
+
+  it("models conversation and both hook record shapes explicitly", () => {
+    expectTypeOf<
+      Extract<BaseTimelineEvent["type"], "conversation-message">
+    >().toEqualTypeOf<never>();
+    expectTypeOf<
+      Extract<BaseTimelineEvent["type"], "hook-event">
+    >().toEqualTypeOf<never>();
+    expectTypeOf<ConversationMessageTimelineEvent>().toMatchTypeOf<TimelineEvent>();
+    expectTypeOf<HookEventTimelineEvent>().toMatchTypeOf<TimelineEvent>();
+    expectTypeOf<LegacyHookEventTimelineEvent>().toMatchTypeOf<TimelineEvent>();
+  });
+});
