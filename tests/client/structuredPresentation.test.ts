@@ -76,6 +76,26 @@ describe("adaptStructuredRecord", () => {
       .toBe("工具执行完成");
   });
 
+  it.each(["text", "code", "command", "image"])(
+    "uses ongoing wording for streaming %s content unless a producer summary exists",
+    (contentType) => {
+      const item = adaptStructuredRecord(conversation({
+        contentType,
+        content: "already emitted content",
+        status: "streaming"
+      }));
+      expect(item?.summary).toBe("正在输出…");
+      expect(item?.summary).not.toMatch(/完成|发送了|输出了一段/);
+
+      expect(adaptStructuredRecord(conversation({
+        contentType,
+        content: "already emitted content",
+        status: "streaming",
+        summary: "Producer says work is in progress"
+      }))?.summary).toBe("Producer says work is in progress");
+    }
+  );
+
   it("adapts typed hooks and applies the status, severity, approval, danger and stats rules", () => {
     const item = adaptStructuredRecord(typedHook({
       status: "done",
@@ -207,6 +227,35 @@ describe("adaptStructuredRecord", () => {
     expect(legacy?.actions.map((action) => action.id)).toEqual(["good"]);
   });
 
+  it.each([
+    ["missing source", { source: undefined }],
+    ["missing severity", { severity: undefined }],
+    ["missing body", { body: undefined }],
+    ["missing cwd", { cwd: undefined }],
+    ["missing task id", { taskId: undefined }],
+    ["missing target", { target: undefined }],
+    ["missing actions", { actions: undefined }],
+    ["missing content", { content: undefined }],
+    ["nullable session", { sessionName: null }],
+    ["invalid body", { body: 1 }],
+    ["invalid cwd", { cwd: false }],
+    ["invalid task id", { taskId: 4 }],
+    ["target missing view", { target: { sessionName: "api", projectName: null } }],
+    ["target invalid session", { target: { sessionName: 1, projectName: null, view: "terminal" } }],
+    ["action missing target", { actions: [{ id: "a", label: "A", input: null, open: true, style: "primary" }] }],
+    ["action missing open", { actions: [{ id: "a", label: "A", input: null, target: null, style: "primary" }] }],
+    ["summary non-string text", { content: [{ type: "summary", text: 1 }] }],
+    ["code missing collapsed", { content: [{ type: "code", text: "x" }] }],
+    ["details missing title", { content: [{ type: "details", text: "x", collapsed: true }] }],
+    ["details missing collapsed", { content: [{ type: "details", title: "Details", text: "x" }] }]
+  ])("makes a versioned hook corrupt when %s", (_label, overrides) => {
+    expect(adaptStructuredRecord(typedHook(overrides))).toMatchObject({
+      summary: "事件数据损坏",
+      status: "failed",
+      actions: []
+    });
+  });
+
   it("drops every duplicate action id and uses action targets before event targets", () => {
     const item = adaptStructuredRecord(typedHook({
       target: { sessionName: "event", projectName: null, view: "terminal" },
@@ -262,8 +311,35 @@ describe("deriveStructuredPresentation", () => {
     const result = deriveStructuredPresentation([parent, failedChild, orphan]);
 
     expect(result).toHaveLength(2);
-    expect(result[0]).toMatchObject({ id: "message-1", toolStepCount: 1, attentionRequired: true });
+    expect(result[0]).toMatchObject({ id: "conversation-1", toolStepCount: 1, attentionRequired: true });
     expect(result[0]?.children).toHaveLength(1);
-    expect(result[1]).toMatchObject({ id: "orphan", toolStepCount: 0 });
+    expect(result[1]).toMatchObject({ id: "orphan-event", toolStepCount: 0 });
+  });
+
+  it("keeps canonical ids and scopes equal message ids by session", () => {
+    const apiParent = adaptStructuredRecord(conversation({
+      id: "api-parent-record", sessionName: "api", messageId: "same-message"
+    }))!;
+    const webParent = adaptStructuredRecord(conversation({
+      id: "web-parent-record", sessionName: "web", messageId: "same-message"
+    }))!;
+    const apiChild = adaptStructuredRecord(conversation({
+      id: "api-child-record", sessionName: "api", messageId: "api-tool",
+      role: "tool", parentMessageId: "same-message"
+    }))!;
+    const webChild = adaptStructuredRecord(conversation({
+      id: "web-child-record", sessionName: "web", messageId: "web-tool",
+      role: "tool", parentMessageId: "same-message"
+    }))!;
+
+    expect([apiParent.id, webParent.id, apiChild.id, webChild.id]).toEqual([
+      "api-parent-record", "web-parent-record", "api-child-record", "web-child-record"
+    ]);
+    const result = deriveStructuredPresentation([apiParent, webParent, apiChild, webChild]);
+    expect(result).toHaveLength(2);
+    expect(result.find((item) => item.id === "api-parent-record")?.children.map((item) => item.id))
+      .toEqual(["api-child-record"]);
+    expect(result.find((item) => item.id === "web-parent-record")?.children.map((item) => item.id))
+      .toEqual(["web-child-record"]);
   });
 });

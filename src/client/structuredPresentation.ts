@@ -55,6 +55,8 @@ export type StructuredPresentationItem = {
   role: ConversationMessageRole | null;
   toolName: string | null;
   parentId: string | null;
+  messageKey: string | null;
+  parentMessageKey: string | null;
   details: StructuredDetailBlock[];
   actions: StructuredAction[];
   stats: StructuredPresentationStats;
@@ -101,6 +103,18 @@ function object(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function hasOwn(value: Record<string, unknown>, key: string) {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function nullableStringShape(value: unknown) {
+  return value === null || typeof value === "string";
+}
+
+function messageRelationKey(sessionName: string | null, messageId: string | null) {
+  return sessionName && messageId ? JSON.stringify([sessionName, messageId]) : null;
+}
+
 function json(value: unknown) {
   if (typeof value !== "string" || !value) return null;
   try { return JSON.parse(value) as unknown; } catch { return null; }
@@ -117,6 +131,18 @@ function normalizeTarget(value: unknown, allowEmpty = false): HookEventTarget | 
   return { sessionName, projectName, view };
 }
 
+function strictTarget(value: unknown): HookEventTarget | null {
+  const target = object(value);
+  if (!target || !hasOwn(target, "sessionName") || !hasOwn(target, "projectName") || !hasOwn(target, "view")) return null;
+  if (!nullableStringShape(target.sessionName) || !nullableStringShape(target.projectName)) return null;
+  if (target.view !== "terminal" && target.view !== "kanban") return null;
+  return {
+    sessionName: target.sessionName as string | null,
+    projectName: target.projectName as string | null,
+    view: target.view
+  };
+}
+
 function normalizeContent(value: unknown, strict = false): HookEventContentBlock[] | null {
   if (!Array.isArray(value)) return null;
   const result: HookEventContentBlock[] = [];
@@ -128,14 +154,24 @@ function normalizeContent(value: unknown, strict = false): HookEventContentBlock
       continue;
     }
     if (block.type === "summary" || block.type === "text") {
+      if (strict && typeof block.text !== "string") return null;
       result.push({ type: block.type, text });
     } else if (block.type === "code") {
+      if (strict && (
+        typeof block.text !== "string" || typeof block.collapsed !== "boolean" ||
+        (hasOwn(block, "title") && typeof block.title !== "string") ||
+        (hasOwn(block, "language") && typeof block.language !== "string")
+      )) return null;
       result.push({
         type: "code", text, collapsed: block.collapsed !== false,
         ...(nullable(block.title) ? { title: nullable(block.title)! } : {}),
         ...(nullable(block.language) ? { language: nullable(block.language)! } : {})
       });
     } else if (block.type === "details") {
+      if (strict && (
+        typeof block.text !== "string" || !trimmed(block.title) ||
+        typeof block.collapsed !== "boolean"
+      )) return null;
       result.push({ type: "details", text, title: nullable(block.title) ?? "Details", collapsed: block.collapsed !== false });
     } else if (strict) return null;
   }
@@ -155,13 +191,17 @@ function normalizeActions(value: unknown, eventTarget: HookEventTarget | null, s
       ["primary", "secondary", "danger"].includes(String(style)) &&
       (action.input === null || typeof action.input === "string" || (!strict && action.input === undefined)) &&
       (typeof action.open === "boolean" || (!strict && action.open === undefined)) &&
-      (action.target === null || action.target === undefined || normalizeTarget(action.target) !== null);
+      (strict
+        ? hasOwn(action, "id") && hasOwn(action, "label") && hasOwn(action, "input") &&
+          hasOwn(action, "open") && hasOwn(action, "target") && hasOwn(action, "style") &&
+          (action.target === null || strictTarget(action.target) !== null)
+        : action.target === null || action.target === undefined || normalizeTarget(action.target) !== null);
     if (!hasCanonicalFields) {
       if (strict) return null;
       continue;
     }
     const declaredTarget = action.target === null || action.target === undefined
-      ? null : normalizeTarget(action.target);
+      ? null : strict ? strictTarget(action.target) : normalizeTarget(action.target);
     if (action.target !== null && action.target !== undefined && !declaredTarget) continue;
     const normalized: HookEventAction & { effectiveTarget: HookEventTarget | null } = {
       id, label,
@@ -218,7 +258,7 @@ function conversationFallback(record: Record<string, unknown>) {
   const status = record.status;
   const content = trimmed(record.content);
   const contentType = record.contentType as ConversationMessageContentType;
-  if (status === "streaming" && !content) return { value: "正在输出…", source: "status" as const };
+  if (status === "streaming") return { value: "正在输出…", source: "status" as const };
   if (contentType === "text" && content) {
     return { value: summary(content.split(/\n\s*\n/).find((part) => part.trim()) ?? content), source: "text" as const };
   }
@@ -245,12 +285,15 @@ function adaptConversation(record: Record<string, unknown>): StructuredPresentat
   const stats = readStats(record.metadata);
   if (Object.keys(object(record.metadata) ?? {}).length) details.push(detail("metadata", record.metadata as Record<string, string | number | boolean | null>));
   return {
-    id: String(record.messageId ?? record.id), kind: "conversation", sessionName: nullable(record.sessionName),
+    id: String(record.id), kind: "conversation", sessionName: nullable(record.sessionName),
     title: record.role === "tool" ? nullable(record.toolName) ?? "工具" : record.role === "user" ? "用户" : "助手",
     summary: selected.value, summarySource: selected.source, status,
     severity: status === "failed" ? "error" : "info", attentionRequired: status === "failed",
     role: record.role as ConversationMessageRole, toolName: nullable(record.toolName),
-    parentId: nullable(record.parentMessageId), details, actions: [], stats,
+    parentId: nullable(record.parentMessageId),
+    messageKey: messageRelationKey(nullable(record.sessionName), nullable(record.messageId)),
+    parentMessageKey: messageRelationKey(nullable(record.sessionName), nullable(record.parentMessageId)),
+    details, actions: [], stats,
     createdAt: String(record.createdAt)
   };
 }
@@ -261,6 +304,7 @@ function corruptHook(record: Record<string, unknown>): StructuredPresentationIte
     title: nullable(record.title) ?? nullable(record.message) ?? "损坏的事件",
     summary: "事件数据损坏", summarySource: "status", status: "failed", severity: "error",
     attentionRequired: true, role: null, toolName: null, parentId: null,
+    messageKey: null, parentMessageKey: null,
     details: [], actions: [], stats: {}, createdAt: String(record.createdAt ?? "")
   };
 }
@@ -308,17 +352,27 @@ function adaptHook(record: Record<string, unknown>, typed: boolean): StructuredP
     id: String(record.id), kind: "hook", sessionName: nullable(record.sessionName), title: title || "事件更新",
     summary: summary(selected) || noReason, summarySource: "hook", status: presentationStatus,
     severity: presentationSeverity, attentionRequired, role: null, toolName: null, parentId: null,
+    messageKey: null, parentMessageKey: null,
     details, actions, stats, createdAt: String(record.createdAt)
   };
 }
 
 function validTypedHook(record: Record<string, unknown>) {
+  const metadata = record.metadata;
+  const metadataValid = metadata === undefined || (
+    object(metadata) !== null && Object.values(metadata as Record<string, unknown>).every((value) =>
+      value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean"
+    )
+  );
   return record.schemaVersion === HOOK_EVENT_SCHEMA_VERSION &&
+    !!trimmed(record.id) && !!trimmed(record.createdAt) &&
+    typeof record.sessionName === "string" && !!trimmed(record.sessionName) &&
     HOOK_STATUSES.has(record.status as HookEventStatus) &&
     HOOK_SEVERITIES.has(record.severity as HookEventSeverity) &&
     !!trimmed(record.title) && !!trimmed(record.source) && !!trimmed(record.eventType) &&
-    normalizeTarget(record.target, true) !== null && normalizeContent(record.content, true) !== null &&
-    normalizeActions(record.actions, normalizeTarget(record.target, true), true) !== null;
+    nullableStringShape(record.body) && nullableStringShape(record.cwd) && nullableStringShape(record.taskId) &&
+    strictTarget(record.target) !== null && normalizeContent(record.content, true) !== null &&
+    normalizeActions(record.actions, strictTarget(record.target), true) !== null && metadataValid;
 }
 
 export function adaptStructuredRecord(record: TimelineEvent | unknown): StructuredPresentationItem | null {
@@ -376,12 +430,14 @@ export function materializeStructuredDetails(item: StructuredPresentationItem, o
 export function deriveStructuredPresentation(items: StructuredPresentationItem[]): DerivedStructuredPresentationItem[] {
   const messageParents = new Map<string, StructuredPresentationItem>();
   for (const item of items) {
-    if (item.kind === "conversation" && item.role !== "tool") messageParents.set(item.id, item);
+    if (item.kind === "conversation" && item.role !== "tool" && item.messageKey) {
+      messageParents.set(item.messageKey, item);
+    }
   }
   const children = new Map<string, StructuredPresentationItem[]>();
   const childIds = new Set<string>();
   for (const item of items) {
-    const parent = item.parentId ? messageParents.get(item.parentId) : null;
+    const parent = item.parentMessageKey ? messageParents.get(item.parentMessageKey) : null;
     if (!parent) continue;
     const list = children.get(parent.id) ?? [];
     list.push(item);
