@@ -193,10 +193,24 @@ inserted after the first request do not shift older pages. An invalid cursor
 returns `400` with code `timeline_cursor_invalid`; a cursor whose boundary was
 removed by retention returns `410` with code `timeline_cursor_expired`. Clients
 should notify the user that history expired and restart without a cursor. The
-server caps each page at 200 events. Cursor integrity is scoped to the running
-server process. A well-formed cursor from an unknown prior process epoch returns
-`410 timeline_cursor_expired` without reading or accepting its boundary data;
-malformed or integrity-invalid cursors return `400 timeline_cursor_invalid`.
+server caps each page at 200 events. Each running server uses a new cursor epoch
+authenticated by a stable root secret. A valid cursor from an authenticated
+prior process epoch returns `410 timeline_cursor_expired` without reading or
+accepting its boundary data; malformed, unauthenticated, or integrity-invalid
+cursors return `400 timeline_cursor_invalid`.
+
+By default the server atomically creates and reuses
+`~/.tmux-ui/timeline-cursor-secret` with file mode `0600`. Deployments may set
+`TMUX_UI_TIMELINE_CURSOR_SECRET` to a canonical base64url value encoding exactly
+32 random bytes. Generate one with:
+
+```bash
+node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('base64url'))"
+```
+
+Keep this value stable across restarts and never expose it to clients or logs.
+Rotating it intentionally invalidates outstanding cursors as
+`400 timeline_cursor_invalid`; clients then need to reload the latest page.
 
 Timeline retention is configured with `TMUX_UI_TIMELINE_MAX_EVENTS`. It defaults
 to `1000` and must be a positive integer.

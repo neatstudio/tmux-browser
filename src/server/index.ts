@@ -8,6 +8,7 @@ import { createAppEventHub } from "./services/events/createAppEventHub.js";
 import { createAppEventSocketServer } from "./ws/createAppEventSocketServer.js";
 import { createTerminalSocketServer } from "./ws/createTerminalSocketServer.js";
 import { createTimelineStore } from "./services/timeline/createTimelineStore.js";
+import { loadTimelineCursorSecret } from "./services/timeline/loadTimelineCursorSecret.js";
 
 const config = getServerConfig();
 const tmuxService = createTmuxService();
@@ -22,7 +23,10 @@ const server = createServer(
   createApp({
     tmuxService,
     eventHub,
-    timelineStore: createTimelineStore({ maxEvents: config.timelineMaxEvents }),
+    timelineStore: createTimelineStore({
+      maxEvents: config.timelineMaxEvents,
+      cursorSecret: loadTimelineCursorSecret()
+    }),
     hookToken: process.env.TMUX_UI_HOOK_TOKEN,
     killSession: async (name) => {
       await tmuxService.killSession(name);

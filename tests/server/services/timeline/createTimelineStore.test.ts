@@ -91,12 +91,15 @@ describe("createTimelineStore", () => {
     vi.useFakeTimers();
     vi.setSystemTime("2026-07-14T01:00:00.000Z");
     const firstStore = createTimelineStore({
-      maxEvents: 10, cursorSecret: "first-secret", cursorEpoch: "epoch-first"
+      maxEvents: 10, cursorSecret: "shared-root-secret", cursorEpoch: "epoch-first"
     });
     const otherStore = createTimelineStore({
-      maxEvents: 10, cursorSecret: "other-secret", cursorEpoch: "epoch-other"
+      maxEvents: 10, cursorSecret: "shared-root-secret", cursorEpoch: "epoch-other"
     });
-    for (const store of [firstStore, otherStore]) {
+    const untrustedStore = createTimelineStore({
+      maxEvents: 10, cursorSecret: "different-root-secret", cursorEpoch: "epoch-untrusted"
+    });
+    for (const store of [firstStore, otherStore, untrustedStore]) {
       for (let index = 1; index <= 3; index += 1) {
         store.addEvent({ type: "command-sent", sessionName: "build", message: String(index) });
       }
@@ -126,6 +129,9 @@ describe("createTimelineStore", () => {
     }
     expect(() => otherStore.listEventPage({ cursor })).toThrowError(
       expect.objectContaining<TimelineCursorError>({ code: "timeline_cursor_expired" })
+    );
+    expect(() => untrustedStore.listEventPage({ cursor })).toThrowError(
+      expect.objectContaining<TimelineCursorError>({ code: "timeline_cursor_invalid" })
     );
     const otherCursor = otherStore.listEventPage({ limit: 1 }).nextCursor!;
     const [, otherPayload, otherSignature] = otherCursor.split(".");

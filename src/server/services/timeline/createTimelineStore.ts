@@ -151,12 +151,6 @@ function decodeCursor(
       "The timeline cursor is invalid"
     );
   }
-  if (epoch !== currentEpoch) {
-    throw new TimelineCursorError(
-      "timeline_cursor_expired",
-      "The timeline cursor was issued by a previous server epoch"
-    );
-  }
   try {
     const expectedSignature = createHmac("sha256", secret)
       .update(`${epoch}.${payloadEncoded}`)
@@ -166,6 +160,12 @@ function decodeCursor(
       !timingSafeEqual(signature, expectedSignature)
     ) {
       throw new Error("invalid cursor signature");
+    }
+    if (epoch !== currentEpoch) {
+      throw new TimelineCursorError(
+        "timeline_cursor_expired",
+        "The timeline cursor was issued by a previous server epoch"
+      );
     }
     const parsed = JSON.parse(payload.toString("utf8")) as Partial<CursorBoundary>;
     if (
@@ -179,7 +179,8 @@ function decodeCursor(
       throw new Error("invalid cursor payload");
     }
     return parsed as CursorBoundary;
-  } catch {
+  } catch (error) {
+    if (error instanceof TimelineCursorError) throw error;
     throw new TimelineCursorError(
       "timeline_cursor_invalid",
       "The timeline cursor is invalid"

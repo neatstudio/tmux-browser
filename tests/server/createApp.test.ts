@@ -138,11 +138,11 @@ describe("createApp", () => {
   });
 
   it("returns 410 for a well-formed cursor from a prior store epoch", async () => {
-    const previous = createTimelineStore({ cursorSecret: "old-key", cursorEpoch: "old-epoch" });
+    const previous = createTimelineStore({ cursorSecret: "stable-root-key", cursorEpoch: "old-epoch" });
     previous.addEvent({ type: "command-sent", sessionName: "build", message: "1" });
     previous.addEvent({ type: "command-sent", sessionName: "build", message: "2" });
     const cursor = previous.listEventPage({ limit: 1 }).nextCursor!;
-    const current = createTimelineStore({ cursorSecret: "new-key", cursorEpoch: "new-epoch" });
+    const current = createTimelineStore({ cursorSecret: "stable-root-key", cursorEpoch: "new-epoch" });
     const response = await request(createApp({ timelineStore: current }))
       .get("/api/timeline")
       .query({ cursor });
