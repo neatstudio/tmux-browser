@@ -603,20 +603,22 @@ Defaults: `schemaVersion` is `"tmux-ui.hook/v1"`, `source` is `"custom"`,
 `title` is `"<source> <eventType>"`, `target.sessionName` is `sessionName`,
 and `actions` / `content` are `[]`.
 
-Hook metadata accepts scalar values only. Keys are processed in sorted order;
-normalized-key collisions keep the first key and emit a value-free diagnostic.
-Keys whose lowercase alphanumeric
-form contains `token`, `secret`, `password`, `authorization`, or `cookie`, or
+Hook metadata accepts scalar values only. Original keys are processed in sorted
+order, then stored in lowercase alphanumeric form; normalized-key collisions
+keep the first key and emit a value-free diagnostic. Normalized keys containing
+`token`, `secret`, `password`, `authorization`, or `cookie`, or
 ends in `key`, are stored as `[redacted]`. Strings are limited to 2 KiB of UTF-8
 data and receive `[truncated]` when shortened. User metadata is limited to 16
 KiB and receives `_truncated: true` when the limit is reached. The optional
-display statistics are validated as follows: `filesChanged` is an integer from
-0 to 100000, `testsPassed` and `testsFailed` are integers from 0 to 1000000, and
-`durationMs` is a finite number from 0 to 86400000.
+display statistics are persisted under canonical keys and validated as follows:
+`fileschanged` is an integer from 0 to 100000, `testspassed` and `testsfailed`
+are integers from 0 to 1000000, and `durationms` is a finite number from 0 to
+86400000. Producers may use punctuation or case variants such as
+`filesChanged`; normalization maps them to these canonical keys.
 
 For compatibility, the record metadata also contains reserved legacy
-projections for `status`, `source`, `eventType`, `severity`, `body`, `taskId`,
-`cwd`, `target`, `actions`, and `content`. These reserved fields do not consume
+projections for `status`, `source`, `eventType`, `body`, `taskId`, `target`,
+`actions`, and `content`. These reserved fields do not consume
 the user metadata budget; typed top-level fields are canonical.
 
 `target` lets tmux-ui jump to the correct terminal or Kanban group when the event

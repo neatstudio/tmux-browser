@@ -403,7 +403,7 @@ describe("createApp", () => {
         }
       ],
       metadata: {
-        "Api Token": "[redacted]",
+        apitoken: "[redacted]",
         tool: "apply_patch"
       }
     });
@@ -412,13 +412,12 @@ describe("createApp", () => {
       type: "hook-event",
       sessionName: "local-pets",
       metadata: {
-        "Api Token": "[redacted]",
+        apitoken: "[redacted]",
         tool: "apply_patch",
         source: "codex",
         eventType: "approval-required",
         status: "waiting",
         taskId: "task-1",
-        cwd: "/Users/gouki/server/wwwroot/own/pets",
         target: expect.any(String),
         actions: expect.any(String)
       }
@@ -450,6 +449,8 @@ describe("createApp", () => {
         style: "secondary"
       }
     ]);
+    expect(timelineEvent.metadata).not.toHaveProperty("severity");
+    expect(timelineEvent.metadata).not.toHaveProperty("cwd");
     expect(received).toEqual([
       expect.objectContaining({
         type: "hook-event",

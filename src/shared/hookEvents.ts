@@ -57,10 +57,10 @@ export type HookEventMetadata = Record<
   string,
   string | number | boolean | null
 > & {
-  filesChanged?: number;
-  testsPassed?: number;
-  testsFailed?: number;
-  durationMs?: number;
+  fileschanged?: number;
+  testspassed?: number;
+  testsfailed?: number;
+  durationms?: number;
 };
 
 export type HookEvent = {

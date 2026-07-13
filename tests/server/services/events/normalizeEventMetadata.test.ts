@@ -16,8 +16,8 @@ describe("normalizeEventMetadata", () => {
     });
 
     expect(metadata).toEqual({
-      "Api Token": "[redacted]",
-      "Build-ID": "first",
+      apitoken: "[redacted]",
+      buildid: "first",
       ["a".repeat(80)]: "[redacted]",
       a: true,
       z: "last"
@@ -50,9 +50,9 @@ describe("normalizeEventMetadata", () => {
       note: "kept",
       nested: { ignored: true }
     })).toEqual({
-      filesChanged: 100_000,
+      fileschanged: 100_000,
       note: "kept",
-      testsPassed: 1_000_000
+      testspassed: 1_000_000
     });
   });
 

@@ -75,8 +75,9 @@ export function normalizeEventMetadata(value: unknown): EventMetadata | undefine
 
   for (const [originalKey, rawValue] of entries.slice(0, MAX_METADATA_ENTRIES)) {
     const trimmedKey = originalKey.trim();
-    const key = trimmedKey.slice(0, 80);
-    const collisionKey = normalizedKey(trimmedKey);
+    const fullNormalizedKey = normalizedKey(trimmedKey);
+    const key = fullNormalizedKey.slice(0, 80);
+    const collisionKey = key;
     if (collisionKey === "truncated") {
       truncated = true;
       continue;
@@ -85,13 +86,13 @@ export function normalizeEventMetadata(value: unknown): EventMetadata | undefine
     const keptKey = seen.get(collisionKey);
     if (keptKey) {
       console.warn(
-        `Dropped colliding event metadata key "${key}"; kept "${keptKey}"`
+        `Dropped colliding event metadata key "${trimmedKey}"; kept "${keptKey}"`
       );
       continue;
     }
-    seen.set(collisionKey, key);
+    seen.set(collisionKey, trimmedKey);
 
-    const normalizedValue = normalizeValue(collisionKey, rawValue);
+    const normalizedValue = normalizeValue(fullNormalizedKey, rawValue);
     if (normalizedValue === undefined) continue;
 
     const candidate = [...accepted, [key, normalizedValue] as const];

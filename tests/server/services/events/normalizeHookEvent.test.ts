@@ -30,7 +30,7 @@ describe("normalizeHookEvent", () => {
         style: "secondary"
       }],
       content: [{ type: "details", title: "Details", text: "why", collapsed: true }],
-      metadata: { filesChanged: 2, password: "[redacted]" }
+      metadata: { fileschanged: 2, password: "[redacted]" }
     });
   });
 
