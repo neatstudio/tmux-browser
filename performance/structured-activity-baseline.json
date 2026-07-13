@@ -4,17 +4,17 @@
   "evidence": "provisional-local",
   "runnerFingerprint": "darwin-arm64-node20.19.3-147.0.7727.56",
   "marks": {
-    "start": "pre-activity-action-center-control-start",
-    "interactive": "pre-activity-action-center-control-settled"
+    "start": "pre-activity-action-center-open-start",
+    "interactive": "pre-activity-action-center-responsive-settled"
   },
-  "note": "Pre-Activity comparator: after the existing Action Center first renders, click its close control and wait until the dialog is absent. Task 7+ must replace these marks when the Activity panel exists.",
-  "capturedAt": "2026-07-13T17:43:25.496Z",
+  "note": "Pre-Activity comparator: open the existing Action Center, wait for its dialog to render, click its close control, and wait until the dialog is absent. Task 7+ must replace these marks when the Activity panel exists.",
+  "capturedAt": "2026-07-13T17:48:21.394Z",
   "warmRunsMs": [
-    55.5,
-    55.59999990463257,
-    47.90000009536743,
-    42.5,
-    56.40000009536743
+    86.2000002861023,
+    109.80000019073486,
+    86.30000019073486,
+    96.5,
+    102.59999990463257
   ],
-  "medianMs": 55.5
+  "medianMs": 96.5
 }

@@ -10,7 +10,8 @@ It uploads both measurements and the comparison report. A candidate passes only
 when its median is at most `1.25x` the freshly measured baseline and at most
 `300 ms` absolutely.
 
-The pre-Activity comparator first renders the existing Action Center, then
-measures a deterministic close-button response through observable dialog
-removal. When Activity exists, replace the mark names and interaction with the
-new panel's comparable interactive response.
+The pre-Activity comparator starts immediately before opening the existing
+Action Center, waits for the dialog to render, clicks its deterministic close
+control, and ends only after observable dialog removal. The interval therefore
+covers open, render, and a responsive control click. When Activity exists,
+replace the mark names and interaction with the new panel's comparable response.

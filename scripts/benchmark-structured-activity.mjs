@@ -175,10 +175,10 @@ async function benchmark(options) {
           options.evidenceScope === "ci" ? "authoritative-ci" : "provisional-local",
         runnerFingerprint: runnerFingerprint(browser.version()),
         marks: {
-          start: "pre-activity-action-center-control-start",
-          interactive: "pre-activity-action-center-control-settled"
+          start: "pre-activity-action-center-open-start",
+          interactive: "pre-activity-action-center-responsive-settled"
         },
-        note: "Pre-Activity comparator: after the existing Action Center first renders, click its close control and wait until the dialog is absent. Task 7+ must replace these marks when the Activity panel exists.",
+        note: "Pre-Activity comparator: open the existing Action Center, wait for its dialog to render, click its close control, and wait until the dialog is absent. Task 7+ must replace these marks when the Activity panel exists.",
         capturedAt: new Date().toISOString(),
         warmRunsMs,
         medianMs: sorted[2]

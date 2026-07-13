@@ -24,8 +24,8 @@ function artifact(overrides: Record<string, unknown> = {}) {
     runnerFingerprint: "linux-x64-node22-chromium",
     evidence: "authoritative-ci",
     marks: {
-      start: "pre-activity-action-center-control-start",
-      interactive: "pre-activity-action-center-control-settled"
+      start: "pre-activity-action-center-open-start",
+      interactive: "pre-activity-action-center-responsive-settled"
     },
     warmRunsMs: [100, 101, 102, 103, 104],
     medianMs: 102,
@@ -112,10 +112,20 @@ describe("structured activity benchmark", () => {
     ).toMatchObject({ passed: true, relativeRatio: 125 / 102 });
   });
 
-  it("verifies a deterministic control response after the first dialog render", () => {
+  it("measures open, render, and a deterministic responsive control click", () => {
     expect(harnessSource).toContain('name: "Close action center"');
     expect(harnessSource).toContain("await dialog.waitFor({ state: \"hidden\" })");
-    expect(harnessSource.indexOf("await dialog.waitFor()"))
-      .toBeLessThan(harnessSource.indexOf("performance.mark(mark)"));
+    const startMark = harnessSource.indexOf("performance.mark(mark)");
+    const openClick = harnessSource.indexOf("await actions.click()");
+    const dialogRender = harnessSource.indexOf("await dialog.waitFor()");
+    const responseClick = harnessSource.indexOf("await close.click()");
+    const hidden = harnessSource.indexOf('await dialog.waitFor({ state: "hidden" })');
+    const endMark = harnessSource.indexOf("performance.mark(interactive)");
+
+    expect(startMark).toBeLessThan(openClick);
+    expect(openClick).toBeLessThan(dialogRender);
+    expect(dialogRender).toBeLessThan(responseClick);
+    expect(responseClick).toBeLessThan(hidden);
+    expect(hidden).toBeLessThan(endMark);
   });
 });
