@@ -20,5 +20,13 @@ jobs:
         shell: bash
         run: |
           BASELINE_SHA="$(jq -r .targetCommit performance/structured-activity-baseline.json)"
-          npm run benchmark:activity -- --mode baseline --target-commit "$BASELINE_SHA" --output /tmp/baseline.json
-          npm run benchmark:activity -- --mode compare --target-commit "$GITHUB_SHA" --baseline /tmp/baseline.json --output /tmp/candidate.json
+          npm run benchmark:activity -- --mode baseline --evidence-scope ci --target-commit "$BASELINE_SHA" --output /tmp/baseline.json
+          npm run benchmark:activity -- --mode compare --evidence-scope ci --target-commit "$GITHUB_SHA" --baseline /tmp/baseline.json --output /tmp/candidate.json --report /tmp/report.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: structured-activity-benchmark
+          path: |
+            /tmp/baseline.json
+            /tmp/candidate.json
+            /tmp/report.json

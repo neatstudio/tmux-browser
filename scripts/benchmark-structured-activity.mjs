@@ -37,7 +37,9 @@ export function parseBenchmarkArguments(args) {
     targetCommit,
     targetUrl: values.get("target-url") ?? null,
     baseline: values.get("baseline") ?? null,
-    output: values.get("output") ?? DEFAULT_OUTPUT
+    output: values.get("output") ?? DEFAULT_OUTPUT,
+    report: values.get("report") ?? null,
+    evidenceScope: values.get("evidence-scope") ?? "local"
   };
 }
 
@@ -72,16 +74,24 @@ export function validateFixture(fixture) {
   return result;
 }
 
-export function compareBenchmarkArtifacts(baseline, candidate) {
+export function compareBenchmarkArtifacts(
+  baseline,
+  candidate,
+  { evidenceScope = "local" } = {}
+) {
+  if (evidenceScope === "ci" && baseline.evidence !== "authoritative-ci") {
+    throw new Error("authoritative CI baseline required");
+  }
   if (baseline.runnerFingerprint !== candidate.runnerFingerprint) {
     throw new Error("runner fingerprint mismatch");
   }
   if (candidate.warmRunsMs?.length !== 5) throw new Error("five warm runs required");
   const relativeRatio = candidate.medianMs / baseline.medianMs;
-  const absoluteDeltaMs = candidate.medianMs - baseline.medianMs;
   if (relativeRatio > 1.25) throw new Error("benchmark exceeds 1.25x baseline");
-  if (absoluteDeltaMs > 300) throw new Error("benchmark exceeds 300ms baseline delta");
-  return { relativeRatio, absoluteDeltaMs };
+  if (candidate.medianMs > 300) {
+    throw new Error("benchmark exceeds absolute 300ms ceiling");
+  }
+  return { passed: true, relativeRatio, candidateMedianMs: candidate.medianMs };
 }
 
 async function freePort() {
@@ -142,6 +152,12 @@ function runnerFingerprint(browserVersion) {
 }
 
 async function benchmark(options) {
+  if (!new Set(["local", "ci"]).has(options.evidenceScope)) {
+    throw new Error("--evidence-scope must be local or ci");
+  }
+  if (options.evidenceScope === "ci" && process.env.GITHUB_ACTIONS !== "true") {
+    throw new Error("authoritative CI evidence can only be generated in GitHub Actions");
+  }
   const fixture = JSON.parse(readFileSync(join(root, "tests/fixtures/structured-activity.json"), "utf8"));
   validateFixture(fixture);
   const runAt = async (targetUrl) => {
@@ -155,12 +171,14 @@ async function benchmark(options) {
       return {
         schemaVersion: 1,
         targetCommit: options.targetCommit,
+        evidence:
+          options.evidenceScope === "ci" ? "authoritative-ci" : "provisional-local",
         runnerFingerprint: runnerFingerprint(browser.version()),
         marks: {
-          start: "pre-activity-action-center-open-start",
-          interactive: "pre-activity-action-center-interactive"
+          start: "pre-activity-action-center-control-start",
+          interactive: "pre-activity-action-center-control-settled"
         },
-        note: "Pre-Activity comparator: click the existing hook toast Actions control until the Action Center dialog is interactive. Task 7+ must replace these mark names when the Activity panel exists.",
+        note: "Pre-Activity comparator: after the existing Action Center first renders, click its close control and wait until the dialog is absent. Task 7+ must replace these marks when the Activity panel exists.",
         capturedAt: new Date().toISOString(),
         warmRunsMs,
         medianMs: sorted[2]
@@ -176,7 +194,13 @@ async function benchmark(options) {
   writeFileSync(resolve(options.output), `${JSON.stringify(artifact, null, 2)}\n`, "utf8");
   if (options.mode === "compare") {
     const baseline = JSON.parse(readFileSync(resolve(options.baseline), "utf8"));
-    compareBenchmarkArtifacts(baseline, artifact);
+    const report = compareBenchmarkArtifacts(baseline, artifact, {
+      evidenceScope: options.evidenceScope
+    });
+    if (options.report) {
+      mkdirSync(dirname(resolve(options.report)), { recursive: true });
+      writeFileSync(resolve(options.report), `${JSON.stringify(report, null, 2)}\n`);
+    }
   }
   console.log(JSON.stringify(artifact, null, 2));
 }

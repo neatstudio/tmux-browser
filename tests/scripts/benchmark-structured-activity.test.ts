@@ -12,15 +12,20 @@ import {
 const fixture = JSON.parse(
   readFileSync(resolve("tests/fixtures/structured-activity.json"), "utf8")
 );
+const harnessSource = readFileSync(
+  resolve("tests/e2e/structured-activity-harness.ts"),
+  "utf8"
+);
 
 function artifact(overrides: Record<string, unknown> = {}) {
   return {
     schemaVersion: 1,
     targetCommit: "519ceee4e1e84480926f3b5b5de992ac88e51b9c",
     runnerFingerprint: "linux-x64-node22-chromium",
+    evidence: "authoritative-ci",
     marks: {
-      start: "pre-activity-action-center-open-start",
-      interactive: "pre-activity-action-center-interactive"
+      start: "pre-activity-action-center-control-start",
+      interactive: "pre-activity-action-center-control-settled"
     },
     warmRunsMs: [100, 101, 102, 103, 104],
     medianMs: 102,
@@ -57,6 +62,26 @@ describe("structured activity benchmark", () => {
     ).toThrow("--baseline is required");
   });
 
+  it("requires authoritative evidence for CI comparison", () => {
+    expect(() =>
+      compareBenchmarkArtifacts(
+        artifact({ evidence: "provisional-local" }),
+        artifact(),
+        { evidenceScope: "ci" }
+      )
+    ).toThrow("authoritative CI baseline required");
+  });
+
+  it("allows explicitly local comparison of matching provisional evidence", () => {
+    expect(
+      compareBenchmarkArtifacts(
+        artifact({ evidence: "provisional-local" }),
+        artifact({ evidence: "provisional-local" }),
+        { evidenceScope: "local" }
+      )
+    ).toMatchObject({ passed: true });
+  });
+
   it("rejects runner fingerprint mismatches", () => {
     expect(() =>
       compareBenchmarkArtifacts(
@@ -72,18 +97,25 @@ describe("structured activity benchmark", () => {
     ).toThrow("1.25x");
   });
 
-  it("rejects absolute regressions above 300ms", () => {
+  it("rejects candidate medians above the absolute 300ms ceiling", () => {
     expect(() =>
       compareBenchmarkArtifacts(
-        artifact({ medianMs: 1500 }),
-        artifact({ medianMs: 1801 })
+        artifact({ medianMs: 300 }),
+        artifact({ medianMs: 301 })
       )
-    ).toThrow("300ms");
+    ).toThrow("absolute 300ms ceiling");
   });
 
   it("accepts five warm runs within both budgets", () => {
     expect(
       compareBenchmarkArtifacts(artifact(), artifact({ medianMs: 125 }))
-    ).toMatchObject({ relativeRatio: 125 / 102, absoluteDeltaMs: 23 });
+    ).toMatchObject({ passed: true, relativeRatio: 125 / 102 });
+  });
+
+  it("verifies a deterministic control response after the first dialog render", () => {
+    expect(harnessSource).toContain('name: "Close action center"');
+    expect(harnessSource).toContain("await dialog.waitFor({ state: \"hidden\" })");
+    expect(harnessSource.indexOf("await dialog.waitFor()"))
+      .toBeLessThan(harnessSource.indexOf("performance.mark(mark)"));
   });
 });

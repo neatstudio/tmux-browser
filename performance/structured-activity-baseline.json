@@ -1,19 +1,20 @@
 {
   "schemaVersion": 1,
   "targetCommit": "519ceee4e1e84480926f3b5b5de992ac88e51b9c",
+  "evidence": "provisional-local",
   "runnerFingerprint": "darwin-arm64-node20.19.3-147.0.7727.56",
   "marks": {
-    "start": "pre-activity-action-center-open-start",
-    "interactive": "pre-activity-action-center-interactive"
+    "start": "pre-activity-action-center-control-start",
+    "interactive": "pre-activity-action-center-control-settled"
   },
-  "note": "Pre-Activity comparator: click the existing hook toast Actions control until the Action Center dialog is interactive. Task 7+ must replace these mark names when the Activity panel exists.",
-  "capturedAt": "2026-07-13T17:34:26.217Z",
+  "note": "Pre-Activity comparator: after the existing Action Center first renders, click its close control and wait until the dialog is absent. Task 7+ must replace these marks when the Activity panel exists.",
+  "capturedAt": "2026-07-13T17:43:25.496Z",
   "warmRunsMs": [
-    35.60000038146973,
-    46.69999980926514,
-    43.09999990463257,
-    47.59999990463257,
-    59.60000038146973
+    55.5,
+    55.59999990463257,
+    47.90000009536743,
+    42.5,
+    56.40000009536743
   ],
-  "medianMs": 46.69999980926514
+  "medianMs": 55.5
 }
