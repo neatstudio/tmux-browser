@@ -90,15 +90,20 @@ describe("createTimelineStore", () => {
   it("authenticates opaque cursors and rejects tampering or another store secret", () => {
     vi.useFakeTimers();
     vi.setSystemTime("2026-07-14T01:00:00.000Z");
-    const firstStore = createTimelineStore({ maxEvents: 10, cursorSecret: "first-secret" });
-    const otherStore = createTimelineStore({ maxEvents: 10, cursorSecret: "other-secret" });
+    const firstStore = createTimelineStore({
+      maxEvents: 10, cursorSecret: "first-secret", cursorEpoch: "epoch-first"
+    });
+    const otherStore = createTimelineStore({
+      maxEvents: 10, cursorSecret: "other-secret", cursorEpoch: "epoch-other"
+    });
     for (const store of [firstStore, otherStore]) {
       for (let index = 1; index <= 3; index += 1) {
         store.addEvent({ type: "command-sent", sessionName: "build", message: String(index) });
       }
     }
     const cursor = firstStore.listEventPage({ limit: 1 }).nextCursor!;
-    const [payload, signature] = cursor.split(".");
+    const [epoch, payload, signature] = cursor.split(".");
+    expect(epoch).toBe("epoch-first");
     expect(payload).toBeTruthy();
     expect(signature).toBeTruthy();
     const forgedPayload = Buffer.from(JSON.stringify({
@@ -110,14 +115,23 @@ describe("createTimelineStore", () => {
 
     for (const forged of [
       forgedPayload,
-      `${forgedPayload}.${signature}`,
-      `${payload}.${tamperedSignature}`
+      `${epoch}.${forgedPayload}.${signature}`,
+      `${epoch}.${payload}.${tamperedSignature}`,
+      `bad epoch.${payload}.${signature}`,
+      `epoch-other.${payload}.x`
     ]) {
       expect(() => firstStore.listEventPage({ cursor: forged })).toThrowError(
         expect.objectContaining<TimelineCursorError>({ code: "timeline_cursor_invalid" })
       );
     }
     expect(() => otherStore.listEventPage({ cursor })).toThrowError(
+      expect.objectContaining<TimelineCursorError>({ code: "timeline_cursor_expired" })
+    );
+    const otherCursor = otherStore.listEventPage({ limit: 1 }).nextCursor!;
+    const [, otherPayload, otherSignature] = otherCursor.split(".");
+    expect(() => firstStore.listEventPage({
+      cursor: `epoch-first.${otherPayload}.${otherSignature}`
+    })).toThrowError(
       expect.objectContaining<TimelineCursorError>({ code: "timeline_cursor_invalid" })
     );
     expect(firstStore.listEventPage({ limit: 1, cursor })).toEqual(

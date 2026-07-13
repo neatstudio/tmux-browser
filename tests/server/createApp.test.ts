@@ -137,6 +137,20 @@ describe("createApp", () => {
     expect(expired.body).toMatchObject({ code: "timeline_cursor_expired" });
   });
 
+  it("returns 410 for a well-formed cursor from a prior store epoch", async () => {
+    const previous = createTimelineStore({ cursorSecret: "old-key", cursorEpoch: "old-epoch" });
+    previous.addEvent({ type: "command-sent", sessionName: "build", message: "1" });
+    previous.addEvent({ type: "command-sent", sessionName: "build", message: "2" });
+    const cursor = previous.listEventPage({ limit: 1 }).nextCursor!;
+    const current = createTimelineStore({ cursorSecret: "new-key", cursorEpoch: "new-epoch" });
+    const response = await request(createApp({ timelineStore: current }))
+      .get("/api/timeline")
+      .query({ cursor });
+
+    expect(response.status).toBe(410);
+    expect(response.body).toMatchObject({ code: "timeline_cursor_expired" });
+  });
+
   it("records structured conversation messages in timeline and broadcasts app events", async () => {
     const timelineStore = createTimelineStore();
     const eventHub = createAppEventHub();

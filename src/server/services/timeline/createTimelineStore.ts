@@ -92,7 +92,8 @@ type CursorBoundary = { version: 1; id: string; createdAt: string };
 
 function encodeCursor(
   event: Pick<TimelineEvent, "id" | "createdAt">,
-  secret: Buffer
+  secret: Buffer,
+  epoch: string
 ) {
   const boundary: CursorBoundary = {
     version: 1,
@@ -100,22 +101,67 @@ function encodeCursor(
     createdAt: event.createdAt
   };
   const payload = Buffer.from(JSON.stringify(boundary));
-  const signature = createHmac("sha256", secret).update(payload).digest();
-  return `${payload.toString("base64url")}.${signature.toString("base64url")}`;
+  const payloadEncoded = payload.toString("base64url");
+  const signature = createHmac("sha256", secret)
+    .update(`${epoch}.${payloadEncoded}`)
+    .digest();
+  return `${epoch}.${payloadEncoded}.${signature.toString("base64url")}`;
 }
 
-function decodeCursor(cursor: string, secret: Buffer): CursorBoundary {
+function decodeCursor(
+  cursor: string,
+  secret: Buffer,
+  currentEpoch: string
+): CursorBoundary {
+  const parts = cursor.split(".");
+  if (parts.length !== 3) {
+    throw new TimelineCursorError(
+      "timeline_cursor_invalid",
+      "The timeline cursor is invalid"
+    );
+  }
+  const [epoch, payloadEncoded, signatureEncoded] = parts;
+  if (
+    !epoch ||
+    !payloadEncoded ||
+    !signatureEncoded ||
+    !/^[A-Za-z0-9_-]{8,128}$/.test(epoch)
+  ) {
+    throw new TimelineCursorError(
+      "timeline_cursor_invalid",
+      "The timeline cursor is invalid"
+    );
+  }
+  let payload: Buffer;
+  let signature: Buffer;
   try {
-    const parts = cursor.split(".");
-    if (parts.length !== 2) throw new Error("invalid cursor shape");
-    const [payloadEncoded, signatureEncoded] = parts;
-    if (!payloadEncoded || !signatureEncoded) throw new Error("invalid cursor shape");
-    const payload = Buffer.from(payloadEncoded, "base64url");
-    const signature = Buffer.from(signatureEncoded, "base64url");
-    const expectedSignature = createHmac("sha256", secret).update(payload).digest();
+    payload = Buffer.from(payloadEncoded, "base64url");
+    signature = Buffer.from(signatureEncoded, "base64url");
     if (
+      payload.length === 0 ||
       payload.toString("base64url") !== payloadEncoded ||
-      signature.toString("base64url") !== signatureEncoded ||
+      signature.length !== 32 ||
+      signature.toString("base64url") !== signatureEncoded
+    ) {
+      throw new Error("invalid cursor encoding");
+    }
+  } catch {
+    throw new TimelineCursorError(
+      "timeline_cursor_invalid",
+      "The timeline cursor is invalid"
+    );
+  }
+  if (epoch !== currentEpoch) {
+    throw new TimelineCursorError(
+      "timeline_cursor_expired",
+      "The timeline cursor was issued by a previous server epoch"
+    );
+  }
+  try {
+    const expectedSignature = createHmac("sha256", secret)
+      .update(`${epoch}.${payloadEncoded}`)
+      .digest();
+    if (
       signature.length !== expectedSignature.length ||
       !timingSafeEqual(signature, expectedSignature)
     ) {
@@ -199,6 +245,7 @@ function isValidRevision(revision: number) {
 export function createTimelineStore(options: {
   maxEvents?: number;
   cursorSecret?: string | Buffer;
+  cursorEpoch?: string;
 } = {}): TimelineStore {
   const maxEvents = options.maxEvents ?? DEFAULT_MAX_EVENTS;
   if (
@@ -215,6 +262,10 @@ export function createTimelineStore(options: {
     : Buffer.from(options.cursorSecret);
   if (cursorSecret.length === 0) {
     throw new RangeError("cursorSecret must not be empty");
+  }
+  const cursorEpoch = options.cursorEpoch ?? randomBytes(16).toString("base64url");
+  if (!/^[A-Za-z0-9_-]{8,128}$/.test(cursorEpoch)) {
+    throw new RangeError("cursorEpoch must be 8-128 base64url characters");
   }
   const conversations = new Map<string, ConversationMessageTimelineEvent>();
   let nextId = 1;
@@ -360,7 +411,7 @@ export function createTimelineStore(options: {
       const sortedEvents = [...events].sort(compareEventsDescending);
       let startIndex = 0;
       if (options.cursor !== undefined) {
-        const boundary = decodeCursor(options.cursor, cursorSecret);
+        const boundary = decodeCursor(options.cursor, cursorSecret, cursorEpoch);
         const boundaryIndex = sortedEvents.findIndex(
           (event) => event.id === boundary.id && event.createdAt === boundary.createdAt
         );
@@ -379,7 +430,7 @@ export function createTimelineStore(options: {
         events: pageEvents,
         nextCursor:
           lastEvent && startIndex + pageEvents.length < sortedEvents.length
-            ? encodeCursor(lastEvent, cursorSecret)
+            ? encodeCursor(lastEvent, cursorSecret, cursorEpoch)
             : null
       };
     },
