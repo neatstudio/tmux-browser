@@ -106,6 +106,75 @@ describe("createDashboardStore", () => {
     expect(store.getState().timelineNextCursor).toBeNull();
   });
 
+  it("preserves more than eight loaded records when a websocket event arrives", async () => {
+    const event = (id: number) => ({
+      id: String(id), type: "command-sent" as const, sessionName: "build",
+      message: String(id), createdAt: `2026-07-14T00:00:${String(id).padStart(2, "0")}.000Z`
+    });
+    const store = createDashboardStore({
+      api: {
+        getServerStatus: vi.fn(), listSessions: vi.fn(), listPaneSessions: vi.fn(),
+        listDashboardSessions: vi.fn(),
+        listTimelineEvents: vi.fn()
+          .mockResolvedValueOnce({ events: Array.from({ length: 8 }, (_, i) => event(12 - i)), nextCursor: "older" })
+          .mockResolvedValueOnce({ events: Array.from({ length: 4 }, (_, i) => event(4 - i)), nextCursor: null })
+      },
+      pollMs: 3000
+    });
+
+    await store.refreshTimeline();
+    await store.loadOlderTimeline();
+    store.mergeTimelineEvent(event(13));
+
+    expect(store.getState().timelineEvents).toHaveLength(13);
+    expect(store.getState().timelineEvents?.at(-1)?.id).toBe("1");
+  });
+
+  it("keeps realtime records when a stale deferred older page resolves", async () => {
+    let resolveOlder!: (page: { events: any[]; nextCursor: null }) => void;
+    const olderPage = new Promise<{ events: any[]; nextCursor: null }>((resolve) => {
+      resolveOlder = resolve;
+    });
+    const baseConversation = {
+      id: "message-1", type: "conversation-message" as const, messageId: "message-1",
+      sessionName: "build", role: "assistant" as const, contentType: "text" as const,
+      summary: null, status: "streaming" as const,
+      createdAt: "2026-07-14T01:00:00.000Z", updatedAt: "2026-07-14T01:00:00.000Z",
+      toolName: null, parentMessageId: null
+    };
+    const store = createDashboardStore({
+      api: {
+        getServerStatus: vi.fn(), listSessions: vi.fn(), listPaneSessions: vi.fn(),
+        listDashboardSessions: vi.fn(), listTimelineEvents: vi.fn()
+          .mockResolvedValueOnce({ events: [], nextCursor: "older" })
+          .mockReturnValueOnce(olderPage)
+      },
+      pollMs: 3000
+    });
+    await store.refreshTimeline();
+    const pending = store.loadOlderTimeline();
+    store.mergeTimelineEvent({ ...baseConversation, content: "realtime", revision: 2 });
+    store.mergeTimelineEvent({
+      id: "hook-1", type: "hook-event", sessionName: "build", message: "realtime hook",
+      createdAt: "2026-07-14T01:01:00.000Z"
+    });
+    resolveOlder({
+      events: [
+        { ...baseConversation, content: "stale", revision: 1 },
+        { id: "hook-1", type: "hook-event", sessionName: "build", message: "stale hook", createdAt: "2026-07-14T01:01:00.000Z" }
+      ],
+      nextCursor: null
+    });
+    await pending;
+
+    expect(store.getState().timelineEvents?.find(({ id }) => id === "message-1")).toMatchObject({
+      content: "realtime", revision: 2
+    });
+    expect(store.getState().timelineEvents?.find(({ id }) => id === "hook-1")).toMatchObject({
+      message: "realtime hook"
+    });
+  });
+
   it("merges realtime timeline events by stable id in descending order", () => {
     const store = createDashboardStore({
       api: {

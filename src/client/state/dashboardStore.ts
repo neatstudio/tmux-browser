@@ -329,9 +329,22 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
       const page = normalizeTimelinePage(
         await deps.api.listTimelineEvents(TIMELINE_LIMIT, state.timelineNextCursor)
       );
-      const byId = new Map(
-        [...(state.timelineEvents ?? []), ...page.events].map((event) => [event.id, event])
-      );
+      const byId = new Map(page.events.map((event) => [event.id, event]));
+      for (const current of state.timelineEvents ?? []) {
+        const paged = byId.get(current.id);
+        if (!paged) {
+          byId.set(current.id, current);
+          continue;
+        }
+        if (
+          current.type === "conversation-message" &&
+          paged.type === "conversation-message"
+        ) {
+          if (current.revision >= paged.revision) byId.set(current.id, current);
+        } else if (timelineMergeSequenceById.has(current.id)) {
+          byId.set(current.id, current);
+        }
+      }
       const timelineEvents = [...byId.values()].sort(compareTimelineEventsDescending);
       hasLoadedOlderTimeline = true;
       pruneTimelineMergeSequences(timelineEvents);
@@ -390,7 +403,7 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
       ...(state.timelineEvents ?? []).filter((existing) => existing.id !== event.id)
     ]
       .sort(compareTimelineEventsDescending)
-      .slice(0, TIMELINE_LIMIT);
+      .slice(0, hasLoadedOlderTimeline ? undefined : TIMELINE_LIMIT);
     pruneTimelineMergeSequences(timelineEvents);
 
     commit({

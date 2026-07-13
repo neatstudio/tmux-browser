@@ -1,3 +1,5 @@
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+
 import type {
   ConversationMessageTimelineEvent,
   ConversationMessageUpsertDraft,
@@ -88,25 +90,45 @@ function compareEventsDescending(left: TimelineEvent, right: TimelineEvent) {
 
 type CursorBoundary = { version: 1; id: string; createdAt: string };
 
-function encodeCursor(event: Pick<TimelineEvent, "id" | "createdAt">) {
+function encodeCursor(
+  event: Pick<TimelineEvent, "id" | "createdAt">,
+  secret: Buffer
+) {
   const boundary: CursorBoundary = {
     version: 1,
     id: event.id,
     createdAt: event.createdAt
   };
-  return Buffer.from(JSON.stringify(boundary)).toString("base64url");
+  const payload = Buffer.from(JSON.stringify(boundary));
+  const signature = createHmac("sha256", secret).update(payload).digest();
+  return `${payload.toString("base64url")}.${signature.toString("base64url")}`;
 }
 
-function decodeCursor(cursor: string): CursorBoundary {
+function decodeCursor(cursor: string, secret: Buffer): CursorBoundary {
   try {
-    const parsed = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as Partial<CursorBoundary>;
+    const parts = cursor.split(".");
+    if (parts.length !== 2) throw new Error("invalid cursor shape");
+    const [payloadEncoded, signatureEncoded] = parts;
+    if (!payloadEncoded || !signatureEncoded) throw new Error("invalid cursor shape");
+    const payload = Buffer.from(payloadEncoded, "base64url");
+    const signature = Buffer.from(signatureEncoded, "base64url");
+    const expectedSignature = createHmac("sha256", secret).update(payload).digest();
+    if (
+      payload.toString("base64url") !== payloadEncoded ||
+      signature.toString("base64url") !== signatureEncoded ||
+      signature.length !== expectedSignature.length ||
+      !timingSafeEqual(signature, expectedSignature)
+    ) {
+      throw new Error("invalid cursor signature");
+    }
+    const parsed = JSON.parse(payload.toString("utf8")) as Partial<CursorBoundary>;
     if (
       parsed.version !== 1 ||
       typeof parsed.id !== "string" ||
       !parsed.id ||
       typeof parsed.createdAt !== "string" ||
       !parsed.createdAt ||
-      encodeCursor(parsed as CursorBoundary) !== cursor
+      JSON.stringify(parsed) !== payload.toString("utf8")
     ) {
       throw new Error("invalid cursor payload");
     }
@@ -174,7 +196,10 @@ function isValidRevision(revision: number) {
   return Number.isFinite(revision) && Number.isInteger(revision);
 }
 
-export function createTimelineStore(options: { maxEvents?: number } = {}): TimelineStore {
+export function createTimelineStore(options: {
+  maxEvents?: number;
+  cursorSecret?: string | Buffer;
+} = {}): TimelineStore {
   const maxEvents = options.maxEvents ?? DEFAULT_MAX_EVENTS;
   if (
     !Number.isFinite(maxEvents) ||
@@ -185,6 +210,12 @@ export function createTimelineStore(options: { maxEvents?: number } = {}): Timel
   }
 
   const events: TimelineEvent[] = [];
+  const cursorSecret = options.cursorSecret === undefined
+    ? randomBytes(32)
+    : Buffer.from(options.cursorSecret);
+  if (cursorSecret.length === 0) {
+    throw new RangeError("cursorSecret must not be empty");
+  }
   const conversations = new Map<string, ConversationMessageTimelineEvent>();
   let nextId = 1;
 
@@ -329,7 +360,7 @@ export function createTimelineStore(options: { maxEvents?: number } = {}): Timel
       const sortedEvents = [...events].sort(compareEventsDescending);
       let startIndex = 0;
       if (options.cursor !== undefined) {
-        const boundary = decodeCursor(options.cursor);
+        const boundary = decodeCursor(options.cursor, cursorSecret);
         const boundaryIndex = sortedEvents.findIndex(
           (event) => event.id === boundary.id && event.createdAt === boundary.createdAt
         );
@@ -348,7 +379,7 @@ export function createTimelineStore(options: { maxEvents?: number } = {}): Timel
         events: pageEvents,
         nextCursor:
           lastEvent && startIndex + pageEvents.length < sortedEvents.length
-            ? encodeCursor(lastEvent)
+            ? encodeCursor(lastEvent, cursorSecret)
             : null
       };
     },

@@ -87,6 +87,45 @@ describe("createTimelineStore", () => {
     expect(store.listEventPage({ limit: 2, cursor })).toEqual(before);
   });
 
+  it("authenticates opaque cursors and rejects tampering or another store secret", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime("2026-07-14T01:00:00.000Z");
+    const firstStore = createTimelineStore({ maxEvents: 10, cursorSecret: "first-secret" });
+    const otherStore = createTimelineStore({ maxEvents: 10, cursorSecret: "other-secret" });
+    for (const store of [firstStore, otherStore]) {
+      for (let index = 1; index <= 3; index += 1) {
+        store.addEvent({ type: "command-sent", sessionName: "build", message: String(index) });
+      }
+    }
+    const cursor = firstStore.listEventPage({ limit: 1 }).nextCursor!;
+    const [payload, signature] = cursor.split(".");
+    expect(payload).toBeTruthy();
+    expect(signature).toBeTruthy();
+    const forgedPayload = Buffer.from(JSON.stringify({
+      version: 1,
+      id: "2",
+      createdAt: "2026-07-14T01:00:00.000Z"
+    })).toString("base64url");
+    const tamperedSignature = `${signature!.slice(0, -1)}${signature!.endsWith("A") ? "B" : "A"}`;
+
+    for (const forged of [
+      forgedPayload,
+      `${forgedPayload}.${signature}`,
+      `${payload}.${tamperedSignature}`
+    ]) {
+      expect(() => firstStore.listEventPage({ cursor: forged })).toThrowError(
+        expect.objectContaining<TimelineCursorError>({ code: "timeline_cursor_invalid" })
+      );
+    }
+    expect(() => otherStore.listEventPage({ cursor })).toThrowError(
+      expect.objectContaining<TimelineCursorError>({ code: "timeline_cursor_invalid" })
+    );
+    expect(firstStore.listEventPage({ limit: 1, cursor })).toEqual(
+      firstStore.listEventPage({ limit: 1, cursor })
+    );
+    vi.useRealTimers();
+  });
+
   it("caps a page independently of the retention limit", () => {
     const store = createTimelineStore({ maxEvents: 250 });
     for (let index = 0; index < 250; index += 1) {

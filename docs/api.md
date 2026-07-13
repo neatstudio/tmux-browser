@@ -193,7 +193,8 @@ inserted after the first request do not shift older pages. An invalid cursor
 returns `400` with code `timeline_cursor_invalid`; a cursor whose boundary was
 removed by retention returns `410` with code `timeline_cursor_expired`. Clients
 should notify the user that history expired and restart without a cursor. The
-server caps each page at 200 events.
+server caps each page at 200 events. Cursor integrity is scoped to the running
+server process, so cursors issued before a server restart are invalid.
 
 Timeline retention is configured with `TMUX_UI_TIMELINE_MAX_EVENTS`. It defaults
 to `1000` and must be a positive integer.
