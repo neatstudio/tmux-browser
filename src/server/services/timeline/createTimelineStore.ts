@@ -1,8 +1,7 @@
 import type {
-  AppendOnlyTimelineEvent,
   ConversationMessageTimelineEvent,
   ConversationMessageUpsertDraft,
-  StoredTimelineEvent,
+  TimelineEvent,
   TimelineEventDraft
 } from "../../../shared/timeline.js";
 
@@ -25,11 +24,11 @@ export class TimelineStoreConflictError extends Error {
 }
 
 export type TimelineStore = {
-  addEvent: (event: TimelineEventDraft) => AppendOnlyTimelineEvent;
+  addEvent: (event: TimelineEventDraft) => TimelineEvent;
   upsertConversationMessage: (
     event: ConversationMessageUpsertDraft
   ) => ConversationMessageTimelineEvent;
-  listEvents: (options?: { limit?: number }) => StoredTimelineEvent[];
+  listEvents: (options?: { limit?: number }) => TimelineEvent[];
 };
 
 const DEFAULT_MAX_EVENTS = 200;
@@ -99,13 +98,27 @@ function isValidRevision(revision: number) {
 
 export function createTimelineStore(options: { maxEvents?: number } = {}): TimelineStore {
   const maxEvents = options.maxEvents ?? DEFAULT_MAX_EVENTS;
-  const events: StoredTimelineEvent[] = [];
+  if (
+    !Number.isFinite(maxEvents) ||
+    !Number.isInteger(maxEvents) ||
+    maxEvents <= 0
+  ) {
+    throw new RangeError("maxEvents must be a finite positive integer");
+  }
+
+  const events: TimelineEvent[] = [];
   const conversations = new Map<string, ConversationMessageTimelineEvent>();
   let nextId = 1;
 
   function trimEvents() {
     while (events.length > maxEvents) {
-      events.pop();
+      const removed = events.pop();
+      if (removed?.type === "conversation-message") {
+        const key = conversationKey(removed);
+        if (conversations.get(key)?.id === removed.id) {
+          conversations.delete(key);
+        }
+      }
     }
   }
 
@@ -204,9 +217,6 @@ export function createTimelineStore(options: { maxEvents?: number } = {}): Timel
     const index = events.indexOf(current);
     if (index >= 0) {
       events[index] = updated;
-    } else {
-      events.unshift(updated);
-      trimEvents();
     }
     conversations.set(key, updated);
     return updated;
@@ -214,11 +224,22 @@ export function createTimelineStore(options: { maxEvents?: number } = {}): Timel
 
   return {
     addEvent(event) {
-      const recordedEvent: AppendOnlyTimelineEvent = {
-        ...event,
-        id: String(nextId),
-        createdAt: new Date().toISOString()
-      } as AppendOnlyTimelineEvent;
+      const createdAt = new Date().toISOString();
+      const recordedEvent: TimelineEvent =
+        event.type === "conversation-message"
+          ? {
+              ...event,
+              summary: event.summary ?? null,
+              revision: event.revision ?? 1,
+              id: String(nextId),
+              createdAt,
+              updatedAt: createdAt
+            }
+          : {
+              ...event,
+              id: String(nextId),
+              createdAt
+            };
       nextId += 1;
       events.unshift(recordedEvent);
       trimEvents();

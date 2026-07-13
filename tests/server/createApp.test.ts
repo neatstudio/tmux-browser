@@ -161,9 +161,15 @@ describe("createApp", () => {
       status: "complete",
       toolName: "apply_patch",
       parentMessageId: "msg_122",
+      summary: null,
+      revision: 1,
       id: expect.any(String),
-      createdAt: expect.any(String)
+      createdAt: expect.any(String),
+      updatedAt: expect.any(String)
     });
+    expect(response.body.message.updatedAt).toBe(
+      response.body.message.createdAt
+    );
     expect(timelineStore.listEvents({ limit: 1 })[0]).toMatchObject(
       response.body.message
     );
@@ -175,7 +181,10 @@ describe("createApp", () => {
         role: "assistant",
         contentType: "text",
         content: "已经完成修改",
-        status: "complete"
+        status: "complete",
+        summary: null,
+        revision: 1,
+        updatedAt: response.body.message.createdAt
       })
     ]);
   });

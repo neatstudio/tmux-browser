@@ -87,10 +87,3 @@ export type TimelineEventDraft =
   | ConversationMessageTimelineEventDraft
   | Omit<HookEventTimelineEvent, "id" | "createdAt">
   | Omit<LegacyHookEventTimelineEvent, "id" | "createdAt">;
-
-export type AppendOnlyTimelineEvent = TimelineEventDraft & {
-  id: string;
-  createdAt: string;
-};
-
-export type StoredTimelineEvent = TimelineEvent | AppendOnlyTimelineEvent;

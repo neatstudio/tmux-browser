@@ -56,25 +56,38 @@ describe("createTimelineStore", () => {
     const second = store.addEvent(message({ content: "later snapshot" }));
 
     expect(second.id).not.toBe(first.id);
+    expect(first).toMatchObject({ summary: null, revision: 1 });
+    expect(first.createdAt).toBe(first.updatedAt);
+    expect(second).toMatchObject({ summary: null, revision: 1 });
+    expect(second.createdAt).toBe(second.updatedAt);
     expect(store.listEvents()).toEqual([second, first]);
   });
 
-  it("does not lose upsert identity when an appended event trims canonical history", () => {
+  it("forgets conversation identities after their records are trimmed", () => {
     const store = createTimelineStore({ maxEvents: 1 });
-    const created = store.upsertConversationMessage(message());
-    store.addEvent(message({ content: "legacy append" }));
-
-    const updated = store.upsertConversationMessage(
-      message({ revision: 2, content: "canonical update" })
+    store.upsertConversationMessage(message());
+    const retained = store.upsertConversationMessage(
+      message({ messageId: "message-2" })
     );
 
-    expect(updated).toMatchObject({
-      id: created.id,
-      revision: 2,
-      content: "canonical update"
-    });
-    expect(store.listEvents()).toEqual([updated]);
+    expect(store.listEvents()).toEqual([retained]);
+    expectConflict(
+      () =>
+        store.upsertConversationMessage(
+          message({ revision: 2, content: "evicted update" })
+        ),
+      "invalid_revision"
+    );
   });
+
+  it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY, 1.5])(
+    "rejects invalid maxEvents %s",
+    (maxEvents) => {
+      expect(() => createTimelineStore({ maxEvents })).toThrowError(
+        new RangeError("maxEvents must be a finite positive integer")
+      );
+    }
+  );
 
   it("creates a canonical conversation record at revision one", () => {
     const store = createTimelineStore();
