@@ -302,6 +302,41 @@ describe("createApp", () => {
     expect(received).toHaveLength(3);
   });
 
+  it("never stores or broadcasts raw sensitive conversation metadata", async () => {
+    const timelineStore = createTimelineStore();
+    const eventHub = createAppEventHub();
+    const received: unknown[] = [];
+    eventHub.subscribe((event) => received.push(event));
+    const app = createApp({ timelineStore, eventHub });
+    const response = await request(app).post("/api/conversation/messages").send({
+      messageId: "private-message",
+      sessionName: "build",
+      content: "done",
+      metadata: {
+        token: "raw-token",
+        cookie: "raw-cookie",
+        Authorization: "raw-auth",
+        filesChanged: 3,
+        note: "safe"
+      }
+    });
+
+    expect(response.status).toBe(201);
+    expect(response.body.message.metadata).toEqual({
+      authorization: "[redacted]",
+      cookie: "[redacted]",
+      fileschanged: 3,
+      note: "safe",
+      token: "[redacted]"
+    });
+    const serialized = JSON.stringify({
+      response: response.body,
+      timeline: timelineStore.listEvents(),
+      received
+    });
+    expect(serialized).not.toMatch(/raw-token|raw-cookie|raw-auth/);
+  });
+
   it("accepts authenticated hook events, records timeline, and broadcasts app events", async () => {
     const timelineStore = createTimelineStore();
     const eventHub = createAppEventHub();

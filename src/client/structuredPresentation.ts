@@ -83,6 +83,10 @@ const HOOK_STATUSES = new Set<HookEventStatus>([
   "waiting", "blocked", "need-input", "running", "done", "failed", "info"
 ]);
 const HOOK_SEVERITIES = new Set<HookEventSeverity>(["info", "warning", "error"]);
+const CONVERSATION_ROLES = new Set<ConversationMessageRole>(["user", "assistant", "tool"]);
+const CONVERSATION_CONTENT_TYPES = new Set<ConversationMessageContentType>(["text", "code", "image", "command"]);
+const CONVERSATION_STATUSES = new Set(["streaming", "complete", "failed"]);
+const CORRUPT_TIMESTAMP = "1970-01-01T00:00:00.000Z";
 
 function trimmed(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
@@ -254,6 +258,39 @@ function readStats(metadata: unknown): StructuredPresentationStats {
   return stats;
 }
 
+function validScalarMetadata(value: unknown) {
+  if (value === undefined) return true;
+  const metadata = object(value);
+  return metadata !== null && Object.entries(metadata).every(([key, entry]) => {
+    const canonicalKey = key === "_truncated" || /^[a-z0-9]+$/.test(key);
+    const scalarValue = entry === null || typeof entry === "string" ||
+      typeof entry === "boolean" || (typeof entry === "number" && Number.isFinite(entry));
+    const sensitiveKey = ["token", "secret", "password", "authorization", "cookie"].some(
+      (fragment) => key.includes(fragment)
+    ) || key.endsWith("key");
+    return canonicalKey && scalarValue && (!sensitiveKey || entry === "[redacted]");
+  });
+}
+
+function validNullableStringField(record: Record<string, unknown>, key: string) {
+  return hasOwn(record, key) && (record[key] === null || typeof record[key] === "string");
+}
+
+function validConversation(record: Record<string, unknown>) {
+  return !!trimmed(record.id) && !!trimmed(record.messageId) &&
+    !!trimmed(record.sessionName) &&
+    CONVERSATION_ROLES.has(record.role as ConversationMessageRole) &&
+    CONVERSATION_CONTENT_TYPES.has(record.contentType as ConversationMessageContentType) &&
+    typeof record.content === "string" &&
+    CONVERSATION_STATUSES.has(record.status as string) &&
+    !!trimmed(record.createdAt) && Number.isSafeInteger(record.revision) &&
+    (record.revision as number) >= 1 && !!trimmed(record.updatedAt) &&
+    validNullableStringField(record, "summary") &&
+    validNullableStringField(record, "toolName") &&
+    validNullableStringField(record, "parentMessageId") &&
+    validScalarMetadata(record.metadata);
+}
+
 function conversationFallback(record: Record<string, unknown>) {
   const status = record.status;
   const content = trimmed(record.content);
@@ -295,6 +332,29 @@ function adaptConversation(record: Record<string, unknown>): StructuredPresentat
     parentMessageKey: messageRelationKey(nullable(record.sessionName), nullable(record.parentMessageId)),
     details, actions: [], stats,
     createdAt: String(record.createdAt)
+  };
+}
+
+function corruptConversation(record: Record<string, unknown>): StructuredPresentationItem {
+  return {
+    id: trimmed(record.id) || "corrupt-conversation",
+    kind: "conversation",
+    sessionName: nullable(record.sessionName),
+    title: "损坏的消息",
+    summary: "事件数据损坏",
+    summarySource: "status",
+    status: "failed",
+    severity: "error",
+    attentionRequired: true,
+    role: null,
+    toolName: null,
+    parentId: null,
+    messageKey: null,
+    parentMessageKey: null,
+    details: [],
+    actions: [],
+    stats: {},
+    createdAt: trimmed(record.createdAt) || CORRUPT_TIMESTAMP
   };
 }
 
@@ -378,7 +438,9 @@ function validTypedHook(record: Record<string, unknown>) {
 export function adaptStructuredRecord(record: TimelineEvent | unknown): StructuredPresentationItem | null {
   const value = object(record);
   if (!value) return null;
-  if (value.type === "conversation-message") return adaptConversation(value);
+  if (value.type === "conversation-message") {
+    return validConversation(value) ? adaptConversation(value) : corruptConversation(value);
+  }
   if (value.type !== "hook-event") return null;
   if (Object.prototype.hasOwnProperty.call(value, "schemaVersion")) {
     return validTypedHook(value) ? adaptHook(value, true) : corruptHook(value);
@@ -428,24 +490,27 @@ export function materializeStructuredDetails(item: StructuredPresentationItem, o
 }
 
 export function deriveStructuredPresentation(items: StructuredPresentationItem[]): DerivedStructuredPresentationItem[] {
-  const messageParents = new Map<string, StructuredPresentationItem>();
-  for (const item of items) {
+  const messageParents = new Map<string, number>();
+  items.forEach((item, index) => {
     if (item.kind === "conversation" && item.role !== "tool" && item.messageKey) {
-      messageParents.set(item.messageKey, item);
+      messageParents.set(item.messageKey, index);
     }
-  }
-  const children = new Map<string, StructuredPresentationItem[]>();
-  const childIds = new Set<string>();
-  for (const item of items) {
-    const parent = item.parentMessageKey ? messageParents.get(item.parentMessageKey) : null;
-    if (!parent) continue;
-    const list = children.get(parent.id) ?? [];
+  });
+  const children = new Map<number, StructuredPresentationItem[]>();
+  const childIndices = new Set<number>();
+  items.forEach((item, index) => {
+    const parentIndex = item.parentMessageKey
+      ? messageParents.get(item.parentMessageKey)
+      : undefined;
+    if (parentIndex === undefined) return;
+    const list = children.get(parentIndex) ?? [];
     list.push(item);
-    children.set(parent.id, list);
-    childIds.add(item.id);
-  }
-  return items.filter((item) => !childIds.has(item.id)).map((item) => {
-    const grouped = children.get(item.id) ?? [];
+    children.set(parentIndex, list);
+    childIndices.add(index);
+  });
+  return items.flatMap((item, index) => {
+    if (childIndices.has(index)) return [];
+    const grouped = children.get(index) ?? [];
     return {
       ...item,
       attentionRequired: item.attentionRequired || grouped.some((child) => child.attentionRequired),

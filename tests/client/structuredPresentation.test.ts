@@ -96,6 +96,66 @@ describe("adaptStructuredRecord", () => {
     }
   );
 
+  it.each([
+    ["missing id", { id: undefined }],
+    ["missing message id", { messageId: undefined }],
+    ["invalid session", { sessionName: null }],
+    ["invalid role", { role: "system" }],
+    ["invalid content type", { contentType: "html" }],
+    ["invalid content", { content: 42 }],
+    ["invalid status", { status: "done" }],
+    ["missing created timestamp", { createdAt: undefined }],
+    ["invalid revision", { revision: 1.5 }],
+    ["missing updated timestamp", { updatedAt: undefined }],
+    ["missing summary field", { summary: undefined }],
+    ["missing tool name field", { toolName: undefined }],
+    ["missing parent id field", { parentMessageId: undefined }],
+    ["invalid summary", { summary: 42 }],
+    ["invalid tool name", { toolName: false }],
+    ["invalid parent id", { parentMessageId: 7 }],
+    ["invalid metadata", { metadata: { nested: { secret: true } } }]
+  ])("makes a malformed conversation corrupt and read-only when %s", (_label, overrides) => {
+    expect(adaptStructuredRecord(conversation(overrides))).toMatchObject({
+      kind: "conversation",
+      summary: "事件数据损坏",
+      status: "failed",
+      severity: "error",
+      attentionRequired: true,
+      actions: []
+    });
+  });
+
+  it("uses valid deterministic corrupt conversation identity and timestamp fallbacks", () => {
+    expect(adaptStructuredRecord({
+      type: "conversation-message",
+      messageId: 42,
+      createdAt: null
+    })).toMatchObject({
+      id: "corrupt-conversation",
+      createdAt: "1970-01-01T00:00:00.000Z",
+      status: "failed",
+      actions: []
+    });
+  });
+
+  it("exposes only sanitized canonical conversation metadata details", () => {
+    const item = adaptStructuredRecord(conversation({
+      metadata: { token: "[redacted]", fileschanged: 2, note: "safe" }
+    }))!;
+    const metadata = materializeStructuredDetails(item, { view: "expanded" })
+      .find((block) => block.type === "metadata")?.metadata;
+    expect(metadata).toEqual({ token: "[redacted]", fileschanged: 2, note: "safe" });
+  });
+
+  it("never exposes raw sensitive metadata from an untrusted conversation record", () => {
+    const item = adaptStructuredRecord(conversation({
+      metadata: { token: "raw-token", cookie: "raw-cookie", authorization: "raw-auth" }
+    }))!;
+    expect(item).toMatchObject({ summary: "事件数据损坏", actions: [] });
+    expect(JSON.stringify(materializeStructuredDetails(item, { view: "expanded" })))
+      .not.toMatch(/raw-token|raw-cookie|raw-auth/);
+  });
+
   it("adapts typed hooks and applies the status, severity, approval, danger and stats rules", () => {
     const item = adaptStructuredRecord(typedHook({
       status: "done",
@@ -341,5 +401,43 @@ describe("deriveStructuredPresentation", () => {
       .toEqual(["api-child-record"]);
     expect(result.find((item) => item.id === "web-parent-record")?.children.map((item) => item.id))
       .toEqual(["web-child-record"]);
+  });
+
+  it("uses entry identity when public ids are duplicated", () => {
+    const apiParent = adaptStructuredRecord(conversation({
+      id: "duplicate", sessionName: "api", messageId: "api-parent"
+    }))!;
+    const webParent = adaptStructuredRecord(conversation({
+      id: "duplicate", sessionName: "web", messageId: "web-parent"
+    }))!;
+    const sameSessionParent = adaptStructuredRecord(conversation({
+      id: "duplicate", sessionName: "api", messageId: "api-parent-2"
+    }))!;
+    const apiChild = adaptStructuredRecord(conversation({
+      id: "duplicate-child", sessionName: "api", messageId: "api-child",
+      role: "tool", parentMessageId: "api-parent"
+    }))!;
+    const webChild = adaptStructuredRecord(conversation({
+      id: "duplicate-child", sessionName: "web", messageId: "web-child",
+      role: "tool", parentMessageId: "web-parent"
+    }))!;
+    const apiChild2 = adaptStructuredRecord(conversation({
+      id: "duplicate-child", sessionName: "api", messageId: "api-child-2",
+      role: "tool", parentMessageId: "api-parent-2"
+    }))!;
+    const duplicateIdOrphan = adaptStructuredRecord(conversation({
+      id: "duplicate-child", sessionName: "other", messageId: "orphan",
+      role: "tool", parentMessageId: "missing"
+    }))!;
+
+    const result = deriveStructuredPresentation([
+      apiParent, webParent, sameSessionParent,
+      apiChild, webChild, apiChild2, duplicateIdOrphan
+    ]);
+    expect(result).toHaveLength(4);
+    expect(result[0]?.children).toEqual([apiChild]);
+    expect(result[1]?.children).toEqual([webChild]);
+    expect(result[2]?.children).toEqual([apiChild2]);
+    expect(result[3]).toMatchObject({ sessionName: "other", children: [] });
   });
 });

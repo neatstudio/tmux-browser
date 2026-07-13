@@ -39,4 +39,30 @@ describe("normalizeConversationMessage", () => {
       }).summary
     ).toBeNull();
   });
+
+  it("applies canonical metadata privacy and collision rules", () => {
+    const message = normalizeConversationMessage({
+      sessionName: "build",
+      content: "done",
+      metadata: {
+        "API Token": "raw-token",
+        Cookie: "raw-cookie",
+        Authorization: "raw-auth",
+        "Build-ID": "first",
+        build_id: "second",
+        filesChanged: 2,
+        note: "safe"
+      }
+    });
+
+    expect(message.metadata).toEqual({
+      apitoken: "[redacted]",
+      authorization: "[redacted]",
+      buildid: "first",
+      cookie: "[redacted]",
+      fileschanged: 2,
+      note: "safe"
+    });
+    expect(JSON.stringify(message)).not.toMatch(/raw-token|raw-cookie|raw-auth|second/);
+  });
 });

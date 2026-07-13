@@ -5,13 +5,11 @@ import type {
   ConversationMessageTimelineEventDraft
 } from "../../../shared/timeline.js";
 import { validateSessionName } from "../tmux/createTmuxService.js";
+import { normalizeEventMetadata } from "./normalizeEventMetadata.js";
 
 const CONVERSATION_CONTENT_LIMIT = 20_000;
 const CONVERSATION_ID_LIMIT = 160;
 const CONVERSATION_TOOL_LIMIT = 120;
-const METADATA_ENTRY_LIMIT = 24;
-const METADATA_KEY_LIMIT = 80;
-const METADATA_STRING_LIMIT = 4_000;
 export const CONVERSATION_SUMMARY_LIMIT = 320;
 
 const ROLES = new Set<ConversationMessageRole>(["user", "assistant", "tool"]);
@@ -36,27 +34,6 @@ function trimmedString(value: unknown, maxLength: number, fallback = "") {
 
 function nullableString(value: unknown, maxLength: number) {
   return trimmedString(value, maxLength) || null;
-}
-
-function normalizeMetadata(value: unknown) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return undefined;
-  }
-  const metadata: Record<string, string | number | boolean | null> = {};
-  for (const [key, entry] of Object.entries(value).slice(0, METADATA_ENTRY_LIMIT)) {
-    const normalizedKey = key.trim().slice(0, METADATA_KEY_LIMIT);
-    if (!normalizedKey) continue;
-    if (
-      typeof entry === "string" ||
-      typeof entry === "number" ||
-      typeof entry === "boolean" ||
-      entry === null
-    ) {
-      metadata[normalizedKey] =
-        typeof entry === "string" ? entry.slice(0, METADATA_STRING_LIMIT) : entry;
-    }
-  }
-  return Object.keys(metadata).length ? metadata : undefined;
 }
 
 function createMessageId() {
@@ -110,7 +87,7 @@ export function normalizeConversationMessage(body: unknown): ConversationMessage
       : "complete",
     toolName: nullableString(payload.toolName, CONVERSATION_TOOL_LIMIT),
     parentMessageId: nullableString(payload.parentMessageId, CONVERSATION_ID_LIMIT),
-    metadata: normalizeMetadata(payload.metadata),
+    metadata: normalizeEventMetadata(payload.metadata),
     revision: typeof payload.revision === "number" ? payload.revision : undefined
   };
 }
