@@ -108,6 +108,8 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
   let kanbanTimer: ReturnType<typeof setInterval> | null = null;
   let timelineMergeSequence = 0;
   const timelineMergeSequenceById = new Map<string, number>();
+  let timelineRefreshGeneration = 0;
+  const activeTimelineRefreshBaselines = new Map<number, number>();
 
   function pruneTimelineMergeSequences(timelineEvents: TimelineEvent[]) {
     const retainedIds = new Set(timelineEvents.map((event) => event.id));
@@ -222,9 +224,22 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
       return;
     }
 
+    const refreshGeneration = (timelineRefreshGeneration += 1);
+    const mergeSequenceAtRequest = Math.min(
+      timelineMergeSequence,
+      ...activeTimelineRefreshBaselines.values()
+    );
+    activeTimelineRefreshBaselines.set(
+      refreshGeneration,
+      mergeSequenceAtRequest
+    );
+
     try {
-      const mergeSequenceAtRequest = timelineMergeSequence;
       const timelineEvents = await deps.api.listTimelineEvents(TIMELINE_LIMIT);
+      if (refreshGeneration !== timelineRefreshGeneration) {
+        return;
+      }
+
       const eventsReceivedDuringRefresh = (state.timelineEvents ?? []).filter(
         (event) =>
           (timelineMergeSequenceById.get(event.id) ?? 0) > mergeSequenceAtRequest
@@ -264,11 +279,17 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
         error: null
       });
     } catch (error) {
+      if (refreshGeneration !== timelineRefreshGeneration) {
+        return;
+      }
+
       commit({
         ...state,
         loading: false,
         error: error instanceof Error ? error.message : "Failed to refresh timeline"
       });
+    } finally {
+      activeTimelineRefreshBaselines.delete(refreshGeneration);
     }
   }
 

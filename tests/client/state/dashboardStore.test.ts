@@ -223,6 +223,99 @@ describe("createDashboardStore", () => {
     }
   );
 
+  it.each(["newer-first", "older-first"] as const)(
+    "lets only the latest-started overlapping refresh commit when resolving $0",
+    async (resolutionOrder) => {
+      type ConversationEvent = {
+        id: string;
+        type: "conversation-message";
+        messageId: string;
+        sessionName: string;
+        role: "assistant";
+        contentType: "text";
+        content: string;
+        summary: string;
+        status: "complete";
+        createdAt: string;
+        revision: number;
+        updatedAt: string;
+        toolName: null;
+        parentMessageId: null;
+      };
+      let resolveA!: (events: ConversationEvent[]) => void;
+      let resolveB!: (events: ConversationEvent[]) => void;
+      const responseA = new Promise<ConversationEvent[]>((resolve) => {
+        resolveA = resolve;
+      });
+      const responseB = new Promise<ConversationEvent[]>((resolve) => {
+        resolveB = resolve;
+      });
+      const listTimelineEvents = vi.fn()
+        .mockReturnValueOnce(responseA)
+        .mockReturnValueOnce(responseB);
+      const store = createDashboardStore({
+        api: {
+          getServerStatus: vi.fn(),
+          listSessions: vi.fn(),
+          listPaneSessions: vi.fn(),
+          listDashboardSessions: vi.fn(),
+          listTimelineEvents
+        },
+        pollMs: 3000
+      });
+      const conversation = (revision: number): ConversationEvent => ({
+        id: "message-1",
+        type: "conversation-message",
+        messageId: "message-1",
+        sessionName: "build",
+        role: "assistant",
+        contentType: "text",
+        content: `snapshot-${revision}`,
+        summary: `snapshot-${revision}`,
+        status: "complete",
+        createdAt: "2026-07-14T01:00:00.000Z",
+        revision,
+        updatedAt: `2026-07-14T01:00:0${revision}.000Z`,
+        toolName: null,
+        parentMessageId: null
+      });
+
+      const refreshA = store.refreshTimeline();
+      store.mergeTimelineEvent({
+        id: "realtime-between",
+        type: "command-sent",
+        sessionName: "build",
+        message: "received between refresh starts",
+        createdAt: "2026-07-14T02:00:00.000Z"
+      });
+      const refreshB = store.refreshTimeline();
+
+      if (resolutionOrder === "newer-first") {
+        resolveB([conversation(3)]);
+        await refreshB;
+        resolveA([conversation(2)]);
+        await refreshA;
+      } else {
+        resolveA([conversation(2)]);
+        await refreshA;
+        expect(store.getState().timelineEvents?.map((event) => event.id)).toEqual([
+          "realtime-between"
+        ]);
+        resolveB([conversation(3)]);
+        await refreshB;
+      }
+
+      expect(store.getState().timelineEvents?.map((event) => event.id)).toEqual([
+        "realtime-between",
+        "message-1"
+      ]);
+      expect(store.getState().timelineEvents?.[1]).toMatchObject({
+        revision: 3,
+        content: "snapshot-3"
+      });
+    }
+  );
+
   it("sorts equal timestamps by natural numeric id and keeps updates stable", () => {
     const store = createDashboardStore({
       api: {
