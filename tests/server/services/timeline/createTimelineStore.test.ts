@@ -32,6 +32,7 @@ const message = (
 function expectConflict(
   operation: () => unknown,
   code:
+    | "invalid_revision"
     | "revision_required"
     | "stale_revision"
     | "revision_gap"
@@ -48,6 +49,33 @@ function expectConflict(
 }
 
 describe("createTimelineStore", () => {
+  it("keeps addEvent append-only for repeated legacy conversation drafts", () => {
+    const store = createTimelineStore();
+
+    const first = store.addEvent(message());
+    const second = store.addEvent(message({ content: "later snapshot" }));
+
+    expect(second.id).not.toBe(first.id);
+    expect(store.listEvents()).toEqual([second, first]);
+  });
+
+  it("does not lose upsert identity when an appended event trims canonical history", () => {
+    const store = createTimelineStore({ maxEvents: 1 });
+    const created = store.upsertConversationMessage(message());
+    store.addEvent(message({ content: "legacy append" }));
+
+    const updated = store.upsertConversationMessage(
+      message({ revision: 2, content: "canonical update" })
+    );
+
+    expect(updated).toMatchObject({
+      id: created.id,
+      revision: 2,
+      content: "canonical update"
+    });
+    expect(store.listEvents()).toEqual([updated]);
+  });
+
   it("creates a canonical conversation record at revision one", () => {
     const store = createTimelineStore();
 
@@ -95,6 +123,31 @@ describe("createTimelineStore", () => {
       "revision_required"
     );
   });
+
+  it.each([2, Number.NaN, 1.5, Number.POSITIVE_INFINITY])(
+    "rejects invalid initial revision %s",
+    (revision) => {
+      const store = createTimelineStore();
+
+      expectConflict(
+        () => store.upsertConversationMessage(message({ revision })),
+        "invalid_revision"
+      );
+    }
+  );
+
+  it.each([Number.NaN, 1.5, Number.POSITIVE_INFINITY])(
+    "rejects invalid update revision %s",
+    (revision) => {
+      const store = createTimelineStore();
+      store.upsertConversationMessage(message());
+
+      expectConflict(
+        () => store.upsertConversationMessage(message({ revision })),
+        "invalid_revision"
+      );
+    }
+  );
 
   it("rejects stale revisions and revision gaps", () => {
     const store = createTimelineStore();

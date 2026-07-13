@@ -1,7 +1,8 @@
 import type {
+  AppendOnlyTimelineEvent,
   ConversationMessageTimelineEvent,
   ConversationMessageUpsertDraft,
-  TimelineEvent,
+  StoredTimelineEvent,
   TimelineEventDraft
 } from "../../../shared/timeline.js";
 
@@ -24,11 +25,11 @@ export class TimelineStoreConflictError extends Error {
 }
 
 export type TimelineStore = {
-  addEvent: (event: TimelineEventDraft) => TimelineEvent;
+  addEvent: (event: TimelineEventDraft) => AppendOnlyTimelineEvent;
   upsertConversationMessage: (
     event: ConversationMessageUpsertDraft
   ) => ConversationMessageTimelineEvent;
-  listEvents: (options?: { limit?: number }) => TimelineEvent[];
+  listEvents: (options?: { limit?: number }) => StoredTimelineEvent[];
 };
 
 const DEFAULT_MAX_EVENTS = 200;
@@ -92,18 +93,19 @@ function semanticPayload(
   );
 }
 
+function isValidRevision(revision: number) {
+  return Number.isFinite(revision) && Number.isInteger(revision);
+}
+
 export function createTimelineStore(options: { maxEvents?: number } = {}): TimelineStore {
   const maxEvents = options.maxEvents ?? DEFAULT_MAX_EVENTS;
-  const events: TimelineEvent[] = [];
+  const events: StoredTimelineEvent[] = [];
   const conversations = new Map<string, ConversationMessageTimelineEvent>();
   let nextId = 1;
 
   function trimEvents() {
     while (events.length > maxEvents) {
-      const removed = events.pop();
-      if (removed?.type === "conversation-message") {
-        conversations.delete(conversationKey(removed));
-      }
+      events.pop();
     }
   }
 
@@ -114,7 +116,10 @@ export function createTimelineStore(options: { maxEvents?: number } = {}): Timel
     const current = conversations.get(key);
 
     if (!current) {
-      if (event.revision !== undefined && event.revision !== 1) {
+      if (
+        event.revision !== undefined &&
+        (!isValidRevision(event.revision) || event.revision !== 1)
+      ) {
         throw new TimelineStoreConflictError(
           "invalid_revision",
           "A new conversation message must start at revision 1"
@@ -140,6 +145,13 @@ export function createTimelineStore(options: { maxEvents?: number } = {}): Timel
       throw new TimelineStoreConflictError(
         "revision_required",
         "An update revision is required"
+      );
+    }
+
+    if (!isValidRevision(event.revision)) {
+      throw new TimelineStoreConflictError(
+        "invalid_revision",
+        "The conversation message revision must be a finite integer"
       );
     }
 
@@ -192,6 +204,9 @@ export function createTimelineStore(options: { maxEvents?: number } = {}): Timel
     const index = events.indexOf(current);
     if (index >= 0) {
       events[index] = updated;
+    } else {
+      events.unshift(updated);
+      trimEvents();
     }
     conversations.set(key, updated);
     return updated;
@@ -199,14 +214,11 @@ export function createTimelineStore(options: { maxEvents?: number } = {}): Timel
 
   return {
     addEvent(event) {
-      if (event.type === "conversation-message") {
-        return upsertConversationMessage(event);
-      }
-      const recordedEvent: TimelineEvent = {
+      const recordedEvent: AppendOnlyTimelineEvent = {
         ...event,
         id: String(nextId),
         createdAt: new Date().toISOString()
-      };
+      } as AppendOnlyTimelineEvent;
       nextId += 1;
       events.unshift(recordedEvent);
       trimEvents();
