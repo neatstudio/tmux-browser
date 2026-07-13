@@ -143,7 +143,9 @@ describe("sessionRoutes", () => {
         splitPane: vi.fn(),
         selectPane: vi.fn(),
         killPane: vi.fn(),
-        getSessionStatus: vi.fn()
+        getSessionStatus: vi.fn().mockResolvedValue({
+          name: "build", paneDead: false, inputPrompt: { snippet: "Continue?", actions: [] }
+        })
       })
     );
 
@@ -154,6 +156,55 @@ describe("sessionRoutes", () => {
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ ok: true });
     expect(sendInput).toHaveBeenCalledWith("build", "\u001b");
+  });
+
+  it("returns a stable 404 code when the input target no longer exists", async () => {
+    const app = express();
+    const sendInput = vi.fn();
+    app.use(express.json());
+    app.use("/api/sessions", createSessionRoutes({
+      listSessions: vi.fn(), createSession: vi.fn(), renameSession: vi.fn(),
+      killSession: vi.fn(), sendCommand: vi.fn(), sendInput, splitPane: vi.fn(),
+      selectPane: vi.fn(), killPane: vi.fn(),
+      getSessionStatus: vi.fn().mockRejectedValue(new Error("Tmux session not found"))
+    }));
+    const response = await request(app).post("/api/sessions/gone/input").send({ input: "y" });
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({ code: "target_session_not_found" });
+    expect(sendInput).not.toHaveBeenCalled();
+  });
+
+  it("returns a stable 409 code when the target is not waiting for input", async () => {
+    const app = express();
+    const sendInput = vi.fn();
+    app.use(express.json());
+    app.use("/api/sessions", createSessionRoutes({
+      listSessions: vi.fn(), createSession: vi.fn(), renameSession: vi.fn(),
+      killSession: vi.fn(), sendCommand: vi.fn(), sendInput, splitPane: vi.fn(),
+      selectPane: vi.fn(), killPane: vi.fn(),
+      getSessionStatus: vi.fn().mockResolvedValue({ name: "busy", paneDead: false, inputPrompt: null })
+    }));
+    const response = await request(app).post("/api/sessions/busy/input").send({ input: "y" });
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({ code: "target_session_unavailable" });
+    expect(sendInput).not.toHaveBeenCalled();
+  });
+
+  it("returns the stable 404 when the target disappears during send", async () => {
+    const app = express();
+    app.use(express.json());
+    app.use("/api/sessions", createSessionRoutes({
+      listSessions: vi.fn(), createSession: vi.fn(), renameSession: vi.fn(),
+      killSession: vi.fn(), sendCommand: vi.fn(),
+      sendInput: vi.fn().mockRejectedValue(new Error("can't find session: vanished")),
+      splitPane: vi.fn(), selectPane: vi.fn(), killPane: vi.fn(),
+      getSessionStatus: vi.fn().mockResolvedValue({
+        name: "vanished", paneDead: false, inputPrompt: { snippet: "Continue?", actions: [] }
+      })
+    }));
+    const response = await request(app).post("/api/sessions/vanished/input").send({ input: "y" });
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({ code: "target_session_not_found" });
   });
 
   it("splits a target session pane", async () => {

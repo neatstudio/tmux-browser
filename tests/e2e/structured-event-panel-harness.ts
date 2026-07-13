@@ -1,12 +1,15 @@
 import "../../src/client/styles.css";
 import { renderActionCenterPanel } from "../../src/client/render/actionCenter";
+import { renderHookEventToast } from "../../src/client/render/hookEventToast";
 import { adaptStructuredRecord } from "../../src/client/structuredPresentation";
+import { applyStructuredActionAvailability } from "../../src/client/structuredActionRunner";
 import { createUnifiedPanelState } from "../../src/client/events/appEventRefreshScheduler";
 import fixture from "./structured-event-panel-fixture.json";
 
 const root = document.querySelector<HTMLElement>("#panel-root")!;
 const state = createUnifiedPanelState();
 let open = false;
+let toastDismissed = false;
 const records = new URLSearchParams(window.location.search).has("benchmark")
   ? ((await fetch("/api/timeline?limit=1000").then((response) => response.json())) as { events: unknown[] }).events
   : fixture;
@@ -17,9 +20,10 @@ const hydratedRecords = records.map((record) => {
     ? { ...value, content: `npm test\n${"x".repeat(2048)}` }
     : value;
 });
-const structuredItems = hydratedRecords
-  .map((record) => adaptStructuredRecord(record))
-  .filter((item) => item !== null);
+const structuredItems = applyStructuredActionAvailability(
+  hydratedRecords.map((record) => adaptStructuredRecord(record)).filter((item) => item !== null),
+  []
+);
 
 function render() {
   renderActionCenterPanel(root, {
@@ -43,6 +47,22 @@ function render() {
     onSendPrompt: () => {},
     onRunHookAction: () => {}
   });
+  renderHookEventToast(
+    root,
+    toastDismissed ? [] : structuredItems.filter((item) => item.kind === "hook"),
+    {
+      onDismiss: () => { toastDismissed = true; render(); },
+      onOpenSession: () => {},
+      onOpenActions: (id) => {
+        toastDismissed = true;
+        open = true;
+        state.openAttention(id);
+        render();
+      },
+      onSendEnter: () => {},
+      onRunAction: () => {}
+    }
+  );
 }
 
 document.querySelector("#open-panel")?.addEventListener("click", () => {
@@ -50,3 +70,5 @@ document.querySelector("#open-panel")?.addEventListener("click", () => {
   state.openActivity();
   render();
 });
+
+render();

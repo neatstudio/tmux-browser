@@ -46,6 +46,21 @@ test("switches tabs and lazily reveals structured details", async ({ page }, tes
   await attachScreenshot(page, testInfo, "structured-event-panel-attention");
 });
 
+test("routes an Attention toast to the selected event and keeps a dead target disabled", async ({ page }, testInfo) => {
+  const toast = page.getByRole("dialog", { name: "Agent action needed" });
+  await expect(toast).toBeVisible();
+  await expect(toast.getByText("Review the command before it runs")).toBeVisible();
+  await expect(toast.getByRole("button", { name: "Approve" })).toBeDisabled();
+  await toast.getByRole("button", { name: "View details" }).click();
+
+  const panel = page.getByRole("dialog", { name: "Action Center" });
+  await expect(panel.getByRole("tab", { name: /Attention/ })).toHaveAttribute("aria-selected", "true");
+  const selected = panel.locator("[data-event-id='attention-1']");
+  await expect(selected).toHaveClass(/is-selected/);
+  await expect(selected.getByRole("button", { name: "Approve" })).toBeDisabled();
+  await attachScreenshot(page, testInfo, "structured-event-toast-attention-dead-target");
+});
+
 test("supports wrapped arrow and Home/End tab keyboard navigation", async ({ page }) => {
   await page.getByRole("button", { name: "Actions" }).click();
   const activity = page.getByRole("tab", { name: /Activity/ });

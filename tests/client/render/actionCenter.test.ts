@@ -205,6 +205,30 @@ describe("renderActionCenterPanel", () => {
     outside.remove();
   });
 
+  it("keeps unavailable actions disabled and styles danger actions explicitly", () => {
+    const root = document.createElement("div");
+    renderActionCenterPanel(root, {
+      open: true, items: [], activeTab: "attention", expandedIds: new Set(),
+      selectedEventId: null, loading: false, error: null,
+      structuredItems: [structuredItem({ kind: "hook", attentionRequired: true, actions: [
+        { id: "approve", label: "Approve", input: "y", open: false, target: null,
+          effectiveTarget: { sessionName: "gone", projectName: null, view: "terminal" },
+          style: "primary", enabled: false, disabledReason: "目标会话不可用" },
+        { id: "deny", label: "Deny", input: "n", open: false, target: null,
+          effectiveTarget: { sessionName: "live", projectName: null, view: "terminal" },
+          style: "danger", enabled: true, disabledReason: null }
+      ] })],
+      onTabChange: vi.fn(), onToggleExpanded: vi.fn(), onClose: vi.fn(),
+      onOpenSession: vi.fn(), onDismissPrompt: vi.fn(), onSendPrompt: vi.fn(), onRunHookAction: vi.fn()
+    });
+    const approve = root.querySelector<HTMLButtonElement>("[data-focus-key$='action:approve']")!;
+    const deny = root.querySelector<HTMLButtonElement>("[data-focus-key$='action:deny']")!;
+    expect(approve.disabled).toBe(true);
+    expect(approve.title).toBe("目标会话不可用");
+    expect(deny.dataset.hookActionStyle).toBe("danger");
+    expect(deny.classList.contains("is-danger")).toBe(true);
+  });
+
   it("shows only attention structured rows plus prompts and dead panes on Attention", () => {
     const root = document.createElement("div");
     renderActionCenterPanel(root, {

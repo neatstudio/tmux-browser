@@ -139,7 +139,30 @@ export function createSessionRoutes(
 
   router.post("/:name/input", async (req, res, next) => {
     try {
-      await deps.sendInput(req.params.name, req.body.input);
+      let status;
+      try {
+        status = await deps.getSessionStatus(req.params.name);
+      } catch {
+        res.status(404).json({ code: "target_session_not_found" });
+        return;
+      }
+      if (status.paneDead) {
+        res.status(404).json({ code: "target_session_not_found" });
+        return;
+      }
+      if (!status.inputPrompt) {
+        res.status(409).json({ code: "target_session_unavailable" });
+        return;
+      }
+      try {
+        await deps.sendInput(req.params.name, req.body.input);
+      } catch (error) {
+        if (error instanceof Error && /can't find session|session not found|no server running/i.test(error.message)) {
+          res.status(404).json({ code: "target_session_not_found" });
+          return;
+        }
+        throw error;
+      }
       deps.timeline?.addEvent({
         type: "command-sent",
         sessionName: req.params.name,

@@ -159,6 +159,8 @@ function renderStructuredEventItem(
       button.type = "button";
       setFocusKey(button, `event:${item.id}:action:${action.id}`);
       button.dataset.action = "run-hook-action";
+      button.dataset.hookActionStyle = action.style;
+      button.classList.toggle("is-danger", action.style === "danger");
       button.disabled = !action.enabled;
       button.textContent = action.label;
       if (action.disabledReason) button.title = action.disabledReason;

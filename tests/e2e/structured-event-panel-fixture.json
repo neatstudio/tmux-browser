@@ -31,7 +31,16 @@
     "taskId": "task-1",
     "severity": "warning",
     "target": { "sessionName": "codex", "projectName": null, "view": "terminal" },
-    "actions": [],
+    "actions": [
+      {
+        "id": "approve",
+        "label": "Approve",
+        "input": "y\r",
+        "open": true,
+        "target": { "sessionName": "deleted-session", "projectName": null, "view": "terminal" },
+        "style": "primary"
+      }
+    ],
     "content": [
       { "type": "summary", "text": "Review the command before it runs" },
       { "type": "details", "title": "Command", "text": "rm temporary-output.txt", "collapsed": true }

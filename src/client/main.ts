@@ -2,7 +2,10 @@ import { createSessionApi } from "./api/sessionApi";
 import { deriveActionCenterItems } from "./actionCenter";
 import type { ActionCenterHookEventItem } from "./actionCenter";
 import { renderActionCenterPanel } from "./render/actionCenter";
-import { renderHookEventToast } from "./render/hookEventToast";
+import {
+  renderHookEventToast,
+  selectStructuredEventToasts
+} from "./render/hookEventToast";
 import { renderInputPromptToast } from "./render/inputPromptToast";
 import { renderDashboard } from "./render/renderDashboard";
 import {
@@ -62,6 +65,10 @@ import {
 } from "./imageUpload";
 import { getResponsiveUiTier } from "./responsiveUiTier";
 import { adaptStructuredRecord } from "./structuredPresentation";
+import {
+  applyStructuredActionAvailability,
+  createStructuredActionRunner
+} from "./structuredActionRunner";
 import {
   buildViewUrl,
   getAppShellClasses,
@@ -294,6 +301,7 @@ const appEventTimelineHandler = createAppEventTimelineHandler({
   onAttentionEvent: (event) => {
     if (shouldOpenActionCenterForHookEvent(event)) {
       dismissedHookEventToastIds.delete(`hook:${event.id}`);
+      newlyArrivedHookEventIds.add(String(event.id));
     }
   }
 });
@@ -320,6 +328,7 @@ const pageActivityController = createPageActivityController({
 let activeImageSessionName: string | null = null;
 let isActionCenterOpen = false;
 const dismissedHookEventToastIds = new Set<string>();
+const newlyArrivedHookEventIds = new Set<string>();
 let imagePreviewScanToken = 0;
 let visibleTerminalPanelId: string | null = null;
 let lastDashboardActive = tabState.getActiveTabId() === null;
@@ -1835,7 +1844,9 @@ function getHookEventToastItem(id: string) {
 }
 
 function dismissHookEventToast(id: string) {
-  dismissedHookEventToastIds.add(id);
+  const eventId = id.replace(/^hook:/, "");
+  dismissedHookEventToastIds.add(`hook:${eventId}`);
+  newlyArrivedHookEventIds.delete(eventId);
   scheduleRender();
 }
 
@@ -1851,8 +1862,10 @@ function openHookEventSession(id: string) {
 }
 
 function openHookEventActions(id: string) {
-  dismissedHookEventToastIds.add(id);
-  unifiedPanelState.openAttention(id.replace(/^hook:/, ""));
+  const eventId = id.replace(/^hook:/, "");
+  dismissedHookEventToastIds.add(`hook:${eventId}`);
+  newlyArrivedHookEventIds.delete(eventId);
+  unifiedPanelState.openAttention(eventId);
   setActionCenterOpen(true);
 }
 
@@ -1925,39 +1938,39 @@ function getHookEventAction(
   return item.actions.find((action) => action.id === actionId) ?? null;
 }
 
+function getStructuredHookItem(id: string) {
+  const eventId = id.replace(/^hook:/, "");
+  const event = store.getState().timelineEvents?.find((candidate) => String(candidate.id) === eventId);
+  const item = event ? adaptStructuredRecord(event) : null;
+  return item?.kind === "hook" ? item : null;
+}
+
+function navigateStructuredTarget(target: HookEventTarget) {
+  if (target.view === "kanban") {
+    openKanbanView(target.projectName ?? undefined);
+    return;
+  }
+  if (target.sessionName) {
+    getOrOpenTab(target.sessionName);
+    scheduleRender();
+  }
+}
+
+const structuredActionRunner = createStructuredActionRunner({
+  getSessions: () => store.getState().sessions,
+  sendInput: (sessionName, input) => api.sendInput(sessionName, input),
+  navigate: navigateStructuredTarget,
+  refreshSessions: () => refreshCurrentViewState({ includeTimeline: false })
+});
+
 async function runHookEventAction(id: string, actionId: string) {
-  const item = getHookEventToastItem(id);
-
-  if (!item) {
-    return;
-  }
-
-  const action = getHookEventAction(item, actionId);
-
-  if (!action) {
-    return;
-  }
-
-  if (action.open) {
-    openHookEventTarget(item, action.target ?? item.target);
-  }
-
-  if (!action.input) {
+  const item = getStructuredHookItem(id);
+  if (!item) return;
+  const result = await structuredActionRunner.run(item, actionId);
+  if (result.ok) {
     dismissHookEventToast(id);
-    return;
-  }
-
-  const sessionName = getHookEventTargetSession(item, action.target);
-
-  if (!sessionName) {
-    return;
-  }
-
-  try {
-    await api.sendInput(sessionName, action.input);
-    dismissHookEventToast(id);
-  } catch (error) {
-    console.warn("Failed to run hook event action", error);
+  } else if (result.error) {
+    console.warn("Failed to run hook event action", result.error);
   }
 }
 
@@ -2103,12 +2116,16 @@ function render() {
     sessions: store.getState().sessions,
     timelineEvents: store.getState().timelineEvents
   });
-  const structuredItems = (store.getState().timelineEvents ?? [])
-    .map((event) => adaptStructuredRecord(event))
-    .filter((item) => item !== null);
-  const hookEventToastItems = actionCenterItems.filter(
-    (item): item is ActionCenterHookEventItem =>
-      item.type === "hook-event" && !dismissedHookEventToastIds.has(item.id)
+  const structuredItems = applyStructuredActionAvailability(
+    (store.getState().timelineEvents ?? [])
+      .map((event) => adaptStructuredRecord(event))
+      .filter((item) => item !== null),
+    store.getState().sessions
+  );
+  const hookEventToastItems = selectStructuredEventToasts(
+    structuredItems,
+    newlyArrivedHookEventIds,
+    new Set([...dismissedHookEventToastIds].map((id) => id.replace(/^hook:/, "")))
   );
   currentActionCount = actionCenterItems.length;
   const appShell = appRoot.querySelector(".app-shell");

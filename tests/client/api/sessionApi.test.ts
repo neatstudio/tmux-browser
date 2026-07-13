@@ -501,6 +501,19 @@ describe("createSessionApi", () => {
     });
   });
 
+  it("preserves structured input failure status and code", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: vi.fn().mockResolvedValue({ code: "target_session_unavailable" })
+    }));
+    const api = createSessionApi();
+    await expect(api.sendInput("busy", "y")).rejects.toMatchObject({
+      status: 409,
+      code: "target_session_unavailable"
+    });
+  });
+
   it("splits a tmux session pane", async () => {
     const fetch = vi.fn().mockResolvedValue({
       ok: true

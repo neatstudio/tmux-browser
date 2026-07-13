@@ -126,6 +126,13 @@ export type SessionApi = {
   killPane: (name: string, paneId: string) => Promise<void>;
 };
 
+export class SessionApiError extends Error {
+  constructor(message: string, public readonly status: number, public readonly code: string | null) {
+    super(message);
+    this.name = "SessionApiError";
+  }
+}
+
 export function createSessionApi(baseUrl = ""): SessionApi {
   return {
     async listSessions() {
@@ -452,7 +459,14 @@ export function createSessionApi(baseUrl = ""): SessionApi {
       );
 
       if (!response.ok) {
-        throw new Error("Failed to send tmux input");
+        let code: string | null = null;
+        try {
+          const payload = await response.json() as { code?: unknown };
+          code = typeof payload.code === "string" ? payload.code : null;
+        } catch {
+          // Preserve the HTTP status even when an intermediary returns a non-JSON body.
+        }
+        throw new SessionApiError("Failed to send tmux input", response.status, code);
       }
     },
     async splitPane(name: string, direction: SplitPaneDirection) {
