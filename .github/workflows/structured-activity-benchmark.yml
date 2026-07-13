@@ -1,0 +1,24 @@
+name: Structured activity benchmark
+
+on:
+  pull_request:
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Benchmark baseline and candidate on one runner
+        shell: bash
+        run: |
+          BASELINE_SHA="$(jq -r .targetCommit performance/structured-activity-baseline.json)"
+          npm run benchmark:activity -- --mode baseline --target-commit "$BASELINE_SHA" --output /tmp/baseline.json
+          npm run benchmark:activity -- --mode compare --target-commit "$GITHUB_SHA" --baseline /tmp/baseline.json --output /tmp/candidate.json
