@@ -1960,7 +1960,8 @@ const structuredActionRunner = createStructuredActionRunner({
   getSessions: () => store.getState().sessions,
   sendInput: (sessionName, input, options) => api.sendInput(sessionName, input, options),
   navigate: navigateStructuredTarget,
-  refreshSessions: () => refreshCurrentViewState({ includeTimeline: false })
+  refreshSessions: () => refreshCurrentViewState({ includeTimeline: false }),
+  onStateChange: () => scheduleRender()
 });
 
 async function runHookEventAction(id: string, actionId: string) {
@@ -2116,12 +2117,12 @@ function render() {
     sessions: store.getState().sessions,
     timelineEvents: store.getState().timelineEvents
   });
-  const structuredItems = applyStructuredActionAvailability(
+  const structuredItems = structuredActionRunner.applyState(applyStructuredActionAvailability(
     (store.getState().timelineEvents ?? [])
       .map((event) => adaptStructuredRecord(event))
       .filter((item) => item !== null),
     store.getState().sessions
-  );
+  ));
   const hookEventToastItems = selectStructuredEventToasts(
     structuredItems,
     newlyArrivedHookEventIds,

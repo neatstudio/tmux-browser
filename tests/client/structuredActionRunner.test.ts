@@ -81,6 +81,50 @@ describe("structuredActionRunner", () => {
     expect(sendInput).toHaveBeenCalledWith("action-target", "y\r", { requirePrompt: true });
   });
 
+  it("suppresses duplicate clicks while an event action is pending", async () => {
+    let resolveSend!: () => void;
+    const sendInput = vi.fn(() => new Promise<void>((resolve) => { resolveSend = resolve; }));
+    const onStateChange = vi.fn();
+    const runner = createStructuredActionRunner({
+      getSessions: () => [session("action-target")], sendInput,
+      navigate: vi.fn(), refreshSessions: vi.fn(), onStateChange
+    });
+    const first = runner.run(item(), "approve");
+    expect(runner.getActionState("event-1", "approve")).toMatchObject({ pending: true, error: null });
+    await expect(runner.run(item(), "approve")).resolves.toEqual({ ok: false, pending: true });
+    expect(sendInput).toHaveBeenCalledOnce();
+    resolveSend();
+    await expect(first).resolves.toEqual({ ok: true });
+    expect(runner.getActionState("event-1", "approve")).toEqual({ pending: false, error: null });
+  });
+
+  it("retains an accessible failure message for coded and network failures", async () => {
+    const coded = Object.assign(new Error("unavailable"), { status: 409, code: "target_session_unavailable" });
+    const sendInput = vi.fn().mockRejectedValueOnce(coded).mockRejectedValueOnce(new Error("offline"));
+    const runner = createStructuredActionRunner({
+      getSessions: () => [session("action-target")], sendInput,
+      navigate: vi.fn(), refreshSessions: vi.fn(), onStateChange: vi.fn()
+    });
+    await runner.run(item(), "approve");
+    expect(runner.getActionState("event-1", "approve").error).toContain("目标会话不可用");
+    await runner.run(item({ id: "event-2" }), "approve");
+    expect(runner.getActionState("event-2", "approve").error).toContain("操作失败");
+  });
+
+  it("caps concurrent tracked actions without admitting an unbounded pending map", async () => {
+    const sendInput = vi.fn(() => new Promise<void>(() => {}));
+    const runner = createStructuredActionRunner({
+      getSessions: () => [session("action-target")], sendInput,
+      navigate: vi.fn(), refreshSessions: vi.fn()
+    });
+    for (let index = 0; index < 200; index += 1) {
+      void runner.run(item({ id: `event-${index}` }), "approve");
+    }
+    await expect(runner.run(item({ id: "event-over-limit" }), "approve"))
+      .resolves.toEqual({ ok: false, busy: true });
+    expect(sendInput).toHaveBeenCalledTimes(200);
+  });
+
   it("retains the event, refreshes sessions, and never navigates after a coded target failure", async () => {
     const refreshSessions = vi.fn().mockResolvedValue(undefined);
     const navigate = vi.fn();

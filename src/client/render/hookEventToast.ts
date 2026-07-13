@@ -8,6 +8,8 @@ export type HookEventToastActions = {
   onRunAction: (id: string, actionId: string) => void;
 };
 
+const rememberedToastFocus = new WeakMap<HTMLElement, string>();
+
 export function selectStructuredEventToasts(
   items: StructuredPresentationItem[],
   newlyArrivedIds: ReadonlySet<string>,
@@ -24,7 +26,15 @@ export function renderHookEventToast(
   events: StructuredPresentationItem[],
   handlers: HookEventToastActions
 ) {
-  root.querySelector(".hook-event-toast")?.remove();
+  const existingToast = root.querySelector<HTMLElement>(".hook-event-toast");
+  const activeElement = document.activeElement;
+  const focusKey = existingToast && activeElement instanceof HTMLElement && existingToast.contains(activeElement)
+    ? activeElement.dataset.focusKey ?? null : null;
+  if (focusKey) rememberedToastFocus.set(root, focusKey);
+  else if (activeElement instanceof HTMLElement && activeElement !== document.body && !existingToast?.contains(activeElement)) {
+    rememberedToastFocus.delete(root);
+  }
+  existingToast?.remove();
 
   const event = events.find((candidate) => candidate.attentionRequired);
 
@@ -61,6 +71,7 @@ export function renderHookEventToast(
   closeButton.type = "button";
   closeButton.className = "hook-event-toast-close";
   closeButton.dataset.action = "hook-toast-close";
+  closeButton.dataset.focusKey = `toast:${event.id}:close`;
   closeButton.textContent = "×";
   closeButton.setAttribute("aria-label", "Dismiss hook event");
   closeButton.addEventListener("click", () => handlers.onDismiss(event.id));
@@ -89,25 +100,41 @@ export function renderHookEventToast(
       actionButton.type = "button";
       actionButton.dataset.action = "hook-toast-run-action";
       actionButton.dataset.hookActionId = hookAction.id;
+      actionButton.dataset.focusKey = `toast:${event.id}:action:${hookAction.id}`;
       actionButton.dataset.hookActionStyle = hookAction.style;
       actionButton.classList.toggle("is-danger", hookAction.style === "danger");
-      actionButton.disabled = !hookAction.enabled;
+      actionButton.disabled = !hookAction.enabled || hookAction.pending === true;
+      actionButton.setAttribute("aria-busy", String(hookAction.pending === true));
       if (hookAction.disabledReason) actionButton.title = hookAction.disabledReason;
       actionButton.textContent = hookAction.label;
       actionButton.addEventListener("click", () =>
         handlers.onRunAction(event.id, hookAction.id)
       );
       actions.append(actionButton);
+      if (hookAction.error) {
+        const error = document.createElement("p");
+        error.className = "structured-action-error";
+        error.setAttribute("role", "alert");
+        error.textContent = hookAction.error;
+        actions.append(error);
+      }
     });
   }
 
   const actionsButton = document.createElement("button");
   actionsButton.type = "button";
   actionsButton.dataset.action = "hook-toast-actions";
+  actionsButton.dataset.focusKey = `toast:${event.id}:details`;
   actionsButton.textContent = "View details";
   actionsButton.addEventListener("click", () => handlers.onOpenActions(event.id));
 
   actions.append(actionsButton);
   toast.append(actions);
   root.append(toast);
+  const restoreFocusKey = focusKey ?? rememberedToastFocus.get(root) ?? null;
+  if (restoreFocusKey) {
+    [...toast.querySelectorAll<HTMLElement>("[data-focus-key]")]
+      .find((element) => element.dataset.focusKey === restoreFocusKey)
+      ?.focus({ preventScroll: true });
+  }
 }

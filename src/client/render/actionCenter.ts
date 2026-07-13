@@ -34,6 +34,8 @@ function setFocusKey(element: HTMLElement, key: string) {
   return element;
 }
 
+const rememberedActionFocus = new WeakMap<HTMLElement, string>();
+
 const STATUS_LABELS = {
   streaming: "Streaming",
   complete: "Complete",
@@ -161,11 +163,19 @@ function renderStructuredEventItem(
       button.dataset.action = "run-hook-action";
       button.dataset.hookActionStyle = action.style;
       button.classList.toggle("is-danger", action.style === "danger");
-      button.disabled = !action.enabled;
+      button.disabled = !action.enabled || action.pending === true;
+      button.setAttribute("aria-busy", String(action.pending === true));
       button.textContent = action.label;
       if (action.disabledReason) button.title = action.disabledReason;
       button.addEventListener("click", () => options.onRunHookAction(`hook:${item.id}`, action.id));
       actions.append(button);
+      if (action.error) {
+        const error = document.createElement("p");
+        error.className = "structured-action-error";
+        error.setAttribute("role", "alert");
+        error.textContent = action.error;
+        actions.append(error);
+      }
     });
     if (canOpenHook) {
       const open = document.createElement("button");
@@ -556,6 +566,15 @@ export function renderActionCenterPanel(
     existingBackdrop && activeElement instanceof HTMLElement && existingBackdrop.contains(activeElement)
       ? activeElement.dataset.focusKey ?? null
       : null;
+  if (focusKey) {
+    rememberedActionFocus.set(root, focusKey);
+  } else if (
+    activeElement instanceof HTMLElement &&
+    activeElement !== document.body &&
+    !existingBackdrop?.contains(activeElement)
+  ) {
+    rememberedActionFocus.delete(root);
+  }
   const hadBackdrop = existingBackdrop !== null;
   existingBackdrop?.remove();
 
@@ -626,9 +645,10 @@ export function renderActionCenterPanel(
 
   backdrop.append(panel);
   root.append(backdrop);
-  const focusTarget = focusKey
+  const restoreFocusKey = focusKey ?? rememberedActionFocus.get(root) ?? null;
+  const focusTarget = restoreFocusKey
     ? [...backdrop.querySelectorAll<HTMLElement>("[data-focus-key]")].find(
-        (element) => element.dataset.focusKey === focusKey
+        (element) => element.dataset.focusKey === restoreFocusKey
       ) ?? null
     : null;
   if (focusTarget) {

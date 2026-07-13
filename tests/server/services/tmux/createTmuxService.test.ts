@@ -618,6 +618,26 @@ describe("createTmuxService", () => {
     await expect(service.sendInputIfPromptAvailable("build", "y")).resolves.toBe("unavailable");
   });
 
+  it("serializes same-session actions and rejects a successfully acted prompt replay", async () => {
+    let prompt = "Continue deployment? [y/N]";
+    const run = vi.fn(async (command: string) => {
+      if (command === "capture-pane") return { stdout: prompt, stderr: "" };
+      return { stdout: "", stderr: "" };
+    });
+    const service = createTmuxService({ run });
+
+    const firstPair = await Promise.all([
+      service.sendInputIfPromptAvailable("build", "y\r"),
+      service.sendInputIfPromptAvailable("build", "y\r")
+    ]);
+    expect(firstPair.sort()).toEqual(["sent", "unavailable"]);
+    expect(run.mock.calls.filter(([command]) => command === "send-keys")).toHaveLength(2);
+
+    prompt = "Deploy the next release? [y/N]";
+    await expect(service.sendInputIfPromptAvailable("build", "y\r")).resolves.toBe("sent");
+    expect(run.mock.calls.filter(([command]) => command === "send-keys")).toHaveLength(4);
+  });
+
   it("captures recent session output with a bounded line count", async () => {
     const run = vi.fn().mockResolvedValue({ stdout: "recent output\n", stderr: "" });
     const service = createTmuxService({ run });

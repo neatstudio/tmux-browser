@@ -23,6 +23,8 @@ export type StructuredAction = HookEventAction & {
   effectiveTarget: HookEventTarget | null;
   enabled: boolean;
   disabledReason: string | null;
+  pending?: boolean;
+  error?: string | null;
 };
 
 export type StructuredDetailBlock = {

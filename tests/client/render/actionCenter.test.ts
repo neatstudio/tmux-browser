@@ -229,6 +229,48 @@ describe("renderActionCenterPanel", () => {
     expect(deny.classList.contains("is-danger")).toBe(true);
   });
 
+  it("disables busy actions and renders their accessible inline failure", () => {
+    const root = document.createElement("div");
+    renderActionCenterPanel(root, {
+      open: true, items: [], activeTab: "attention", expandedIds: new Set(),
+      selectedEventId: null, loading: false, error: null,
+      structuredItems: [structuredItem({ kind: "hook", attentionRequired: true, actions: [{
+        id: "approve", label: "Approve", input: "y", open: false, target: null,
+        effectiveTarget: { sessionName: "live", projectName: null, view: "terminal" },
+        style: "primary", enabled: true, disabledReason: null,
+        pending: true, error: "目标会话不可用，请重试"
+      }] })],
+      onTabChange: vi.fn(), onToggleExpanded: vi.fn(), onClose: vi.fn(),
+      onOpenSession: vi.fn(), onDismissPrompt: vi.fn(), onSendPrompt: vi.fn(), onRunHookAction: vi.fn()
+    });
+    const button = root.querySelector<HTMLButtonElement>("[data-action='run-hook-action']")!;
+    expect(button.disabled).toBe(true);
+    expect(button.getAttribute("aria-busy")).toBe("true");
+    expect(root.querySelector("[role='alert']")?.textContent).toContain("目标会话不可用");
+  });
+
+  it("restores action focus after a pending rerender completes", () => {
+    const root = document.createElement("div");
+    document.body.append(root);
+    const action = {
+      id: "approve", label: "Approve", input: "y", open: false, target: null,
+      effectiveTarget: { sessionName: "live", projectName: null, view: "terminal" as const },
+      style: "primary" as const, enabled: true, disabledReason: null
+    };
+    const base = {
+      open: true, items: [], activeTab: "attention" as const, expandedIds: new Set<string>(),
+      selectedEventId: null, loading: false, error: null,
+      onTabChange: vi.fn(), onToggleExpanded: vi.fn(), onClose: vi.fn(),
+      onOpenSession: vi.fn(), onDismissPrompt: vi.fn(), onSendPrompt: vi.fn(), onRunHookAction: vi.fn()
+    };
+    renderActionCenterPanel(root, { ...base, structuredItems: [structuredItem({ kind: "hook", attentionRequired: true, actions: [action] })] });
+    root.querySelector<HTMLButtonElement>("[data-action='run-hook-action']")!.focus();
+    renderActionCenterPanel(root, { ...base, structuredItems: [structuredItem({ kind: "hook", attentionRequired: true, actions: [{ ...action, pending: true }] })] });
+    renderActionCenterPanel(root, { ...base, structuredItems: [structuredItem({ kind: "hook", attentionRequired: true, actions: [{ ...action, error: "操作失败" }] })] });
+    expect(document.activeElement).toBe(root.querySelector("[data-action='run-hook-action']"));
+    root.remove();
+  });
+
   it("shows only attention structured rows plus prompts and dead panes on Attention", () => {
     const root = document.createElement("div");
     renderActionCenterPanel(root, {

@@ -3,6 +3,7 @@ import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
 
 import { createSessionRoutes } from "../../../src/server/routes/sessionRoutes";
+import { createTmuxService } from "../../../src/server/services/tmux/createTmuxService";
 
 describe("sessionRoutes", () => {
   it("returns session rows from the tmux service", async () => {
@@ -174,6 +175,27 @@ describe("sessionRoutes", () => {
     expect(response.body).toEqual({ code: "target_session_unavailable" });
     expect(sendInputIfPromptAvailable).toHaveBeenCalledWith("build", "y\r");
     expect(sendInput).not.toHaveBeenCalled();
+  });
+
+  it("allows exactly one of two concurrent requests for the same fresh prompt", async () => {
+    const run = vi.fn(async (command: string) => command === "capture-pane"
+      ? { stdout: "Approve once? [y/N]", stderr: "" }
+      : { stdout: "", stderr: "" });
+    const tmux = createTmuxService({ run });
+    const app = express();
+    app.use(express.json());
+    app.use("/api/sessions", createSessionRoutes({
+      listSessions: vi.fn(), createSession: vi.fn(), renameSession: vi.fn(),
+      killSession: vi.fn(), sendCommand: vi.fn(), sendInput: tmux.sendInput,
+      sendInputIfPromptAvailable: tmux.sendInputIfPromptAvailable,
+      splitPane: vi.fn(), selectPane: vi.fn(), killPane: vi.fn(), getSessionStatus: vi.fn()
+    }));
+    const [first, second] = await Promise.all([
+      request(app).post("/api/sessions/build/input").send({ input: "y\r", requirePrompt: true }),
+      request(app).post("/api/sessions/build/input").send({ input: "y\r", requirePrompt: true })
+    ]);
+    expect([first.status, second.status].sort()).toEqual([200, 409]);
+    expect(run.mock.calls.filter(([command]) => command === "send-keys")).toHaveLength(2);
   });
 
   it("returns a stable 404 code when the input target no longer exists", async () => {

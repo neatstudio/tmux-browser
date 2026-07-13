@@ -173,6 +173,36 @@ describe("renderHookEventToast", () => {
     expect(buttons.find((button) => button.textContent === "Approve")?.disabled).toBe(true);
   });
 
+  it("disables a pending toast action and exposes its inline error", () => {
+    const root = document.createElement("div");
+    renderHookEventToast(root, [hookItem({ actions: [{
+      ...hookItem().actions[0]!, pending: true, error: "操作失败，请检查网络后重试"
+    }] })], {
+      onDismiss: vi.fn(), onOpenSession: vi.fn(), onOpenActions: vi.fn(),
+      onSendEnter: vi.fn(), onRunAction: vi.fn()
+    });
+    const button = root.querySelector<HTMLButtonElement>("[data-action='hook-toast-run-action']")!;
+    expect(button.disabled).toBe(true);
+    expect(button.getAttribute("aria-busy")).toBe("true");
+    expect(root.querySelector("[role='alert']")?.textContent).toContain("操作失败");
+  });
+
+  it("restores toast action focus after pending completes", () => {
+    const root = document.createElement("div");
+    document.body.append(root);
+    const handlers = {
+      onDismiss: vi.fn(), onOpenSession: vi.fn(), onOpenActions: vi.fn(),
+      onSendEnter: vi.fn(), onRunAction: vi.fn()
+    };
+    const action = hookItem().actions[0]!;
+    renderHookEventToast(root, [hookItem({ actions: [action] })], handlers);
+    root.querySelector<HTMLButtonElement>("[data-action='hook-toast-run-action']")!.focus();
+    renderHookEventToast(root, [hookItem({ actions: [{ ...action, pending: true }] })], handlers);
+    renderHookEventToast(root, [hookItem({ actions: [{ ...action, error: "操作失败" }] })], handlers);
+    expect(document.activeElement).toBe(root.querySelector("[data-action='hook-toast-run-action']"));
+    root.remove();
+  });
+
   it("removes stale toast when no hook events remain", () => {
     const root = document.createElement("div");
     const handlers = {
