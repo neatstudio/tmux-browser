@@ -29,6 +29,11 @@ function formatActionCount(count: number) {
   return count === 1 ? "1 action" : `${count} actions`;
 }
 
+function setFocusKey(element: HTMLElement, key: string) {
+  element.dataset.focusKey = key;
+  return element;
+}
+
 const STATUS_LABELS = {
   streaming: "Streaming",
   complete: "Complete",
@@ -119,6 +124,7 @@ function renderStructuredEventItem(
   if (item.details.length > 0 || item.children.length > 0) {
     const toggle = document.createElement("button");
     toggle.type = "button";
+    setFocusKey(toggle, `event:${item.id}:toggle`);
     toggle.className = "structured-event-toggle";
     toggle.dataset.action = "toggle-structured-event";
     toggle.setAttribute("aria-expanded", String(expanded));
@@ -151,6 +157,7 @@ function renderStructuredEventItem(
     item.actions.forEach((action) => {
       const button = document.createElement("button");
       button.type = "button";
+      setFocusKey(button, `event:${item.id}:action:${action.id}`);
       button.dataset.action = "run-hook-action";
       button.disabled = !action.enabled;
       button.textContent = action.label;
@@ -161,6 +168,7 @@ function renderStructuredEventItem(
     if (canOpenHook) {
       const open = document.createElement("button");
       open.type = "button";
+      setFocusKey(open, `event:${item.id}:open`);
       open.dataset.action = "open-action-session";
       open.textContent = "Open";
       open.addEventListener("click", () => options.onOpenSession(item.sessionName!));
@@ -182,16 +190,31 @@ function renderUnifiedPanelContent(
   const tabs = document.createElement("div");
   tabs.className = "action-center-tabs";
   tabs.setAttribute("role", "tablist");
-  (["activity", "attention"] as const).forEach((tabName) => {
+  const tabNames = ["activity", "attention"] as const;
+  tabNames.forEach((tabName, tabIndex) => {
     const button = document.createElement("button");
     button.type = "button";
+    setFocusKey(button, `tab:${tabName}`);
     button.id = `action-center-tab-${tabName}`;
     button.setAttribute("role", "tab");
     button.setAttribute("aria-selected", String(activeTab === tabName));
     button.setAttribute("aria-controls", "action-center-tabpanel");
+    button.tabIndex = activeTab === tabName ? 0 : -1;
     const count = tabName === "activity" ? presentations.length : attention.length + options.items.filter((item) => item.type !== "hook-event").length;
     button.textContent = `${tabName === "activity" ? "Activity" : "Attention"} ${count}`;
     button.addEventListener("click", () => options.onTabChange?.(tabName));
+    button.addEventListener("keydown", (event) => {
+      let nextIndex: number | null = null;
+      if (event.key === "ArrowRight") nextIndex = (tabIndex + 1) % tabNames.length;
+      if (event.key === "ArrowLeft") nextIndex = (tabIndex - 1 + tabNames.length) % tabNames.length;
+      if (event.key === "Home") nextIndex = 0;
+      if (event.key === "End") nextIndex = tabNames.length - 1;
+      if (nextIndex === null) return;
+      event.preventDefault();
+      const nextTab = tabs.querySelectorAll<HTMLButtonElement>("[role='tab']")[nextIndex];
+      nextTab?.focus();
+      options.onTabChange?.(tabNames[nextIndex]!);
+    });
     tabs.append(button);
   });
   panel.append(tabs);
@@ -243,7 +266,6 @@ function renderUnifiedPanelContent(
         (node) => node.dataset.eventId === options.selectedEventId
       ) ?? null
     : null;
-  selected?.focus({ preventScroll: true });
   selected?.scrollIntoView?.({ block: "nearest" });
 }
 
@@ -306,6 +328,7 @@ function renderInputPromptItem(
   item.actions.forEach((promptAction) => {
     const button = document.createElement("button");
     button.type = "button";
+    setFocusKey(button, `prompt:${item.promptKey}:action:${promptAction.key}`);
     button.dataset.action = "send-prompt-action";
     button.textContent = formatPromptActionLabel(promptAction.label);
     button.title = promptAction.label;
@@ -317,12 +340,14 @@ function renderInputPromptItem(
 
   const openButton = document.createElement("button");
   openButton.type = "button";
+  setFocusKey(openButton, `prompt:${item.promptKey}:open`);
   openButton.dataset.action = "open-action-session";
   openButton.textContent = "Open";
   openButton.addEventListener("click", () => options.onOpenSession(item.sessionName));
 
   const dismissButton = document.createElement("button");
   dismissButton.type = "button";
+  setFocusKey(dismissButton, `prompt:${item.promptKey}:dismiss`);
   dismissButton.dataset.action = "dismiss-prompt";
   dismissButton.textContent = "Dismiss";
   dismissButton.addEventListener("click", () => options.onDismissPrompt(item.promptKey));
@@ -358,6 +383,7 @@ function renderDeadPaneItem(
 
   const openButton = document.createElement("button");
   openButton.type = "button";
+  setFocusKey(openButton, `dead-pane:${item.id}:open`);
   openButton.dataset.action = "open-action-session";
   openButton.textContent = "Open";
   openButton.addEventListener("click", () => options.onOpenSession(item.sessionName));
@@ -472,6 +498,7 @@ function renderHookEventItem(
   item.actions.forEach((hookAction) => {
     const button = document.createElement("button");
     button.type = "button";
+    setFocusKey(button, `event:${item.id.replace(/^hook:/, "")}:action:${hookAction.id}`);
     button.dataset.action = "run-hook-action";
     button.dataset.hookActionId = hookAction.id;
     button.dataset.hookActionStyle = hookAction.style;
@@ -484,6 +511,7 @@ function renderHookEventItem(
 
   const openButton = document.createElement("button");
   openButton.type = "button";
+  setFocusKey(openButton, `event:${item.id.replace(/^hook:/, "")}:open`);
   openButton.dataset.action = "open-action-session";
   openButton.textContent = "Open";
   openButton.addEventListener("click", () =>
@@ -520,7 +548,14 @@ export function renderActionCenterPanel(
   root: HTMLElement,
   options: ActionCenterPanelOptions
 ) {
-  root.querySelector(".action-center-backdrop")?.remove();
+  const existingBackdrop = root.querySelector<HTMLElement>(".action-center-backdrop");
+  const activeElement = document.activeElement;
+  const focusKey =
+    existingBackdrop && activeElement instanceof HTMLElement && existingBackdrop.contains(activeElement)
+      ? activeElement.dataset.focusKey ?? null
+      : null;
+  const hadBackdrop = existingBackdrop !== null;
+  existingBackdrop?.remove();
 
   if (!options.open) {
     return;
@@ -560,6 +595,7 @@ export function renderActionCenterPanel(
 
   const closeButton = document.createElement("button");
   closeButton.type = "button";
+  setFocusKey(closeButton, "panel:close");
   closeButton.dataset.action = "close-action-center";
   closeButton.setAttribute("aria-label", "Close action center");
   closeButton.textContent = "×";
@@ -588,4 +624,16 @@ export function renderActionCenterPanel(
 
   backdrop.append(panel);
   root.append(backdrop);
+  const focusTarget = focusKey
+    ? [...backdrop.querySelectorAll<HTMLElement>("[data-focus-key]")].find(
+        (element) => element.dataset.focusKey === focusKey
+      ) ?? null
+    : null;
+  if (focusTarget) {
+    focusTarget.focus({ preventScroll: true });
+  } else if (!hadBackdrop && options.selectedEventId) {
+    [...backdrop.querySelectorAll<HTMLElement>("[data-event-id]")]
+      .find((element) => element.dataset.eventId === options.selectedEventId)
+      ?.focus({ preventScroll: true });
+  }
 }

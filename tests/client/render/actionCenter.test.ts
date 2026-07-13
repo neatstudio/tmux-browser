@@ -102,6 +102,109 @@ describe("renderActionCenterPanel", () => {
     expect(onTabChange).toHaveBeenCalledWith("attention");
   });
 
+  it("implements roving tab focus and wrapped keyboard selection", () => {
+    const root = document.createElement("div");
+    document.body.append(root);
+    const onTabChange = vi.fn();
+    renderActionCenterPanel(root, {
+      open: true,
+      items: [],
+      structuredItems: [structuredItem()],
+      activeTab: "activity",
+      expandedIds: new Set(),
+      selectedEventId: null,
+      loading: false,
+      error: null,
+      onTabChange,
+      onToggleExpanded: vi.fn(),
+      onClose: vi.fn(),
+      onOpenSession: vi.fn(),
+      onDismissPrompt: vi.fn(),
+      onSendPrompt: vi.fn(),
+      onRunHookAction: vi.fn()
+    });
+    const tabs = [...root.querySelectorAll<HTMLButtonElement>("[role='tab']")];
+    expect(tabs.map((tab) => tab.tabIndex)).toEqual([0, -1]);
+
+    tabs[0]!.focus();
+    tabs[0]!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
+    expect(document.activeElement).toBe(tabs[1]);
+    expect(onTabChange).toHaveBeenLastCalledWith("attention");
+
+    tabs[1]!.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
+    expect(document.activeElement).toBe(tabs[0]);
+    expect(onTabChange).toHaveBeenLastCalledWith("activity");
+
+    tabs[0]!.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }));
+    expect(document.activeElement).toBe(tabs[1]);
+    expect(onTabChange).toHaveBeenLastCalledWith("attention");
+    root.remove();
+  });
+
+  it("restores focused event controls across a data revision rerender", () => {
+    const root = document.createElement("div");
+    document.body.append(root);
+    const detail = { type: "command" as const, collapsed: true, materialize: () => "npm test" };
+    const base = {
+      open: true,
+      items: [],
+      activeTab: "activity" as const,
+      expandedIds: new Set<string>(),
+      selectedEventId: null,
+      loading: false,
+      error: null,
+      onTabChange: vi.fn(),
+      onToggleExpanded: vi.fn(),
+      onClose: vi.fn(),
+      onOpenSession: vi.fn(),
+      onDismissPrompt: vi.fn(),
+      onSendPrompt: vi.fn(),
+      onRunHookAction: vi.fn()
+    };
+    renderActionCenterPanel(root, { ...base, structuredItems: [structuredItem({ details: [detail] })] });
+    root.querySelector<HTMLButtonElement>("[data-action='toggle-structured-event']")!.focus();
+
+    renderActionCenterPanel(root, {
+      ...base,
+      structuredItems: [structuredItem({ summary: "Updated realtime revision", details: [detail] })]
+    });
+
+    expect(document.activeElement).toBe(root.querySelector("[data-action='toggle-structured-event']"));
+    root.remove();
+  });
+
+  it("restores a focused hook action without stealing outside focus", () => {
+    const root = document.createElement("div");
+    const outside = document.createElement("button");
+    document.body.append(root, outside);
+    const hook = structuredItem({
+      id: "hook-1",
+      kind: "hook",
+      attentionRequired: true,
+      status: "waiting",
+      actions: [{
+        id: "approve", label: "Approve", input: "y", open: false, target: null,
+        style: "primary", effectiveTarget: null, enabled: true, disabledReason: null
+      }]
+    });
+    const options = {
+      open: true, items: [], structuredItems: [hook], activeTab: "attention" as const,
+      expandedIds: new Set<string>(), selectedEventId: null, loading: false, error: null,
+      onTabChange: vi.fn(), onToggleExpanded: vi.fn(), onClose: vi.fn(),
+      onOpenSession: vi.fn(), onDismissPrompt: vi.fn(), onSendPrompt: vi.fn(), onRunHookAction: vi.fn()
+    };
+    renderActionCenterPanel(root, options);
+    root.querySelector<HTMLButtonElement>("[data-action='run-hook-action']")!.focus();
+    renderActionCenterPanel(root, { ...options, structuredItems: [{ ...hook, summary: "Revision two" }] });
+    expect(document.activeElement).toBe(root.querySelector("[data-action='run-hook-action']"));
+
+    outside.focus();
+    renderActionCenterPanel(root, options);
+    expect(document.activeElement).toBe(outside);
+    root.remove();
+    outside.remove();
+  });
+
   it("shows only attention structured rows plus prompts and dead panes on Attention", () => {
     const root = document.createElement("div");
     renderActionCenterPanel(root, {

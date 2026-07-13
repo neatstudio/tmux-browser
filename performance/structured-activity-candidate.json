@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "targetCommit": "b8b8df16188dc8f4782f75720d6e560d8e68d145",
+  "targetCommit": "506177e84a9a56369c03d7d9dfa698917b4ca3e8",
   "evidence": "provisional-local",
   "runnerFingerprint": "darwin-arm64-node20.19.3-147.0.7727.56",
   "marks": {
@@ -8,13 +8,13 @@
     "interactive": "pre-activity-action-center-responsive-settled"
   },
   "note": "Activity comparator: inject the 1,000-record fixture into the deterministic structured-panel harness, open the unified Activity panel, close it, and wait until the dialog is absent.",
-  "capturedAt": "2026-07-13T18:57:07.930Z",
+  "capturedAt": "2026-07-13T19:08:04.197Z",
   "warmRunsMs": [
-    171,
-    134.2000002861023,
-    81.09999990463257,
-    88.19999980926514,
-    81.80000019073486
+    156.39999961853027,
+    174.5,
+    98.30000019073486,
+    94.90000009536743,
+    81.30000019073486
   ],
-  "medianMs": 88.19999980926514
+  "medianMs": 98.30000019073486
 }

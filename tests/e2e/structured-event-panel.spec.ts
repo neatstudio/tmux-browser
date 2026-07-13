@@ -1,4 +1,6 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type TestInfo } from "@playwright/test";
+import { mkdirSync } from "node:fs";
+import { platform } from "node:os";
 
 const consoleErrors = new WeakMap<Page, string[]>();
 
@@ -16,7 +18,15 @@ test.afterEach(async ({ page }) => {
   expect(consoleErrors.get(page) ?? []).toEqual([]);
 });
 
-test("switches tabs and lazily reveals structured details", async ({ page }) => {
+async function attachScreenshot(page: Page, testInfo: TestInfo, name: string) {
+  const relativePath = `screenshots/${testInfo.project.name}/${platform()}/${name}.png`;
+  const path = testInfo.outputPath(relativePath);
+  mkdirSync(path.slice(0, path.lastIndexOf("/")), { recursive: true });
+  await page.screenshot({ path, fullPage: true });
+  await testInfo.attach(name, { path, contentType: "image/png" });
+}
+
+test("switches tabs and lazily reveals structured details", async ({ page }, testInfo) => {
   await page.getByRole("button", { name: "Actions" }).click();
   const dialog = page.getByRole("dialog", { name: "Action Center" });
   await expect(dialog).toBeVisible();
@@ -26,12 +36,31 @@ test("switches tabs and lazily reveals structured details", async ({ page }) => 
 
   await dialog.getByRole("button", { name: /Show details for/ }).first().click();
   await expect(dialog.getByText("npm test")).toBeVisible();
-  await expect(dialog.getByRole("button", { name: /Hide details for/ }).first()).toHaveAttribute("aria-expanded", "true");
+  const collapse = dialog.getByRole("button", { name: /Hide details for/ }).first();
+  await expect(collapse).toHaveAttribute("aria-expanded", "true");
+  await expect(collapse).toBeFocused();
 
   await dialog.getByRole("tab", { name: /Attention/ }).click();
   await expect(dialog.getByText("Approval needed")).toBeVisible();
   await expect(dialog.getByText("All focused tests passed")).toHaveCount(0);
-  await expect(dialog).toHaveScreenshot("structured-event-panel-attention.png");
+  await attachScreenshot(page, testInfo, "structured-event-panel-attention");
+});
+
+test("supports wrapped arrow and Home/End tab keyboard navigation", async ({ page }) => {
+  await page.getByRole("button", { name: "Actions" }).click();
+  const activity = page.getByRole("tab", { name: /Activity/ });
+  const attention = page.getByRole("tab", { name: /Attention/ });
+  await expect(activity).toHaveAttribute("tabindex", "0");
+  await expect(attention).toHaveAttribute("tabindex", "-1");
+  await activity.focus();
+  await page.keyboard.press("ArrowLeft");
+  await expect(attention).toBeFocused();
+  await expect(attention).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("Home");
+  await expect(activity).toBeFocused();
+  await expect(activity).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("End");
+  await expect(attention).toBeFocused();
 });
 
 for (const viewport of [
@@ -39,7 +68,7 @@ for (const viewport of [
   { width: 768, height: 1024 },
   { width: 1440, height: 900 }
 ]) {
-  test(`constrains long structured content at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+  test(`constrains long structured content at ${viewport.width}x${viewport.height}`, async ({ page }, testInfo) => {
     await page.setViewportSize(viewport);
     await page.getByRole("button", { name: "Actions" }).click();
     const dialog = page.getByRole("dialog", { name: "Action Center" });
@@ -71,6 +100,6 @@ for (const viewport of [
     );
     expect(regions[0]!.bottom).toBeLessThanOrEqual(regions[1]!.top + 1);
     expect(regions[1]!.bottom).toBeLessThanOrEqual(regions[2]!.top + 1);
-    await expect(dialog).toHaveScreenshot(`structured-event-panel-${viewport.width}x${viewport.height}.png`);
+    await attachScreenshot(page, testInfo, `structured-event-panel-${viewport.width}x${viewport.height}`);
   });
 }
