@@ -107,7 +107,7 @@ export function validateBenchmarkArtifact(artifact) {
     !Array.isArray(artifact.warmRunsMs) ||
     artifact.warmRunsMs.length !== 5 ||
     artifact.warmRunsMs.some(
-      (value) => typeof value !== "number" || !Number.isFinite(value) || value < 0
+      (value) => typeof value !== "number" || !Number.isFinite(value) || value <= 0
     )
   ) {
     throw new Error("invalid warmRunsMs");
@@ -115,7 +115,7 @@ export function validateBenchmarkArtifact(artifact) {
   if (
     typeof artifact.medianMs !== "number" ||
     !Number.isFinite(artifact.medianMs) ||
-    artifact.medianMs < 0 ||
+    artifact.medianMs <= 0 ||
     artifact.medianMs !== median(artifact.warmRunsMs)
   ) {
     throw new Error("medianMs mismatch");

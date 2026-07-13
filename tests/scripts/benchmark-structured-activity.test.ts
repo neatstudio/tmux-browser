@@ -117,11 +117,18 @@ describe("structured activity benchmark", () => {
     ["marks", artifact({ marks: { start: "", interactive: "end" } }), "marks"],
     ["run count", artifact({ warmRunsMs: [1, 2, 3, 4] }), "warmRunsMs"],
     ["negative run", artifact({ warmRunsMs: [1, 2, -1, 4, 5] }), "warmRunsMs"],
+    ["zero run", artifact({ warmRunsMs: [0, 1, 2, 3, 4], medianMs: 2 }), "warmRunsMs"],
     ["non-finite run", artifact({ warmRunsMs: [1, 2, Infinity, 4, 5] }), "warmRunsMs"],
     ["median mismatch", artifact({ medianMs: 999 }), "medianMs mismatch"]
   ])("rejects malformed artifact: %s", (_name, value, message) => {
     expect(typeof validateBenchmarkArtifact).toBe("function");
     expect(() => validateBenchmarkArtifact(value)).toThrow(message as string);
+  });
+
+  it("rejects zero baselines and candidates before ratio comparison", () => {
+    const zero = artifact({ warmRunsMs: [0, 0, 0, 0, 0], medianMs: 0 });
+    expect(() => compareBenchmarkArtifacts(zero, artifact())).toThrow("warmRunsMs");
+    expect(() => compareBenchmarkArtifacts(artifact(), zero)).toThrow("warmRunsMs");
   });
 
   it("requires expected baseline and candidate commits", () => {
