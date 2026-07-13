@@ -243,8 +243,12 @@ Register every strict decoder of structured `/ws/events` payloads under
 `conversation-message` snapshots for one `messageId` under
 `repeatedMessageStreamingProducers.entries`. Each entry requires a stable `id`,
 an `owner`, the deployed `minimumCompatibleVersion`, and `compatible: true` only
-after compatibility has been verified. A category may remain empty only when its
-repository audit is recorded with an ISO `auditedAt` date and nonempty `owner`.
+after compatibility has been verified. `minimumCompatibleVersion` must use the
+deterministic core SemVer form `major.minor.patch` (for example, `1.2.3`): all
+three identifiers are required, leading zeroes are forbidden except for `0`, and
+prerelease/build suffixes are not accepted. A category may remain empty only when
+its repository audit is recorded with an ISO `auditedAt` date and nonempty
+`owner`.
 
 Before a Phase 1 server production release, update the manifest for every known
 consumer and producer, deploy the recorded minimum compatible versions, set

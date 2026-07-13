@@ -66,6 +66,41 @@ describe("structured events compatibility gate", () => {
     expect(result.stderr).toContain("strictDecoders.entries[0]");
   });
 
+  it.each(["0.0.0", "1.2.3", "12.34.56"])(
+    "accepts minimum compatible version %s",
+    (minimumCompatibleVersion) => {
+      const result = checkManifest({
+        strictDecoders: {
+          entries: [{ ...readyEntry("decoder"), minimumCompatibleVersion }]
+        },
+        repeatedMessageStreamingProducers: {
+          entries: [readyEntry("producer")]
+        }
+      });
+
+      expect(result.status).toBe(0);
+    }
+  );
+
+  it.each(["TBD", "latest", "1.2", " 1.2.3 ", "01.2.3", "1.02.3", "1.2.03"])(
+    "rejects invalid minimum compatible version %s",
+    (minimumCompatibleVersion) => {
+      const result = checkManifest({
+        strictDecoders: {
+          entries: [{ ...readyEntry("decoder"), minimumCompatibleVersion }]
+        },
+        repeatedMessageStreamingProducers: {
+          entries: [readyEntry("producer")]
+        }
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(
+        "strictDecoders.entries[0].minimumCompatibleVersion"
+      );
+    }
+  );
+
   it("rejects malformed JSON deterministically", () => {
     const directory = mkdtempSync(join(tmpdir(), "structured-events-compat-"));
     const manifestPath = join(directory, "compat.json");

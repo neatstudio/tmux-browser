@@ -15,6 +15,13 @@ function nonemptyString(value) {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+function isMinimumCompatibleVersion(value) {
+  return (
+    typeof value === "string" &&
+    /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(value)
+  );
+}
+
 function isIsoDate(value) {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const date = new Date(`${value}T00:00:00.000Z`);
@@ -47,8 +54,10 @@ function validateCategory(manifest, name, errors) {
     }
     if (!nonemptyString(entry.id)) errors.push(`${path}.id must be nonempty`);
     if (!nonemptyString(entry.owner)) errors.push(`${path}.owner must be nonempty`);
-    if (!nonemptyString(entry.minimumCompatibleVersion)) {
-      errors.push(`${path}.minimumCompatibleVersion must be nonempty`);
+    if (!isMinimumCompatibleVersion(entry.minimumCompatibleVersion)) {
+      errors.push(
+        `${path}.minimumCompatibleVersion must match major.minor.patch SemVer`
+      );
     }
     if (entry.compatible !== true) errors.push(`${path}.compatible must be true`);
   });
