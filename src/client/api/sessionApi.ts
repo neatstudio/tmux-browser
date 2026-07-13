@@ -8,6 +8,11 @@ import type { SessionRuntimeKind } from "../../shared/sessionRuntime";
 import type { SessionSettings } from "../../shared/sessionSettings";
 import type { TimelineEvent } from "../../shared/timeline";
 
+export type TimelinePage = {
+  events: TimelineEvent[];
+  nextCursor: string | null;
+};
+
 export type SessionSummary = {
   name: string;
   windows: number;
@@ -91,7 +96,7 @@ export type SessionApi = {
   listSessions: () => Promise<SessionSummary[]>;
   listPaneSessions: (mutedSessionNames?: string[]) => Promise<SessionSummary[]>;
   listDashboardSessions: (onlySessionNames?: string[]) => Promise<SessionSummary[]>;
-  listTimelineEvents: (limit?: number) => Promise<TimelineEvent[]>;
+  listTimelineEvents: (limit?: number, cursor?: string) => Promise<TimelinePage>;
   getPreferences: () => Promise<Preferences>;
   listKanbanProjects: () => Promise<KanbanProject[]>;
   createKanbanProject: (project: CreateKanbanProjectRequest) => Promise<string[]>;
@@ -180,17 +185,29 @@ export function createSessionApi(baseUrl = ""): SessionApi {
 
       return (await response.json()) as SessionSummary[];
     },
-    async listTimelineEvents(limit = 20) {
+    async listTimelineEvents(limit = 20, cursor) {
       const params = new URLSearchParams({ limit: String(limit) });
+      if (cursor !== undefined) {
+        params.set("cursor", cursor);
+      }
       const response = await fetch(`${baseUrl}/api/timeline?${params.toString()}`);
 
       if (!response.ok) {
-        throw new Error("Failed to load timeline events");
+        let code: string | null = null;
+        try {
+          const payload = (await response.json()) as { code?: unknown };
+          code = typeof payload.code === "string" ? payload.code : null;
+        } catch {
+          // Keep the stable fallback when the server returns a non-JSON error.
+        }
+        throw new SessionApiError(
+          "Failed to load timeline events",
+          response.status,
+          code
+        );
       }
 
-      const payload = (await response.json()) as { events: TimelineEvent[] };
-
-      return payload.events;
+      return (await response.json()) as TimelinePage;
     },
     async getPreferences() {
       const response = await fetch(`${baseUrl}/api/preferences`);

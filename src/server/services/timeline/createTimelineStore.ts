@@ -14,6 +14,25 @@ export type TimelineStoreConflictCode =
   | "immutable_field"
   | "terminal_conflict";
 
+export type TimelineCursorErrorCode =
+  | "timeline_cursor_invalid"
+  | "timeline_cursor_expired";
+
+export class TimelineCursorError extends Error {
+  constructor(
+    public readonly code: TimelineCursorErrorCode,
+    message: string
+  ) {
+    super(message);
+    this.name = "TimelineCursorError";
+  }
+}
+
+export type TimelinePage = {
+  events: TimelineEvent[];
+  nextCursor: string | null;
+};
+
 export class TimelineStoreConflictError extends Error {
   constructor(
     public readonly code: TimelineStoreConflictCode,
@@ -32,17 +51,72 @@ export type TimelineStore = {
   upsertConversationMessage: (
     event: ConversationMessageUpsertDraft
   ) => ConversationMessageTimelineEvent;
+  listEventPage: (options?: { limit?: number; cursor?: string }) => TimelinePage;
   listEvents: (options?: { limit?: number }) => TimelineEvent[];
 };
 
-const DEFAULT_MAX_EVENTS = 200;
+export const DEFAULT_MAX_EVENTS = 1000;
+export const MAX_PAGE_SIZE = 200;
 
 function normalizeLimit(limit: number | undefined) {
   if (!Number.isFinite(limit ?? NaN)) {
     return 50;
   }
 
-  return Math.min(Math.max(Math.trunc(limit ?? 50), 1), DEFAULT_MAX_EVENTS);
+  return Math.min(Math.max(Math.trunc(limit ?? 50), 1), MAX_PAGE_SIZE);
+}
+
+function compareIdsDescending(left: string, right: string) {
+  const numericIdPattern = /^\d+$/;
+  const leftIsNumeric = numericIdPattern.test(left);
+  const rightIsNumeric = numericIdPattern.test(right);
+  if (leftIsNumeric !== rightIsNumeric) return leftIsNumeric ? -1 : 1;
+  if (leftIsNumeric && rightIsNumeric) {
+    const leftNumber = BigInt(left);
+    const rightNumber = BigInt(right);
+    if (leftNumber !== rightNumber) return leftNumber > rightNumber ? -1 : 1;
+  }
+  return left === right ? 0 : left > right ? -1 : 1;
+}
+
+function compareEventsDescending(left: TimelineEvent, right: TimelineEvent) {
+  if (left.createdAt !== right.createdAt) {
+    return left.createdAt > right.createdAt ? -1 : 1;
+  }
+  return compareIdsDescending(left.id, right.id);
+}
+
+type CursorBoundary = { version: 1; id: string; createdAt: string };
+
+function encodeCursor(event: Pick<TimelineEvent, "id" | "createdAt">) {
+  const boundary: CursorBoundary = {
+    version: 1,
+    id: event.id,
+    createdAt: event.createdAt
+  };
+  return Buffer.from(JSON.stringify(boundary)).toString("base64url");
+}
+
+function decodeCursor(cursor: string): CursorBoundary {
+  try {
+    const parsed = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as Partial<CursorBoundary>;
+    if (
+      parsed.version !== 1 ||
+      typeof parsed.id !== "string" ||
+      !parsed.id ||
+      typeof parsed.createdAt !== "string" ||
+      !parsed.createdAt ||
+      encodeCursor(parsed as CursorBoundary) !== cursor
+    ) {
+      throw new Error("invalid cursor payload");
+    }
+    return parsed as CursorBoundary;
+  } catch {
+    throw new TimelineCursorError(
+      "timeline_cursor_invalid",
+      "The timeline cursor is invalid"
+    );
+  }
 }
 
 const IMMUTABLE_FIELDS = [
@@ -251,8 +325,35 @@ export function createTimelineStore(options: { maxEvents?: number } = {}): Timel
       return recordedEvent;
     }) as TimelineStore["addEvent"],
     upsertConversationMessage,
+    listEventPage(options = {}) {
+      const sortedEvents = [...events].sort(compareEventsDescending);
+      let startIndex = 0;
+      if (options.cursor !== undefined) {
+        const boundary = decodeCursor(options.cursor);
+        const boundaryIndex = sortedEvents.findIndex(
+          (event) => event.id === boundary.id && event.createdAt === boundary.createdAt
+        );
+        if (boundaryIndex < 0) {
+          throw new TimelineCursorError(
+            "timeline_cursor_expired",
+            "The timeline cursor boundary is no longer retained"
+          );
+        }
+        startIndex = boundaryIndex + 1;
+      }
+      const limit = normalizeLimit(options.limit);
+      const pageEvents = sortedEvents.slice(startIndex, startIndex + limit);
+      const lastEvent = pageEvents.at(-1);
+      return {
+        events: pageEvents,
+        nextCursor:
+          lastEvent && startIndex + pageEvents.length < sortedEvents.length
+            ? encodeCursor(lastEvent)
+            : null
+      };
+    },
     listEvents(options = {}) {
-      return events.slice(0, normalizeLimit(options.limit));
+      return this.listEventPage(options).events;
     }
   };
 }

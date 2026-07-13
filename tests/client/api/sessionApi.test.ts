@@ -47,22 +47,41 @@ describe("createSessionApi", () => {
               message: "created session build",
               createdAt: "2026-05-24T03:00:00.000Z"
             }
-          ]
+          ],
+          nextCursor: null
         })
     });
     vi.stubGlobal("fetch", fetch);
 
-    await expect(createSessionApi().listTimelineEvents(8)).resolves.toEqual([
-      {
+    await expect(createSessionApi().listTimelineEvents(8, "opaque-token")).resolves.toEqual({
+      events: [{
         id: "1",
         type: "session-created",
         sessionName: "build",
         message: "created session build",
         createdAt: "2026-05-24T03:00:00.000Z"
-      }
-    ]);
+      }],
+      nextCursor: null
+    });
 
-    expect(fetch).toHaveBeenCalledWith("/api/timeline?limit=8");
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/timeline?limit=8&cursor=opaque-token"
+    );
+  });
+
+  it("preserves the stable timeline cursor error code", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false,
+      status: 410,
+      json: () => Promise.resolve({ code: "timeline_cursor_expired" })
+    }));
+
+    await expect(
+      createSessionApi().listTimelineEvents(8, "opaque")
+    ).rejects.toMatchObject({
+      status: 410,
+      code: "timeline_cursor_expired"
+    });
   });
 
   it("loads and updates server-backed preferences", async () => {

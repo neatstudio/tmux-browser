@@ -180,11 +180,23 @@ type TimelineEvent =
 | --- | --- | --- | --- |
 | `GET` | `/api/health` | none | `AppHealth` |
 | `GET` | `/api/server-status` | none | `ServerStatus` |
-| `GET` | `/api/timeline?limit=20` | optional `limit` query | `{ events: TimelineEvent[] }` |
+| `GET` | `/api/timeline?limit=20&cursor=<opaque>` | optional `limit` and opaque `cursor` query | `{ events: TimelineEvent[], nextCursor: string \| null }` |
 
 Timeline contains generic operational events plus structured
 `conversation-message` events. Use conversation messages for Android/native chat
 views instead of parsing `/ws/terminal` ANSI output.
+
+Timeline pages are ordered by `(createdAt, id)` descending. Omit `cursor` for
+the latest page, then pass `nextCursor` unchanged to request older records. The
+cursor is server-owned and clients must not decode or construct it. New events
+inserted after the first request do not shift older pages. An invalid cursor
+returns `400` with code `timeline_cursor_invalid`; a cursor whose boundary was
+removed by retention returns `410` with code `timeline_cursor_expired`. Clients
+should notify the user that history expired and restart without a cursor. The
+server caps each page at 200 events.
+
+Timeline retention is configured with `TMUX_UI_TIMELINE_MAX_EVENTS`. It defaults
+to `1000` and must be a positive integer.
 
 ## Conversation Messages
 

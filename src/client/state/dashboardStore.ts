@@ -6,6 +6,7 @@ import type {
   SessionSummary,
   SplitPaneDirection
 } from "../api/sessionApi";
+import { SessionApiError, type TimelinePage } from "../api/sessionApi";
 import type { TimelineEvent } from "../../shared/timeline";
 import type { BrowserTab } from "./tabState";
 import type { SessionListCache } from "./sessionListCache";
@@ -44,6 +45,8 @@ export type DashboardState = {
   serverStatus: ServerStatus | null;
   kanbanProjects: KanbanProject[];
   timelineEvents?: TimelineEvent[];
+  timelineNextCursor?: string | null;
+  timelineHistoryExpired?: boolean;
   loading: boolean;
   error: string | null;
 };
@@ -98,6 +101,8 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
     serverStatus: null,
     kanbanProjects: [],
     timelineEvents: [],
+    timelineNextCursor: null,
+    timelineHistoryExpired: false,
     loading: false,
     error: null
   };
@@ -109,7 +114,16 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
   let timelineMergeSequence = 0;
   const timelineMergeSequenceById = new Map<string, number>();
   let timelineRefreshGeneration = 0;
+  let hasLoadedOlderTimeline = false;
   const activeTimelineRefreshBaselines = new Map<number, number>();
+
+  function normalizeTimelinePage(
+    response: TimelinePage | TimelineEvent[]
+  ): TimelinePage {
+    return Array.isArray(response)
+      ? { events: response, nextCursor: null }
+      : response;
+  }
 
   function pruneTimelineMergeSequences(timelineEvents: TimelineEvent[]) {
     const retainedIds = new Set(timelineEvents.map((event) => event.id));
@@ -235,7 +249,10 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
     );
 
     try {
-      const timelineEvents = await deps.api.listTimelineEvents(TIMELINE_LIMIT);
+      const page = normalizeTimelinePage(
+        await deps.api.listTimelineEvents(TIMELINE_LIMIT)
+      );
+      const timelineEvents = page.events;
       if (refreshGeneration !== timelineRefreshGeneration) {
         return;
       }
@@ -247,7 +264,7 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
       const receivedDuringRefreshById = new Map(
         eventsReceivedDuringRefresh.map((event) => [event.id, event])
       );
-      const refreshedTimelineEvents = [
+      const refreshedPageEvents = [
         ...timelineEvents.map((snapshotEvent) => {
           const receivedEvent = receivedDuringRefreshById.get(snapshotEvent.id);
           if (!receivedEvent) {
@@ -267,14 +284,25 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
           return receivedEvent;
         }),
         ...receivedDuringRefreshById.values()
+      ];
+      const refreshedIds = new Set(refreshedPageEvents.map((event) => event.id));
+      const refreshedTimelineEvents = [
+        ...refreshedPageEvents,
+        ...(hasLoadedOlderTimeline
+          ? (state.timelineEvents ?? []).filter((event) => !refreshedIds.has(event.id))
+          : [])
       ]
         .sort(compareTimelineEventsDescending)
-        .slice(0, TIMELINE_LIMIT);
+        .slice(0, hasLoadedOlderTimeline ? undefined : TIMELINE_LIMIT);
       pruneTimelineMergeSequences(refreshedTimelineEvents);
 
       commit({
         ...state,
         timelineEvents: refreshedTimelineEvents,
+        timelineNextCursor: hasLoadedOlderTimeline
+          ? state.timelineNextCursor
+          : page.nextCursor,
+        timelineHistoryExpired: false,
         loading: false,
         error: null
       });
@@ -290,6 +318,56 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
       });
     } finally {
       activeTimelineRefreshBaselines.delete(refreshGeneration);
+    }
+  }
+
+  async function loadOlderTimeline() {
+    if (!deps.api.listTimelineEvents || !state.timelineNextCursor) {
+      return;
+    }
+    try {
+      const page = normalizeTimelinePage(
+        await deps.api.listTimelineEvents(TIMELINE_LIMIT, state.timelineNextCursor)
+      );
+      const byId = new Map(
+        [...(state.timelineEvents ?? []), ...page.events].map((event) => [event.id, event])
+      );
+      const timelineEvents = [...byId.values()].sort(compareTimelineEventsDescending);
+      hasLoadedOlderTimeline = true;
+      pruneTimelineMergeSequences(timelineEvents);
+      commit({
+        ...state,
+        timelineEvents,
+        timelineNextCursor: page.nextCursor,
+        timelineHistoryExpired: false,
+        loading: false,
+        error: null
+      });
+    } catch (error) {
+      if (
+        error instanceof SessionApiError &&
+        error.status === 410 &&
+        error.code === "timeline_cursor_expired"
+      ) {
+        const latest = normalizeTimelinePage(
+          await deps.api.listTimelineEvents(TIMELINE_LIMIT)
+        );
+        hasLoadedOlderTimeline = false;
+        commit({
+          ...state,
+          timelineEvents: latest.events,
+          timelineNextCursor: latest.nextCursor,
+          timelineHistoryExpired: true,
+          loading: false,
+          error: "Timeline history expired; showing the latest events"
+        });
+        return;
+      }
+      commit({
+        ...state,
+        loading: false,
+        error: error instanceof Error ? error.message : "Failed to load timeline history"
+      });
     }
   }
 
@@ -497,6 +575,7 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
     },
     refresh,
     refreshTimeline,
+    loadOlderTimeline,
     mergeTimelineEvent,
     async createSession(name: string) {
       await deps.api.createSession(name);

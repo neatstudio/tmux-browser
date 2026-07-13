@@ -24,6 +24,7 @@ import {
 } from "./services/uploads/remoteImageUploadService.js";
 import {
   createTimelineStore,
+  TimelineCursorError,
   type TimelineStore
 } from "./services/timeline/createTimelineStore.js";
 import type { AppEventHub } from "./services/events/createAppEventHub.js";
@@ -685,10 +686,22 @@ export function createApp(options: {
   });
 
   app.get("/api/timeline", (req, res) => {
-    const limit =
-      typeof req.query.limit === "string" ? Number(req.query.limit) : undefined;
-
-    res.json({ events: timelineStore.listEvents({ limit }) });
+    try {
+      const limit =
+        typeof req.query.limit === "string" ? Number(req.query.limit) : undefined;
+      const cursor =
+        typeof req.query.cursor === "string" ? req.query.cursor : undefined;
+      res.json(timelineStore.listEventPage({ limit, cursor }));
+    } catch (error) {
+      if (error instanceof TimelineCursorError) {
+        res.status(error.code === "timeline_cursor_expired" ? 410 : 400).json({
+          error: error.message,
+          code: error.code
+        });
+        return;
+      }
+      throw error;
+    }
   });
 
   app.post("/api/conversation/messages", (req, res, next) => {

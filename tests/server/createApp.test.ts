@@ -114,6 +114,27 @@ describe("createApp", () => {
         message: "created session build"
       }
     ]);
+    expect(response.body.nextCursor).toBeNull();
+  });
+
+  it("returns stable cursor error codes for invalid and expired timeline cursors", async () => {
+    const timelineStore = createTimelineStore({ maxEvents: 2 });
+    timelineStore.addEvent({ type: "command-sent", sessionName: "build", message: "1" });
+    timelineStore.addEvent({ type: "command-sent", sessionName: "build", message: "2" });
+    const app = createApp({ timelineStore });
+
+    const invalid = await request(app).get("/api/timeline").query({ cursor: "broken" });
+    expect(invalid.status).toBe(400);
+    expect(invalid.body).toMatchObject({ code: "timeline_cursor_invalid" });
+
+    const first = await request(app).get("/api/timeline").query({ limit: 1 });
+    timelineStore.addEvent({ type: "command-sent", sessionName: "build", message: "3" });
+    timelineStore.addEvent({ type: "command-sent", sessionName: "build", message: "4" });
+    const expired = await request(app)
+      .get("/api/timeline")
+      .query({ limit: 1, cursor: first.body.nextCursor });
+    expect(expired.status).toBe(410);
+    expect(expired.body).toMatchObject({ code: "timeline_cursor_expired" });
   });
 
   it("records structured conversation messages in timeline and broadcasts app events", async () => {

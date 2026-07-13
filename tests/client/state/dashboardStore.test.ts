@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createDashboardStore } from "../../../src/client/state/dashboardStore";
+import { SessionApiError } from "../../../src/client/api/sessionApi";
 
 const SERVER_STATUS = {
   platform: "linux",
@@ -17,6 +18,92 @@ const SERVER_STATUS = {
 describe("createDashboardStore", () => {
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("loads older pages with opaque cursors and deduplicates websocket overlap", async () => {
+    const event = (id: string) => ({
+      id,
+      type: "command-sent" as const,
+      sessionName: "build",
+      message: id,
+      createdAt: `2026-07-14T00:00:0${id}.000Z`
+    });
+    const listTimelineEvents = vi.fn()
+      .mockResolvedValueOnce({ events: [event("3"), event("2")], nextCursor: "opaque-1" })
+      .mockResolvedValueOnce({ events: [event("2"), event("1")], nextCursor: null });
+    const store = createDashboardStore({
+      api: {
+        getServerStatus: vi.fn(), listSessions: vi.fn(), listPaneSessions: vi.fn(),
+        listDashboardSessions: vi.fn(), listTimelineEvents
+      },
+      pollMs: 3000
+    });
+
+    await store.refreshTimeline();
+    store.mergeTimelineEvent({ ...event("3"), message: "websocket update" });
+    await store.loadOlderTimeline();
+
+    expect(listTimelineEvents).toHaveBeenNthCalledWith(2, 8, "opaque-1");
+    expect(store.getState().timelineEvents?.map(({ id }) => id)).toEqual(["3", "2", "1"]);
+    expect(store.getState().timelineNextCursor).toBeNull();
+  });
+
+  it("records expired history and restarts from the latest page", async () => {
+    const latest = {
+      id: "9", type: "command-sent" as const, sessionName: "build",
+      message: "latest", createdAt: "2026-07-14T09:00:00.000Z"
+    };
+    const listTimelineEvents = vi.fn()
+      .mockResolvedValueOnce({ events: [latest], nextCursor: "old-cursor" })
+      .mockRejectedValueOnce(new SessionApiError(
+        "Failed to load timeline events", 410, "timeline_cursor_expired"
+      ))
+      .mockResolvedValueOnce({ events: [latest], nextCursor: null });
+    const store = createDashboardStore({
+      api: {
+        getServerStatus: vi.fn(), listSessions: vi.fn(), listPaneSessions: vi.fn(),
+        listDashboardSessions: vi.fn(), listTimelineEvents
+      },
+      pollMs: 3000
+    });
+
+    await store.refreshTimeline();
+    await store.loadOlderTimeline();
+
+    expect(listTimelineEvents).toHaveBeenNthCalledWith(3, 8);
+    expect(store.getState()).toMatchObject({
+      timelineEvents: [latest],
+      timelineNextCursor: null,
+      timelineHistoryExpired: true,
+      error: "Timeline history expired; showing the latest events"
+    });
+  });
+
+  it("preserves loaded history and its cursor across latest-page refreshes", async () => {
+    const event = (id: string) => ({
+      id, type: "command-sent" as const, sessionName: "build", message: id,
+      createdAt: `2026-07-14T00:00:0${id}.000Z`
+    });
+    const listTimelineEvents = vi.fn()
+      .mockResolvedValueOnce({ events: [event("4"), event("3")], nextCursor: "cursor-3" })
+      .mockResolvedValueOnce({ events: [event("2"), event("1")], nextCursor: null })
+      .mockResolvedValueOnce({ events: [event("5"), event("4")], nextCursor: "cursor-4" });
+    const store = createDashboardStore({
+      api: {
+        getServerStatus: vi.fn(), listSessions: vi.fn(), listPaneSessions: vi.fn(),
+        listDashboardSessions: vi.fn(), listTimelineEvents
+      },
+      pollMs: 3000
+    });
+
+    await store.refreshTimeline();
+    await store.loadOlderTimeline();
+    await store.refreshTimeline();
+
+    expect(store.getState().timelineEvents?.map(({ id }) => id)).toEqual([
+      "5", "4", "3", "2", "1"
+    ]);
+    expect(store.getState().timelineNextCursor).toBeNull();
   });
 
   it("merges realtime timeline events by stable id in descending order", () => {

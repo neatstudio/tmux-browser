@@ -1,7 +1,8 @@
-import { describe, expect, expectTypeOf, it } from "vitest";
+import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
 import {
   createTimelineStore,
+  TimelineCursorError,
   TimelineStoreConflictError
 } from "../../../../src/server/services/timeline/createTimelineStore";
 import type {
@@ -49,6 +50,70 @@ function expectConflict(
 }
 
 describe("createTimelineStore", () => {
+  it("paginates in descending createdAt and id order without overlap", () => {
+    const store = createTimelineStore({ maxEvents: 10 });
+    const createdAt = "2026-07-14T01:00:00.000Z";
+    vi.useFakeTimers();
+    vi.setSystemTime(createdAt);
+    for (let index = 1; index <= 5; index += 1) {
+      store.addEvent({
+        type: "command-sent",
+        sessionName: "build",
+        message: `event ${index}`
+      });
+    }
+
+    const first = store.listEventPage({ limit: 2 });
+    const second = store.listEventPage({ limit: 2, cursor: first.nextCursor! });
+    const third = store.listEventPage({ limit: 2, cursor: second.nextCursor! });
+
+    expect(first.events.map(({ id }) => id)).toEqual(["5", "4"]);
+    expect(second.events.map(({ id }) => id)).toEqual(["3", "2"]);
+    expect(third.events.map(({ id }) => id)).toEqual(["1"]);
+    expect(third.nextCursor).toBeNull();
+    vi.useRealTimers();
+  });
+
+  it("keeps an older page cursor stable when newer events arrive", () => {
+    const store = createTimelineStore({ maxEvents: 10 });
+    for (let index = 1; index <= 4; index += 1) {
+      store.addEvent({ type: "command-sent", sessionName: "build", message: String(index) });
+    }
+    const cursor = store.listEventPage({ limit: 2 }).nextCursor!;
+    const before = store.listEventPage({ limit: 2, cursor });
+
+    store.addEvent({ type: "command-sent", sessionName: "build", message: "new" });
+
+    expect(store.listEventPage({ limit: 2, cursor })).toEqual(before);
+  });
+
+  it("caps a page independently of the retention limit", () => {
+    const store = createTimelineStore({ maxEvents: 250 });
+    for (let index = 0; index < 250; index += 1) {
+      store.addEvent({ type: "command-sent", sessionName: "build", message: String(index) });
+    }
+
+    expect(store.listEventPage({ limit: 1000 }).events).toHaveLength(200);
+    expect(store.listEvents({ limit: 1000 })).toHaveLength(200);
+  });
+
+  it("distinguishes malformed and evicted cursor boundaries", () => {
+    const store = createTimelineStore({ maxEvents: 3 });
+    for (let index = 1; index <= 3; index += 1) {
+      store.addEvent({ type: "command-sent", sessionName: "build", message: String(index) });
+    }
+    expect(() => store.listEventPage({ cursor: "not-a-cursor" })).toThrowError(
+      expect.objectContaining<TimelineCursorError>({ code: "timeline_cursor_invalid" })
+    );
+
+    const cursor = store.listEventPage({ limit: 2 }).nextCursor!;
+    store.addEvent({ type: "command-sent", sessionName: "build", message: "4" });
+    store.addEvent({ type: "command-sent", sessionName: "build", message: "5" });
+
+    expect(() => store.listEventPage({ cursor })).toThrowError(
+      expect.objectContaining<TimelineCursorError>({ code: "timeline_cursor_expired" })
+    );
+  });
   it("keeps addEvent append-only for repeated legacy conversation drafts", () => {
     const store = createTimelineStore();
 
