@@ -337,6 +337,14 @@ describe("createApp", () => {
         taskId: "task-1",
         metadata: {
           "Api Token": "raw-secret",
+          eventType: "spoofed-event",
+          eventtype: "spoofed-event-canonical",
+          "event-type": "spoofed-event-variant",
+          taskId: "spoofed-task",
+          taskid: "spoofed-task-canonical",
+          "task-id": "spoofed-task-dashed",
+          task_id: "spoofed-task-variant",
+          status: "failed",
           tool: "apply_patch",
           ignored: { nested: true }
         },
@@ -451,6 +459,11 @@ describe("createApp", () => {
     ]);
     expect(timelineEvent.metadata).not.toHaveProperty("severity");
     expect(timelineEvent.metadata).not.toHaveProperty("cwd");
+    expect(timelineEvent.metadata).not.toHaveProperty("eventtype");
+    expect(timelineEvent.metadata).not.toHaveProperty("taskid");
+    expect(timelineEvent.metadata?.eventType).toBe("approval-required");
+    expect(timelineEvent.metadata?.taskId).toBe("task-1");
+    expect(timelineEvent.metadata?.status).toBe("waiting");
     expect(received).toEqual([
       expect.objectContaining({
         type: "hook-event",

@@ -608,8 +608,11 @@ order, then stored in lowercase alphanumeric form; normalized-key collisions
 keep the first key and emit a value-free diagnostic. Normalized keys containing
 `token`, `secret`, `password`, `authorization`, or `cookie`, or
 ends in `key`, are stored as `[redacted]`. Strings are limited to 2 KiB of UTF-8
-data and receive `[truncated]` when shortened. User metadata is limited to 16
-KiB and receives `_truncated: true` when the limit is reached. The optional
+data including the `[truncated]` marker when shortened. User metadata is limited
+to 16 KiB and receives `_truncated: true` when the limit is reached. User keys
+that normalize to the reserved legacy names `status`, `source`, `eventtype`,
+`body`, `taskid`, `target`, `actions`, or `content` are dropped; `_truncated`
+is also protected from producer values. The optional
 display statistics are persisted under canonical keys and validated as follows:
 `fileschanged` is an integer from 0 to 100000, `testspassed` and `testsfailed`
 are integers from 0 to 1000000, and `durationms` is a finite number from 0 to

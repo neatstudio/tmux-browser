@@ -4,6 +4,17 @@ const MAX_STRING_BYTES = 2 * 1024;
 const MAX_METADATA_BYTES = 16 * 1024;
 const MAX_METADATA_ENTRIES = 24;
 const TRUNCATED_SUFFIX = "[truncated]";
+const TRUNCATED_SUFFIX_BYTES = Buffer.byteLength(TRUNCATED_SUFFIX, "utf8");
+const RESERVED_METADATA_KEYS = new Set([
+  "status",
+  "source",
+  "eventtype",
+  "body",
+  "taskid",
+  "target",
+  "actions",
+  "content"
+]);
 
 const DISPLAY_STATS: Record<string, { max: number; integer: boolean }> = {
   fileschanged: { max: 100_000, integer: true },
@@ -29,9 +40,10 @@ function truncateUtf8(value: string) {
 
   let result = "";
   let bytes = 0;
+  const contentLimit = MAX_STRING_BYTES - TRUNCATED_SUFFIX_BYTES;
   for (const character of value) {
     const characterBytes = Buffer.byteLength(character, "utf8");
-    if (bytes + characterBytes > MAX_STRING_BYTES) {
+    if (bytes + characterBytes > contentLimit) {
       break;
     }
     result += character;
@@ -70,7 +82,7 @@ export function normalizeEventMetadata(value: unknown): EventMetadata | undefine
   const entries = Object.entries(value as Record<string, unknown>)
     .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0);
   const accepted: Array<[string, string | number | boolean | null]> = [];
-  const seen = new Map<string, string>();
+  const seen = new Set<string>();
   let truncated = entries.length > MAX_METADATA_ENTRIES;
 
   for (const [originalKey, rawValue] of entries.slice(0, MAX_METADATA_ENTRIES)) {
@@ -82,15 +94,13 @@ export function normalizeEventMetadata(value: unknown): EventMetadata | undefine
       truncated = true;
       continue;
     }
+    if (RESERVED_METADATA_KEYS.has(collisionKey)) continue;
     if (!key || !collisionKey) continue;
-    const keptKey = seen.get(collisionKey);
-    if (keptKey) {
-      console.warn(
-        `Dropped colliding event metadata key "${trimmedKey}"; kept "${keptKey}"`
-      );
+    if (seen.has(collisionKey)) {
+      console.warn(`Dropped colliding event metadata key "${collisionKey}"`);
       continue;
     }
-    seen.set(collisionKey, trimmedKey);
+    seen.add(collisionKey);
 
     const normalizedValue = normalizeValue(fullNormalizedKey, rawValue);
     if (normalizedValue === undefined) continue;

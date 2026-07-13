@@ -26,7 +26,7 @@ describe("normalizeEventMetadata", () => {
     expect(JSON.stringify(metadata)).not.toContain("long-secret");
     expect(metadata).not.toHaveProperty("build_id");
     expect(warning).toHaveBeenCalledWith(
-      'Dropped colliding event metadata key "build_id"; kept "Build-ID"'
+      'Dropped colliding event metadata key "buildid"'
     );
     warning.mockRestore();
   });
@@ -36,9 +36,42 @@ describe("normalizeEventMetadata", () => {
     const metadata = normalizeEventMetadata({ value: `${"界".repeat(900)}${secretTail}` });
     const value = String(metadata?.value);
 
-    expect(Buffer.byteLength(value.replace("[truncated]", ""), "utf8")).toBeLessThanOrEqual(2048);
+    expect(Buffer.byteLength(value, "utf8")).toBeLessThanOrEqual(2048);
     expect(value.endsWith("[truncated]")).toBe(true);
     expect(value).not.toContain(secretTail);
+    expect(() => Buffer.from(value, "utf8").toString("utf8")).not.toThrow();
+  });
+
+  it("drops reserved transport keys regardless of spelling", () => {
+    expect(normalizeEventMetadata({
+      status: "spoofed",
+      Source: "spoofed",
+      eventType: "spoofed",
+      "event-type": "spoofed",
+      taskId: "spoofed",
+      task_id: "spoofed",
+      body: "spoofed",
+      target: "spoofed",
+      actions: "spoofed",
+      content: "spoofed",
+      _truncated: false,
+      safe: "kept"
+    })).toEqual({ _truncated: true, safe: "kept" });
+  });
+
+  it("logs only bounded canonical collision keys", () => {
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    normalizeEventMetadata({
+      "Build-ID": "first",
+      [`build_id\r\n${"!".repeat(10_000)}`]: "second"
+    });
+
+    expect(warning).toHaveBeenCalledWith(
+      'Dropped colliding event metadata key "buildid"'
+    );
+    expect(String(warning.mock.calls[0]?.[0])).not.toContain("\n");
+    expect(String(warning.mock.calls[0]?.[0]).length).toBeLessThan(160);
+    warning.mockRestore();
   });
 
   it("validates display-stat fields while retaining ordinary scalar metadata", () => {
