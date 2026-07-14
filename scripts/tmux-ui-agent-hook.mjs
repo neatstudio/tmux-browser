@@ -180,7 +180,24 @@ function readPayloadTarget(payload) {
   };
 }
 
+function summaryContent(text, existing = []) {
+  if (existing.some((block) => block?.type === "summary" && readString(block.text))) {
+    return existing;
+  }
+
+  const summary = readString(text);
+  return summary ? [{ type: "summary", text: summary }, ...existing] : existing;
+}
+
 function toStandardEvent(payload) {
+  const body =
+    typeof payload.body === "string"
+      ? payload.body
+      : typeof payload.message === "string"
+        ? payload.message
+        : "";
+  const content = Array.isArray(payload.content) ? payload.content : [];
+
   return {
     schemaVersion,
     source: readString(payload.source, process.env.TMUX_UI_HOOK_SOURCE || "custom"),
@@ -197,13 +214,12 @@ function toStandardEvent(payload) {
       payload.title,
       process.env.TMUX_UI_HOOK_TITLE || "Agent hook event"
     ),
-    body:
-      typeof payload.body === "string"
-        ? payload.body
-        : typeof payload.message === "string"
-          ? payload.message
-          : "",
-    content: Array.isArray(payload.content) ? payload.content : [],
+    body,
+    content: summaryContent(body, content),
+    metadata:
+      payload.metadata && typeof payload.metadata === "object" && !Array.isArray(payload.metadata)
+        ? payload.metadata
+        : undefined,
     taskId:
       typeof payload.taskId === "string"
         ? payload.taskId
@@ -228,7 +244,8 @@ function toHookEvent(payload) {
   }
 
   if (mode === "codex-permission") {
-    const toolName = typeof payload.tool_name === "string" ? payload.tool_name : "tool";
+    const explicitToolName = readString(payload.tool_name);
+    const toolName = explicitToolName || "tool";
     const description = readToolDescription(payload);
 
     return {
@@ -238,6 +255,8 @@ function toHookEvent(payload) {
       severity: "warning",
       title: `Codex permission requested: ${toolName}`,
       body: description || "Codex is waiting for permission.",
+      content: summaryContent(description),
+      metadata: explicitToolName ? { toolName: explicitToolName } : undefined,
       taskId: typeof payload.turn_id === "string" ? payload.turn_id : null,
       cwd,
       actions: readPayloadActions(payload, approvalActions()),
@@ -250,6 +269,7 @@ function toHookEvent(payload) {
       typeof payload.notification_type === "string"
         ? payload.notification_type
         : "notification";
+    const explicitNotificationType = readString(payload.notification_type);
     const isPermission = notificationType === "permission_prompt";
 
     return {
@@ -265,6 +285,12 @@ function toHookEvent(payload) {
         typeof payload.message === "string" && payload.message
           ? payload.message
           : "Claude is waiting for input.",
+      content: summaryContent(
+        typeof payload.message === "string" ? payload.message : ""
+      ),
+      metadata: explicitNotificationType
+        ? { notificationType: explicitNotificationType }
+        : undefined,
       taskId: typeof payload.session_id === "string" ? payload.session_id : null,
       cwd,
       actions: readPayloadActions(payload, isPermission ? approvalActions() : enterAction()),
@@ -273,7 +299,8 @@ function toHookEvent(payload) {
   }
 
   if (mode === "claude-permission") {
-    const toolName = typeof payload.tool_name === "string" ? payload.tool_name : "tool";
+    const explicitToolName = readString(payload.tool_name);
+    const toolName = explicitToolName || "tool";
     const description = readToolDescription(payload);
 
     return {
@@ -283,6 +310,8 @@ function toHookEvent(payload) {
       severity: "warning",
       title: `Claude permission requested: ${toolName}`,
       body: description || "Claude is waiting for permission.",
+      content: summaryContent(description),
+      metadata: explicitToolName ? { toolName: explicitToolName } : undefined,
       taskId: typeof payload.session_id === "string" ? payload.session_id : null,
       cwd,
       actions: readPayloadActions(payload, approvalActions()),

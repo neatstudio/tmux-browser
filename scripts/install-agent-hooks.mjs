@@ -154,6 +154,7 @@ function printHelp() {
 Usage:
   node scripts/install-agent-hooks.mjs [--codex] [--claude]
   node scripts/install-agent-hooks.mjs --uninstall [--codex] [--claude]
+  node scripts/install-agent-hooks.mjs --examples
 
 Environment:
   TMUX_UI_AGENT_HOOK   Path to tmux-ui-agent-hook helper
@@ -164,8 +165,59 @@ Environment:
 `);
 }
 
+function printExamples() {
+  console.log(`Bundled Codex/Claude hooks emit hook events, not conversation messages.
+They include a summary content block only when the source payload contains the
+corresponding fact. Do not infer file counts, test results, durations, or outcomes.
+
+Hook event example:
+${JSON.stringify({
+  schemaVersion: "tmux-ui.hook/v1",
+  source: "codex",
+  sessionName: "project-codex",
+  eventType: "approval-required",
+  status: "waiting",
+  title: "Codex permission requested: apply_patch",
+  body: "Update README examples",
+  content: [{ type: "summary", text: "Update README examples" }],
+  metadata: { toolName: "apply_patch" }
+}, null, 2)}
+
+Conversation streaming producer example. POST each complete snapshot to
+/api/conversation/messages with the same sessionName and messageId:
+${[
+  { messageId: "msg-example", sessionName: "project-codex", role: "assistant", contentType: "text", content: "Reading project docs", summary: "Reading project docs", status: "streaming", revision: 1 },
+  { messageId: "msg-example", sessionName: "project-codex", role: "assistant", contentType: "text", content: "Reading project docs and updating examples", summary: "Updating integration examples", status: "streaming", revision: 2 },
+  { messageId: "msg-example", sessionName: "project-codex", role: "assistant", contentType: "text", content: "Updated the integration examples", summary: "Integration examples updated", status: "complete", revision: 3 }
+].map((entry) => JSON.stringify(entry, null, 2)).join("\n")}
+
+Before a production server release, register every strict decoder and repeated-
+message streaming producer in config/structured-events-compat.json with its
+minimumCompatibleVersion and verified compatible status. This illustrative
+manifest fragment shows both entry shapes; replace example ids, owners, and
+versions with deployed facts:
+${JSON.stringify({
+  strictDecoders: {
+    entries: [{ id: "native-client-example", owner: "client team", minimumCompatibleVersion: "1.2.3", compatible: true }]
+  },
+  repeatedMessageStreamingProducers: {
+    entries: [{ id: "streaming-producer-example", owner: "producer team", minimumCompatibleVersion: "2.3.4", compatible: true }]
+  }
+}, null, 2)}
+
+The Phase 1 server release gate is:
+
+  npm run check:structured-events-compat
+`);
+}
+
 if (args.has("--help") || args.has("-h")) {
   printHelp();
+  process.exit(0);
+}
+
+if (args.has("--examples")) {
+  printExamples();
   process.exit(0);
 }
 

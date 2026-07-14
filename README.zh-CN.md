@@ -304,6 +304,16 @@ tmux-ui hooks-uninstall
 
 `hooks-install` 会合并写入 `~/.codex/hooks.json` 的 `PermissionRequest` 和 `~/.claude/settings.json` 的 `Notification(permission_prompt|idle_prompt)`，不会覆盖已有 hook。安装的 adapter 会输出标准 `tmux-ui.hook/v1` 事件，后续增加 opencode、kimi、qwecn、qodercli 等工具时，只需要新增安装适配器，不需要改 UI。
 
+内置 adapter 只发送 hook event，不会调用 conversation message API，也不会
+生成 conversation revision。输入中确实存在 tool description 或 notification
+message 时，adapter 才会把该事实写入 `summary` content block，并且只记录已知
+的 `toolName` 或 `notificationType` metadata。它不会推测文件数、测试结果、耗时
+或任务结果。下面的命令只打印生成的接入示例，不会修改 hook 配置：
+
+```bash
+node scripts/install-agent-hooks.mjs --examples
+```
+
 标准 hook 事件可以带跨 group target、适合移动端的结构化内容和明确按钮。
 Toast 会优先显示 `summary`，Action Center 会把占空间的 `code` 和
 `details` 折叠起来：
@@ -356,6 +366,62 @@ echo "Approve file edit?" | \
 脚本会优先从当前 tmux 环境推断 session 名，也可以显式传入 `TMUX_UI_SESSION_NAME=<session>`。服务端会写入 timeline，并通过全局 websocket 推送到 Action Center；`waiting`、`blocked`、`need-input`、`failed` 会作为重要 action 显示。
 
 如果服务没有监听 `127.0.0.1:3000`，在 hook 环境里额外设置 `TMUX_UI_HOOK_URL=http://100.x.y.z:3000/api/hooks/events`。
+
+## 结构化 Activity 接入
+
+统一面板默认打开 **Activity**，普通 conversation 与 hook record 保持折叠。
+**Attention** 只保留 failed、blocked、waiting、need-input、approval-required
+以及带 danger action 的记录，并直接显示原因和主要 action。展开详情只读取客户端
+已有内容，不发额外请求。Attention toast 会定位对应项目；普通完成更新可以只进入
+Activity，不弹 toast。
+
+界面优先使用 producer summary。缺失时，按 text、code 语言或工具、command
+首行、image 类型、status 生成保守摘要；缺失原因会明确显示，不会猜测。realtime
+更新按相同 event id 原位替换一个项目。
+
+复用 `(sessionName, messageId)` 的 conversation producer 必须发送完整 snapshot
+和连续 revision：`revision: 1`、`revision: 2`，最终 `status: "complete"` 或
+`"failed"` 使用下一个 revision。更新缺 revision 返回 `428`；旧 revision、跳号、
+不可变字段变化和终态冲突返回 `409`。只创建一次的旧 producer 可以省略
+`summary` 和 `revision`；重复更新同一 message 的 streaming producer 必须升级。
+示例见 [API 文档](docs/api.md#conversation-messages)。
+
+metadata 只用于展示，不是 secret 存储。服务端只接受 scalar value，将 key
+规范化为小写字母数字 canonical key；key 包含 token、secret、password、
+authorization、cookie 或以 key 结尾时会脱敏，并限制 entry 数量与总字节数。
+只有 `fileschanged`、`testspassed`、`testsfailed`、`durationms` 是展示统计。
+不要发送 prompt、源码正文或凭据。
+
+action 不会猜测目标。input 先使用 `action.target`，再使用 event target，并要求
+目标 session 当前存在。组合 action 先发送 input，成功后才导航；失败不会导航。
+session 不存在返回 `404 target_session_not_found`，当前不可输入返回
+`409 target_session_unavailable`；项目保持未处理并显示错误。
+
+历史分页使用 `GET /api/timeline?limit=<n>&cursor=<opaque>`，必须原样传回
+`nextCursor`。非法 cursor 返回 `400 timeline_cursor_invalid`；retention 淘汰
+对应边界时返回 `410 timeline_cursor_expired`，随后从最新一页重新加载。
+`TMUX_UI_TIMELINE_MAX_EVENTS` 控制保留数量，默认 `1000`。cursor secret 默认
+保存在 `~/.tmux-ui/timeline-cursor-secret`，权限 `0600`。如设置
+`TMUX_UI_TIMELINE_CURSOR_SECRET`，必须是稳定的、恰好 32 个随机字节的 base64url
+编码，并且不能进入日志或客户端。
+
+隐私安全 counter 包括 `conversation_total`、`hook_total`、
+`missing_producer_summary`、五类 `fallback_*` 和 `attention_total`。它们只接受
+已登记 enum 与非负整数 count，不接受 body、content 或 summary 文本。
+
+生产发布由 `npm run check:structured-events-compat` fail-closed 门禁控制。所有
+strict decoder 和重复更新同一 message 的 streaming producer 都要登记到
+`config/structured-events-compat.json`，包含 owner、`minimumCompatibleVersion`，
+并且只有验证部署版本后才能设置 `compatible: true`。本地 publish 在 SSH/SCP
+前检查，GitHub release 在打包前检查。仓库清单经过审计但为空，不代表外部客户端
+已经兼容。
+
+仓库内 Activity benchmark artifact 只是 provisional 本地证据。authoritative
+baseline 与 candidate 会在同一 CI runner 上依次测量。必须配置仓库变量
+`STRUCTURED_ACTIVITY_BASELINE_SHA` 并指向完成的 Phase 1 commit；变量缺失或与
+artifact 不一致时 CI fail closed。回滚时可关闭或还原 Activity/Attention 入口，
+但保留 additive timeline contract 和 dual-write 的旧 hook metadata；不要删除
+历史，也不要脱离 manifest 单独回滚已登记的 strict decoder/streaming producer。
 
 ## tmux 恢复
 

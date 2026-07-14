@@ -317,6 +317,21 @@ Example:
 }
 ```
 
+The example above creates one record and may omit `revision`. A producer that
+streams multiple snapshots for one logical message must send the same immutable
+fields and complete content at every step:
+
+```json
+{"messageId":"msg_123","sessionName":"codex","role":"assistant","contentType":"text","content":"Reading project docs","summary":"Reading project docs","status":"streaming","revision":1}
+{"messageId":"msg_123","sessionName":"codex","role":"assistant","contentType":"text","content":"Reading project docs and updating examples","summary":"Updating integration examples","status":"streaming","revision":2}
+{"messageId":"msg_123","sessionName":"codex","role":"assistant","contentType":"text","content":"Updated the integration examples","summary":"Integration examples updated","status":"complete","revision":3}
+```
+
+The bundled `tmux-ui-agent-hook.mjs` producer does not send these requests or
+generate revisions. It emits hook events only. Run
+`node scripts/install-agent-hooks.mjs --examples` to print both integration
+shapes without installing hooks.
+
 ## Sessions
 
 Session names must match `^[A-Za-z0-9._-]+$`.
@@ -721,6 +736,57 @@ simple tools.
   ]
 }
 ```
+
+### Structured presentation behavior
+
+Activity contains conversation and hook records. Attention is the filtered view
+for failed, blocked, waiting, need-input, approval-required, and danger-action
+records. The compact Attention row includes its reason and primary action.
+Details are lazy-materialized from the record already in client state; expanding
+does not issue another request. Realtime records merge by canonical event `id`,
+so a revision update changes one item rather than appending another. Attention
+toasts select the same presentation item; ordinary completion events need not
+produce a toast.
+
+Conversation summary order is producer `summary`, then a deterministic fallback
+for its `contentType` (`text`, `code`, `command`, or `image`), then status text.
+Hook order is the first nonempty `summary`/`text` content block, `body`, then
+`title`. Missing failure or action reasons are labeled as missing and are never
+invented from terminal output.
+
+Action input resolves only `action.target` and then the event `target`; it does
+not fall back to the current page or parse a session from text. Input requires a
+live target session and executes before optional navigation. A missing target
+returns `404 target_session_not_found`; a target that cannot currently accept
+input returns `409 target_session_unavailable`. The client refreshes session
+state, keeps the event unresolved, displays the error, and does not navigate.
+Open-only actions may navigate to a valid terminal session or Kanban project.
+
+Client observability is content-free. The registered counters are
+`conversation_total`, `hook_total`, `missing_producer_summary`,
+`fallback_text`, `fallback_code`, `fallback_command`, `fallback_image`,
+`fallback_status`, and `attention_total`. The counter interface accepts only a
+registered enum plus a non-negative integer count; body, content, summary, and
+metadata values are outside this boundary.
+
+For production rollout, update `config/structured-events-compat.json` and run
+`npm run check:structured-events-compat`. Strict decoders must first accept the
+additive conversation fields and typed hook union member. Producers that update
+one message repeatedly must first implement consecutive revisions. Each manifest
+entry records `minimumCompatibleVersion`; `compatible: true` means that deployed
+version was verified, not merely that source code exists. Local publish and the
+GitHub release workflow fail before side effects when the gate fails.
+
+The rollback boundary is the Activity/Attention presentation entry point. It can
+be disabled or reverted while the additive timeline contract and legacy hook
+metadata projection remain available. Do not delete retained history or roll
+back a strict decoder/streaming producer independently of the manifest.
+
+Benchmark artifacts under `performance/` are provisional local evidence. The
+authoritative workflow records baseline and candidate sequentially on the same
+runner and requires repository variable `STRUCTURED_ACTIVITY_BASELINE_SHA` to
+name the completed Phase 1 commit. Missing, malformed, unavailable, or mismatched
+values fail closed.
 
 ## Uploads And Image Preview
 

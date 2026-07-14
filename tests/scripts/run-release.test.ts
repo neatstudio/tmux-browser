@@ -136,6 +136,8 @@ describe("run release scripts", () => {
     expect(agentHookScript).toContain("actions");
     expect(agentHookScript).toContain("target");
     expect(agentHookScript).toContain("Array.isArray(payload.content)");
+    expect(agentHookScript).toContain("summaryContent");
+    expect(agentHookScript).toContain("metadata");
     expect(installAgentHooksScript).toContain("PermissionRequest");
     expect(installAgentHooksScript).toContain("permission_prompt|idle_prompt");
     expect(installAgentHooksScript).toContain("standard tmux-ui.hook/v1 events");
@@ -531,6 +533,10 @@ describe("run release scripts", () => {
     expect(gate).toBeGreaterThan(-1);
     expect(gate).toBeLessThan(pack);
     expect(gate).toBeLessThan(upload);
+    expect(readme).toContain("minimumCompatibleVersion");
+    expect(readme).toContain("npm run check:structured-events-compat");
+    expect(readmeZh).toContain("minimumCompatibleVersion");
+    expect(readmeZh).toContain("npm run check:structured-events-compat");
   });
 
   it("opts GitHub-hosted JavaScript actions into the Node 24 runtime", () => {

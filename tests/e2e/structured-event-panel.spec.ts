@@ -47,6 +47,22 @@ test("switches tabs and lazily reveals structured details", async ({ page }, tes
   await attachScreenshot(page, testInfo, "structured-event-panel-attention");
 });
 
+test("shows at least three complete Activity rows in the default 390x844 view", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "Actions" }).click();
+
+  const completeRows = page.locator('.structured-event-row[data-status="complete"]');
+  await expect(completeRows).toHaveCount(3);
+  for (const row of await completeRows.all()) {
+    await expect(row).toBeInViewport();
+    await expect(row.locator(".structured-event-toggle")).toHaveAttribute(
+      "aria-expanded",
+      "false"
+    );
+    await expect(row.locator(".structured-event-details")).toHaveCount(0);
+  }
+});
+
 test("routes an Attention toast to the selected event and keeps a dead target disabled", async ({ page }, testInfo) => {
   const toast = page.getByRole("dialog", { name: "Agent action needed" });
   await expect(toast).toBeVisible();
@@ -99,7 +115,7 @@ test("bounds 1,000 history events and keeps 300 streaming revisions on one row",
   }
   await expect(canonical).toHaveCount(1);
   await expect(canonical).toContainText("Streaming revision 300");
-  await expect(page.locator(".structured-event-row")).toHaveCount(2);
+  await expect(page.locator(".structured-event-row")).toHaveCount(4);
 });
 
 for (const viewport of [

@@ -1,10 +1,144 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 
 describe("install-agent-hooks", () => {
+  it("posts factual summary content and canonical metadata from bundled adapters", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "tmux-ui-hook-capture-"));
+    const captureFile = join(dir, "capture.json");
+    const portFile = join(dir, "port.txt");
+    const server = spawn(
+      process.execPath,
+      [
+        "-e",
+        `const http=require("node:http"),fs=require("node:fs");const events=[];const s=http.createServer((q,r)=>{let b="";q.on("data",c=>b+=c);q.on("end",()=>{events.push(JSON.parse(b));fs.writeFileSync(process.argv[1],JSON.stringify(events));r.end("ok");if(events.length===4)s.close();});});s.listen(0,"127.0.0.1",()=>fs.writeFileSync(process.argv[2],String(s.address().port)));`,
+        captureFile,
+        portFile
+      ],
+      { stdio: "ignore" }
+    );
+
+    try {
+      for (let attempt = 0; attempt < 100 && !readFileIfPresent(portFile); attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      const port = readFileIfPresent(portFile);
+      expect(port).not.toBe("");
+
+      const result = spawnSync(
+        process.execPath,
+        ["scripts/tmux-ui-agent-hook.mjs", "codex-permission"],
+        {
+          cwd: process.cwd(),
+          encoding: "utf8",
+          input: JSON.stringify({
+            tool_name: "apply_patch",
+            tool_input: { description: "Update README examples" },
+            turn_id: "turn-12",
+            cwd: "/workspace/project"
+          }),
+          env: {
+            ...process.env,
+            TMUX_UI_HOOK_URL: `http://127.0.0.1:${port}`,
+            TMUX_UI_SESSION_NAME: "phase4-docs"
+          }
+        }
+      );
+
+      expect(result.stderr).toBe("");
+      expect(result.status).toBe(0);
+      const withoutToolFact = spawnSync(
+        process.execPath,
+        ["scripts/tmux-ui-agent-hook.mjs", "codex-permission"],
+        {
+          cwd: process.cwd(),
+          encoding: "utf8",
+          input: JSON.stringify({ turn_id: "turn-13" }),
+          env: {
+            ...process.env,
+            TMUX_UI_HOOK_URL: `http://127.0.0.1:${port}`,
+            TMUX_UI_SESSION_NAME: "phase4-docs"
+          }
+        }
+      );
+      expect(withoutToolFact.stderr).toBe("");
+      expect(withoutToolFact.status).toBe(0);
+      const claude = spawnSync(
+        process.execPath,
+        ["scripts/tmux-ui-agent-hook.mjs", "claude-notification"],
+        {
+          cwd: process.cwd(), encoding: "utf8",
+          input: JSON.stringify({
+            notification_type: "idle_prompt",
+            message: "Claude is ready for the next task"
+          }),
+          env: { ...process.env, TMUX_UI_HOOK_URL: `http://127.0.0.1:${port}`, TMUX_UI_SESSION_NAME: "phase4-docs" }
+        }
+      );
+      expect(claude.status).toBe(0);
+      const standard = spawnSync(
+        process.execPath,
+        ["scripts/tmux-ui-agent-hook.mjs", "generic"],
+        {
+          cwd: process.cwd(), encoding: "utf8",
+          input: JSON.stringify({
+            schemaVersion: "tmux-ui.hook/v1",
+            body: "Long fallback body",
+            content: [{ type: "summary", text: "Producer summary" }]
+          }),
+          env: { ...process.env, TMUX_UI_HOOK_URL: `http://127.0.0.1:${port}`, TMUX_UI_SESSION_NAME: "phase4-docs" }
+        }
+      );
+      expect(standard.status).toBe(0);
+      for (let attempt = 0; attempt < 100 && !readFileIfPresent(captureFile); attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      const [event, genericEvent, claudeEvent, standardEvent] = JSON.parse(
+        readFileSync(captureFile, "utf8")
+      );
+      expect(event.content).toEqual([
+        { type: "summary", text: "Update README examples" }
+      ]);
+      expect(event.metadata).toEqual({ toolName: "apply_patch" });
+      expect(genericEvent.metadata).toBeUndefined();
+      expect(claudeEvent.content).toEqual([
+        { type: "summary", text: "Claude is ready for the next task" }
+      ]);
+      expect(claudeEvent.metadata).toEqual({ notificationType: "idle_prompt" });
+      expect(standardEvent.content).toEqual([
+        { type: "summary", text: "Producer summary" }
+      ]);
+    } finally {
+      server.kill();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("prints hook and revisioned conversation integration examples", () => {
+    const result = spawnSync(
+      process.execPath,
+      ["scripts/install-agent-hooks.mjs", "--examples"],
+      { cwd: process.cwd(), encoding: "utf8" }
+    );
+
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('"type": "summary"');
+    expect(result.stdout).toContain('"revision": 1');
+    expect(result.stdout).toContain('"revision": 2');
+    expect(result.stdout).toContain('"revision": 3');
+    expect(result.stdout).toContain('"status": "complete"');
+    expect(result.stdout).toContain("hooks emit hook events, not conversation messages");
+    expect(result.stdout).toContain("config/structured-events-compat.json");
+    expect(result.stdout).toContain("minimumCompatibleVersion");
+    expect(result.stdout).toContain('"minimumCompatibleVersion": "1.2.3"');
+    expect(result.stdout).toContain('"minimumCompatibleVersion": "2.3.4"');
+    expect(result.stdout).toContain("Phase 1 server release gate");
+    expect(result.stdout).toContain("npm run check:structured-events-compat");
+  });
+
   it("merges Codex and Claude hooks without dropping existing hooks", () => {
     const dir = mkdtempSync(join(tmpdir(), "tmux-ui-hooks-"));
     const codexHooksFile = join(dir, "codex-hooks.json");
@@ -134,3 +268,11 @@ describe("install-agent-hooks", () => {
     }
   });
 });
+
+function readFileIfPresent(path: string) {
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return "";
+  }
+}
