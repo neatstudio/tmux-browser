@@ -12,11 +12,14 @@ export function createAppEventHub(): AppEventHub {
   return {
     publish(draft) {
       nextId += 1;
-      const event: AppEvent = {
-        id: `evt-${nextId}`,
-        createdAt: new Date().toISOString(),
-        ...draft,
-      };
+      const event: AppEvent =
+        "id" in draft && "createdAt" in draft
+          ? draft
+          : {
+              ...draft,
+              id: `evt-${nextId}`,
+              createdAt: new Date().toISOString()
+            };
 
       listeners.forEach((listener) => listener(event));
 

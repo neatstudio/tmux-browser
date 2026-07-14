@@ -344,6 +344,18 @@ adapter emits standard `tmux-ui.hook/v1` events, so future tool adapters such as
 opencode, kimi, qwecn, or qodercli can map into the same payload without
 changing the UI.
 
+The bundled adapters emit hook events only. They do not call the conversation
+message endpoint or produce conversation revisions. When an incoming payload
+contains a tool description or notification message, the adapter copies that
+fact into a `summary` content block and records only the known `toolName` or
+`notificationType` metadata. It does not invent file counts, test results,
+durations, or outcomes. Print generated integration examples without changing
+hook configuration with:
+
+```bash
+node scripts/install-agent-hooks.mjs --examples
+```
+
 Standard hook events can include a cross-group target, compact structured
 content, and explicit buttons. Toasts show the `summary` block; Action Center
 keeps bulky `code` and `details` blocks collapsible for mobile screens:
@@ -401,6 +413,71 @@ event in the timeline and pushes it over the global websocket; `waiting`,
 If the service is not listening on `127.0.0.1:3000`, set
 `TMUX_UI_HOOK_URL=http://100.x.y.z:3000/api/hooks/events` in the hook
 environment.
+
+## Structured Activity Integration
+
+The unified panel opens on **Activity**, where ordinary conversation and hook
+records stay collapsed. **Attention** contains failed, blocked, waiting,
+input-required, approval-required, and danger-action records. Their reason and
+primary action remain visible. Expanding details reads client state and makes no
+additional request. An Attention toast opens the matching item; ordinary
+completion updates may remain in Activity without a toast.
+
+Producer summaries take priority. When absent, the client derives a conservative
+summary from text, code language/tool, the first command line, image type, or
+status. Missing reasons remain explicit instead of being guessed. Realtime
+updates replace the item with the same event id.
+
+Conversation producers that reuse `(sessionName, messageId)` must send complete
+snapshots with consecutive revisions: `revision: 1`, `revision: 2`, then the
+final `status: "complete"` or `"failed"` at the next revision. Missing revisions
+on updates return `428`; stale, skipped, immutable-field, and terminal-state
+conflicts return `409`. Single-create legacy producers may omit `summary` and
+`revision`; repeated-message streaming producers must upgrade. See
+[the API examples](docs/api.md#conversation-messages).
+
+Metadata is a display aid, not a secret store. The server accepts scalar values,
+normalizes keys to lowercase alphanumeric canonical keys, redacts keys containing
+token, secret, password, authorization, cookie, or ending in key, and caps entries
+and bytes. Only `fileschanged`, `testspassed`, `testsfailed`, and `durationms` are
+display statistics. Do not send prompts, source content, or credentials.
+
+Actions never guess a destination. Input uses `action.target`, then the event
+target, and requires a current target session. Input runs before optional
+navigation; failure prevents navigation. A missing session returns `404
+target_session_not_found`; an unavailable prompt returns `409
+target_session_unavailable`. The item remains unresolved and displays the error.
+
+Timeline history uses `GET /api/timeline?limit=<n>&cursor=<opaque>`. Pass
+`nextCursor` back unchanged. Invalid cursors return `400
+timeline_cursor_invalid`; retention-expired boundaries return `410
+timeline_cursor_expired`, then the client reloads the latest page. Retention is
+`TMUX_UI_TIMELINE_MAX_EVENTS`, default `1000`. The cursor secret defaults to
+`~/.tmux-ui/timeline-cursor-secret` mode `0600`. Set
+`TMUX_UI_TIMELINE_CURSOR_SECRET` only to a stable base64url encoding of exactly
+32 random bytes, and keep it out of logs and clients.
+
+Privacy-safe counters cover `conversation_total`, `hook_total`,
+`missing_producer_summary`, the five `fallback_*` categories, and
+`attention_total`. They accept only known enum names and non-negative integer
+counts, never body, content, or summary text.
+
+Production release is fail-closed on `npm run check:structured-events-compat`.
+Register strict decoders and repeated-message streaming producers in
+`config/structured-events-compat.json` with owner,
+`minimumCompatibleVersion`, and `compatible: true` only after deployment is
+verified. Local publish checks before SSH/SCP; GitHub release checks before
+packing. An empty audited repository inventory does not prove external clients
+compatible.
+
+Checked-in Activity benchmark artifacts are provisional local evidence.
+Authoritative baseline and candidate measurements run sequentially on one CI
+runner. Repository variable `STRUCTURED_ACTIVITY_BASELINE_SHA` is required and
+must identify the completed Phase 1 commit; CI fails closed when absent or
+inconsistent. For rollback, disable/revert the Activity/Attention entry point
+while retaining the additive timeline contract and dual-written legacy hook
+metadata. Do not delete history or independently roll back registered strict
+decoders/streaming producers.
 
 ## tmux Restoration
 

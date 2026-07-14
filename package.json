@@ -8,11 +8,14 @@
     "dev:client": "vite",
     "build": "tsc -p tsconfig.server.json && vite build",
     "bench:api": "node scripts/bench-api.mjs",
+    "benchmark:activity": "tsx scripts/benchmark-structured-activity.mjs",
+    "check:structured-events-compat": "node scripts/check-structured-events-compat.mjs",
     "pack:run": "node scripts/pack-run.mjs",
     "publish": "node scripts/publish-run.mjs",
     "release:notes": "node scripts/generate-release-notes.mjs",
     "start": "node dist/server/index.js",
     "test": "vitest run --passWithNoTests",
+    "test:e2e": "playwright test",
     "test:watch": "vitest"
   },
   "dependencies": {
@@ -25,6 +28,7 @@
     "ws": "^8.21.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.61.1",
     "@types/express": "^5.0.6",
     "@types/node": "^25.6.0",
     "@types/supertest": "^7.2.0",

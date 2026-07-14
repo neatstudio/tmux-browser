@@ -114,6 +114,41 @@ describe("createApp", () => {
         message: "created session build"
       }
     ]);
+    expect(response.body.nextCursor).toBeNull();
+  });
+
+  it("returns stable cursor error codes for invalid and expired timeline cursors", async () => {
+    const timelineStore = createTimelineStore({ maxEvents: 2 });
+    timelineStore.addEvent({ type: "command-sent", sessionName: "build", message: "1" });
+    timelineStore.addEvent({ type: "command-sent", sessionName: "build", message: "2" });
+    const app = createApp({ timelineStore });
+
+    const invalid = await request(app).get("/api/timeline").query({ cursor: "broken" });
+    expect(invalid.status).toBe(400);
+    expect(invalid.body).toMatchObject({ code: "timeline_cursor_invalid" });
+
+    const first = await request(app).get("/api/timeline").query({ limit: 1 });
+    timelineStore.addEvent({ type: "command-sent", sessionName: "build", message: "3" });
+    timelineStore.addEvent({ type: "command-sent", sessionName: "build", message: "4" });
+    const expired = await request(app)
+      .get("/api/timeline")
+      .query({ limit: 1, cursor: first.body.nextCursor });
+    expect(expired.status).toBe(410);
+    expect(expired.body).toMatchObject({ code: "timeline_cursor_expired" });
+  });
+
+  it("returns 410 for a well-formed cursor from a prior store epoch", async () => {
+    const previous = createTimelineStore({ cursorSecret: "stable-root-key", cursorEpoch: "old-epoch" });
+    previous.addEvent({ type: "command-sent", sessionName: "build", message: "1" });
+    previous.addEvent({ type: "command-sent", sessionName: "build", message: "2" });
+    const cursor = previous.listEventPage({ limit: 1 }).nextCursor!;
+    const current = createTimelineStore({ cursorSecret: "stable-root-key", cursorEpoch: "new-epoch" });
+    const response = await request(createApp({ timelineStore: current }))
+      .get("/api/timeline")
+      .query({ cursor });
+
+    expect(response.status).toBe(410);
+    expect(response.body).toMatchObject({ code: "timeline_cursor_expired" });
   });
 
   it("records structured conversation messages in timeline and broadcasts app events", async () => {
@@ -144,8 +179,9 @@ describe("createApp", () => {
         sessionName: "codex",
         role: "assistant",
         contentType: "text",
-        content: "已经完成修改",
-        status: "complete",
+        content: "正在修改",
+        summary: "  修改中  ",
+        status: "streaming",
         toolName: "apply_patch",
         parentMessageId: "msg_122"
       });
@@ -157,13 +193,20 @@ describe("createApp", () => {
       sessionName: "codex",
       role: "assistant",
       contentType: "text",
-      content: "已经完成修改",
-      status: "complete",
+      content: "正在修改",
+      summary: "修改中",
+      status: "streaming",
       toolName: "apply_patch",
       parentMessageId: "msg_122",
+      summary: "修改中",
+      revision: 1,
       id: expect.any(String),
-      createdAt: expect.any(String)
+      createdAt: expect.any(String),
+      updatedAt: expect.any(String)
     });
+    expect(response.body.message.updatedAt).toBe(
+      response.body.message.createdAt
+    );
     expect(timelineStore.listEvents({ limit: 1 })[0]).toMatchObject(
       response.body.message
     );
@@ -174,10 +217,159 @@ describe("createApp", () => {
         sessionName: "codex",
         role: "assistant",
         contentType: "text",
-        content: "已经完成修改",
-        status: "complete"
+        content: "正在修改",
+        status: "streaming",
+        summary: "修改中",
+        revision: 1,
+        updatedAt: response.body.message.createdAt
       })
     ]);
+    expect(received[0]).toEqual(response.body.message);
+
+    const updated = await request(app)
+      .post("/api/conversation/messages")
+      .send({
+        messageId: "msg_123",
+        sessionName: "codex",
+        role: "assistant",
+        contentType: "text",
+        content: "已经完成修改",
+        summary: "修改完成",
+        status: "complete",
+        toolName: "apply_patch",
+        parentMessageId: "msg_122",
+        revision: 2
+      });
+
+    expect(updated.status).toBe(201);
+    expect(updated.body.message).toMatchObject({
+      id: response.body.message.id,
+      createdAt: response.body.message.createdAt,
+      revision: 2,
+      summary: "修改完成",
+      status: "complete"
+    });
+    expect(received[1]).toEqual(updated.body.message);
+    expect(timelineStore.listEvents({ limit: 1 })).toEqual([
+      updated.body.message
+    ]);
+  });
+
+  it("maps conversation revision conflicts to stable HTTP codes without broadcasting", async () => {
+    const timelineStore = createTimelineStore();
+    const eventHub = createAppEventHub();
+    const received: unknown[] = [];
+    eventHub.subscribe((event) => received.push(event));
+    const app = createApp({ timelineStore, eventHub });
+    const base = {
+      messageId: "message-1",
+      sessionName: "build",
+      role: "assistant",
+      contentType: "text",
+      content: "working",
+      status: "streaming",
+      toolName: null,
+      parentMessageId: null
+    };
+
+    const invalid = await request(app)
+      .post("/api/conversation/messages")
+      .send({ ...base, revision: 2 });
+    expect(invalid.status).toBe(400);
+    expect(invalid.body.code).toBe("invalid_revision");
+    expect(received).toHaveLength(0);
+
+    const invalidType = await request(app)
+      .post("/api/conversation/messages")
+      .send({ ...base, revision: "1" });
+    expect(invalidType.status).toBe(400);
+    expect(invalidType.body.code).toBe("invalid_revision");
+    expect(received).toHaveLength(0);
+
+    const created = await request(app).post("/api/conversation/messages").send(base);
+    expect(created.status).toBe(201);
+    expect(received).toHaveLength(1);
+
+    const required = await request(app)
+      .post("/api/conversation/messages")
+      .send({ ...base, content: "changed" });
+    expect(required.status).toBe(428);
+    expect(required.body.code).toBe("revision_required");
+
+    const cases = [
+      [{ ...base, revision: 1, content: "changed" }, "stale_revision"],
+      [{ ...base, revision: 3, content: "changed" }, "revision_gap"],
+      [{ ...base, revision: 2, role: "tool" }, "immutable_field"]
+    ] as const;
+    for (const [payload, code] of cases) {
+      const rejected = await request(app)
+        .post("/api/conversation/messages")
+        .send(payload);
+      expect(rejected.status).toBe(409);
+      expect(rejected.body.code).toBe(code);
+    }
+    expect(received).toHaveLength(1);
+
+    const completePayload = {
+      ...base,
+      revision: 2,
+      content: "done",
+      status: "complete"
+    };
+    const complete = await request(app)
+      .post("/api/conversation/messages")
+      .send(completePayload);
+    expect(complete.status).toBe(201);
+    expect(received).toHaveLength(2);
+
+    const retry = await request(app)
+      .post("/api/conversation/messages")
+      .send(completePayload);
+    expect(retry.status).toBe(201);
+    expect(retry.body.message).toEqual(complete.body.message);
+    expect(received).toHaveLength(3);
+
+    const terminal = await request(app)
+      .post("/api/conversation/messages")
+      .send({ ...base, revision: 3, content: "again" });
+    expect(terminal.status).toBe(409);
+    expect(terminal.body.code).toBe("terminal_conflict");
+    expect(received).toHaveLength(3);
+  });
+
+  it("never stores or broadcasts raw sensitive conversation metadata", async () => {
+    const timelineStore = createTimelineStore();
+    const eventHub = createAppEventHub();
+    const received: unknown[] = [];
+    eventHub.subscribe((event) => received.push(event));
+    const app = createApp({ timelineStore, eventHub });
+    const response = await request(app).post("/api/conversation/messages").send({
+      messageId: "private-message",
+      sessionName: "build",
+      content: "done",
+      metadata: {
+        token: "raw-token",
+        cookie: "raw-cookie",
+        Authorization: "raw-auth",
+        filesChanged: 3,
+        note: "safe"
+      }
+    });
+
+    expect(response.status).toBe(201);
+    expect(response.body.message.metadata).toEqual({
+      authorization: "[redacted]",
+      cookie: "[redacted]",
+      fileschanged: 3,
+      note: "safe",
+      token: "[redacted]"
+    });
+    const serialized = JSON.stringify({
+      response: response.body,
+      timeline: timelineStore.listEvents(),
+      received
+    });
+    expect(serialized).not.toMatch(/raw-token|raw-cookie|raw-auth/);
   });
 
   it("accepts authenticated hook events, records timeline, and broadcasts app events", async () => {
@@ -214,6 +406,15 @@ describe("createApp", () => {
         body: "Approve file edit?",
         taskId: "task-1",
         metadata: {
+          "Api Token": "raw-secret",
+          eventType: "spoofed-event",
+          eventtype: "spoofed-event-canonical",
+          "event-type": "spoofed-event-variant",
+          taskId: "spoofed-task",
+          taskid: "spoofed-task-canonical",
+          "task-id": "spoofed-task-dashed",
+          task_id: "spoofed-task-variant",
+          status: "failed",
           tool: "apply_patch",
           ignored: { nested: true }
         },
@@ -280,6 +481,7 @@ describe("createApp", () => {
         }
       ],
       metadata: {
+        apitoken: "[redacted]",
         tool: "apply_patch"
       }
     });
@@ -287,13 +489,13 @@ describe("createApp", () => {
     expect(timelineEvent).toMatchObject({
       type: "hook-event",
       sessionName: "local-pets",
-      message: "Need confirmation",
       metadata: {
+        apitoken: "[redacted]",
+        tool: "apply_patch",
         source: "codex",
         eventType: "approval-required",
         status: "waiting",
         taskId: "task-1",
-        cwd: "/Users/gouki/server/wwwroot/own/pets",
         target: expect.any(String),
         actions: expect.any(String)
       }
@@ -325,6 +527,13 @@ describe("createApp", () => {
         style: "secondary"
       }
     ]);
+    expect(timelineEvent.metadata).not.toHaveProperty("severity");
+    expect(timelineEvent.metadata).not.toHaveProperty("cwd");
+    expect(timelineEvent.metadata).not.toHaveProperty("eventtype");
+    expect(timelineEvent.metadata).not.toHaveProperty("taskid");
+    expect(timelineEvent.metadata?.eventType).toBe("approval-required");
+    expect(timelineEvent.metadata?.taskId).toBe("task-1");
+    expect(timelineEvent.metadata?.status).toBe("waiting");
     expect(received).toEqual([
       expect.objectContaining({
         type: "hook-event",
@@ -341,6 +550,9 @@ describe("createApp", () => {
         }
       })
     ]);
+    expect(timelineEvent).toEqual(response.body.event);
+    expect(received[0]).toEqual(response.body.event);
+    expect(JSON.stringify(response.body)).not.toContain("raw-secret");
   });
 
   it("accepts structured hook content blocks for compact mobile rendering", async () => {

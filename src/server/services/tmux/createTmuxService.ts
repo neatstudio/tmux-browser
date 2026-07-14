@@ -5,6 +5,7 @@ import {
   type TmuxSessionSummary
 } from "./parseTmuxListOutput.js";
 import { homedir } from "node:os";
+import { createHash } from "node:crypto";
 import { detectTerminalInputPrompt } from "../../../shared/inputPromptDetector.js";
 import {
   getGitSummary,
@@ -49,6 +50,10 @@ export type TmuxService = {
   killSession: (name: string) => Promise<void>;
   sendCommand: (name: string, command: string) => Promise<void>;
   sendInput: (name: string, input: string) => Promise<void>;
+  sendInputIfPromptAvailable?: (
+    name: string,
+    input: string
+  ) => Promise<"sent" | "not_found" | "unavailable">;
   sendLiteralInput: (name: string, input: string) => Promise<void>;
   captureRecentOutput: (name: string, lineCount?: number) => Promise<string>;
   splitPane: (name: string, direction: SplitPaneDirection) => Promise<void>;
@@ -232,6 +237,10 @@ export function createTmuxService(deps: {
       prompt: ReturnType<typeof detectTerminalInputPrompt> | null;
     }
   >();
+  const inputActionLocks = new Map<string, Promise<void>>();
+  const actedPromptFingerprints = new Map<string, { fingerprint: string; touchedAt: number }>();
+  const ACTION_FINGERPRINT_TTL_MS = 5 * 60_000;
+  const ACTION_FINGERPRINT_LIMIT = 256;
   const paneFormat =
     "#{session_name}\t#{pane_id}\t#{window_index}\t#{window_name}\t#{window_active}\t#{pane_index}\t#{pane_active}\t#{pane_current_command}\t#{pane_current_path}\t#{pane_dead}\t#{pane_dead_status}\t#{pane_pid}\t#{pane_left}\t#{pane_top}\t#{pane_width}\t#{pane_height}";
   const sessionFormat =
@@ -360,6 +369,64 @@ export function createTmuxService(deps: {
     });
 
     return prompt;
+  }
+
+  async function sendNormalizedInput(name: string, normalizedInput: string) {
+    const key = getTmuxKey(normalizedInput);
+    if (key) {
+      await run("send-keys", ["-t", name, key]);
+      invalidateSessionCaches(name);
+      return;
+    }
+    if (normalizedInput.endsWith("\r")) {
+      const literalInput = normalizedInput.slice(0, -1);
+      if (literalInput) await run("send-keys", ["-t", name, "-l", literalInput]);
+      await run("send-keys", ["-t", name, "Enter"]);
+      invalidateSessionCaches(name);
+      return;
+    }
+    await run("send-keys", ["-t", name, "-l", normalizedInput]);
+    invalidateSessionCaches(name);
+  }
+
+  function isMissingSessionError(error: unknown) {
+    return error instanceof Error && /can't find (?:session|pane)|session not found|no server running/i.test(error.message);
+  }
+
+  function isUnavailableInputError(error: unknown) {
+    return error instanceof Error && /pane.*dead|no longer accepts input|not accepting input|unavailable/i.test(error.message);
+  }
+
+  async function withInputActionLock<T>(sessionName: string, action: () => Promise<T>) {
+    const previous = inputActionLocks.get(sessionName) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => { release = resolve; });
+    const tail = previous.then(() => current);
+    inputActionLocks.set(sessionName, tail);
+    await previous;
+    try {
+      return await action();
+    } finally {
+      release();
+      if (inputActionLocks.get(sessionName) === tail) inputActionLocks.delete(sessionName);
+    }
+  }
+
+  function cleanupActedPromptFingerprints(nowMs: number) {
+    for (const [sessionName, entry] of actedPromptFingerprints) {
+      if (entry.touchedAt + ACTION_FINGERPRINT_TTL_MS <= nowMs) {
+        actedPromptFingerprints.delete(sessionName);
+      }
+    }
+    while (actedPromptFingerprints.size >= ACTION_FINGERPRINT_LIMIT) {
+      const oldest = actedPromptFingerprints.keys().next().value as string | undefined;
+      if (!oldest) break;
+      actedPromptFingerprints.delete(oldest);
+    }
+  }
+
+  function promptFingerprint(prompt: ReturnType<typeof detectTerminalInputPrompt>) {
+    return createHash("sha256").update(JSON.stringify(prompt)).digest("hex");
   }
 
   async function getCachedGitSummary(cwd: string | null | undefined) {
@@ -579,28 +646,50 @@ export function createTmuxService(deps: {
     async sendInput(name: string, input: string) {
       validateSessionName(name);
       const normalizedInput = validateInput(input);
-      const key = getTmuxKey(normalizedInput);
-
-      if (key) {
-        await run("send-keys", ["-t", name, key]);
-        invalidateSessionCaches(name);
-        return;
-      }
-
-      if (normalizedInput.endsWith("\r")) {
-        const literalInput = normalizedInput.slice(0, -1);
-
-        if (literalInput) {
-          await run("send-keys", ["-t", name, "-l", literalInput]);
+      await sendNormalizedInput(name, normalizedInput);
+    },
+    async sendInputIfPromptAvailable(name: string, input: string) {
+      validateSessionName(name);
+      const normalizedInput = validateInput(input);
+      return withInputActionLock(name, async () => {
+        let output: string;
+        try {
+          const captured = await run("capture-pane", [
+            "-p", "-t", name, "-S", `-${PREVIEW_LINE_LIMIT}`
+          ]);
+          output = captured.stdout;
+        } catch (error) {
+          if (isMissingSessionError(error)) {
+            actedPromptFingerprints.delete(name);
+            return "not_found";
+          }
+          throw error;
         }
-
-        await run("send-keys", ["-t", name, "Enter"]);
-        invalidateSessionCaches(name);
-        return;
-      }
-
-      await run("send-keys", ["-t", name, "-l", normalizedInput]);
-      invalidateSessionCaches(name);
+        const prompt = detectTerminalInputPrompt(output);
+        if (!prompt) {
+          actedPromptFingerprints.delete(name);
+          return "unavailable";
+        }
+        const nowMs = now();
+        cleanupActedPromptFingerprints(nowMs);
+        const fingerprint = promptFingerprint(prompt);
+        if (actedPromptFingerprints.get(name)?.fingerprint === fingerprint) {
+          return "unavailable";
+        }
+        try {
+          await sendNormalizedInput(name, normalizedInput);
+          actedPromptFingerprints.delete(name);
+          actedPromptFingerprints.set(name, { fingerprint, touchedAt: nowMs });
+          return "sent";
+        } catch (error) {
+          if (isMissingSessionError(error)) {
+            actedPromptFingerprints.delete(name);
+            return "not_found";
+          }
+          if (isUnavailableInputError(error)) return "unavailable";
+          throw error;
+        }
+      });
     },
     async sendLiteralInput(name: string, input: string) {
       validateSessionName(name);

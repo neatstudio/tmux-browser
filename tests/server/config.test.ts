@@ -4,21 +4,46 @@ import { getServerConfig } from "../../src/server/config";
 
 const originalHost = process.env.HOST;
 const originalPort = process.env.PORT;
+const originalTimelineMaxEvents = process.env.TMUX_UI_TIMELINE_MAX_EVENTS;
 
 describe("getServerConfig", () => {
   afterEach(() => {
-    process.env.HOST = originalHost;
-    process.env.PORT = originalPort;
+    if (originalHost === undefined) delete process.env.HOST;
+    else process.env.HOST = originalHost;
+    if (originalPort === undefined) delete process.env.PORT;
+    else process.env.PORT = originalPort;
+    if (originalTimelineMaxEvents === undefined) {
+      delete process.env.TMUX_UI_TIMELINE_MAX_EVENTS;
+    } else {
+      process.env.TMUX_UI_TIMELINE_MAX_EVENTS = originalTimelineMaxEvents;
+    }
   });
 
   it("listens on localhost by default", () => {
     delete process.env.HOST;
     delete process.env.PORT;
+    delete process.env.TMUX_UI_TIMELINE_MAX_EVENTS;
 
     expect(getServerConfig()).toEqual({
       host: "127.0.0.1",
-      port: 3000
+      port: 3000,
+      timelineMaxEvents: 1000
     });
+  });
+
+  it.each(["0", "-1", "1.5", "nope", "", "1e3", "+10", " 10 "])(
+    "rejects invalid TMUX_UI_TIMELINE_MAX_EVENTS=%s",
+    (value) => {
+      process.env.TMUX_UI_TIMELINE_MAX_EVENTS = value;
+      expect(() => getServerConfig()).toThrow(
+        "TMUX_UI_TIMELINE_MAX_EVENTS must be a positive integer"
+      );
+    }
+  );
+
+  it("accepts a positive timeline retention limit", () => {
+    process.env.TMUX_UI_TIMELINE_MAX_EVENTS = "2500";
+    expect(getServerConfig().timelineMaxEvents).toBe(2500);
   });
 
   it("allows HOST and PORT to override the default bind address", () => {
@@ -27,7 +52,8 @@ describe("getServerConfig", () => {
 
     expect(getServerConfig()).toEqual({
       host: "127.0.0.1",
-      port: 3100
+      port: 3100,
+      timelineMaxEvents: 1000
     });
   });
 

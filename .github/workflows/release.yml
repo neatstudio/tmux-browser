@@ -36,6 +36,9 @@ jobs:
       - name: Test
         run: npm run test
 
+      - name: Check structured event compatibility
+        run: npm run check:structured-events-compat
+
       - name: Pack run file
         run: npm run pack:run
 

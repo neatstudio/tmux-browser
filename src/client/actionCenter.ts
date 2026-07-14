@@ -1,12 +1,9 @@
 import type { SessionSummary } from "./api/sessionApi";
 import type { InputPromptNotice } from "./state/inputPromptRegistry";
 import type { TerminalInputPromptAction } from "../shared/inputPromptDetector";
-import type {
-  HookEventAction,
-  HookEventContentBlock,
-  HookEventTarget
-} from "../shared/hookEvents";
+import type { HookEventAction, HookEventContentBlock, HookEventTarget } from "../shared/hookEvents";
 import type { TimelineEvent } from "../shared/timeline";
+import { adaptStructuredHookCompatibility } from "./structuredPresentation";
 
 export type ActionCenterInputPromptItem = {
   type: "input-prompt";
@@ -53,158 +50,6 @@ const ACTIONABLE_HOOK_STATUSES = new Set([
   "need-input",
   "failed"
 ]);
-
-function readMetadataString(
-  metadata: TimelineEvent["metadata"] | undefined,
-  key: string
-) {
-  const value = metadata?.[key];
-
-  return typeof value === "string" ? value : null;
-}
-
-function readMetadataJson(
-  metadata: TimelineEvent["metadata"] | undefined,
-  key: string
-) {
-  const value = readMetadataString(metadata, key);
-
-  if (!value) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(value) as unknown;
-  } catch {
-    return null;
-  }
-}
-
-function readHookTarget(value: unknown, fallbackSessionName: string): HookEventTarget {
-  const target = value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-  const sessionName =
-    typeof target.sessionName === "string" && target.sessionName.trim()
-      ? target.sessionName.trim()
-      : fallbackSessionName || null;
-  const projectName =
-    typeof target.projectName === "string" && target.projectName.trim()
-      ? target.projectName.trim()
-      : null;
-  const view = target.view === "kanban" ? "kanban" : "terminal";
-
-  return { sessionName, projectName, view };
-}
-
-function readOptionalHookTarget(value: unknown): HookEventTarget | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-
-  const target = readHookTarget(value, "");
-
-  return target.sessionName || target.projectName ? target : null;
-}
-
-function readHookActionStyle(value: unknown): HookEventAction["style"] {
-  return value === "primary" || value === "danger" ? value : "secondary";
-}
-
-function readHookActions(value: unknown): HookEventAction[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value.flatMap<HookEventAction>((entry) => {
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-      return [];
-    }
-
-    const action = entry as Record<string, unknown>;
-    const id =
-      typeof action.id === "string" && action.id.trim()
-        ? action.id.trim()
-        : "";
-    const label =
-      typeof action.label === "string" && action.label.trim()
-        ? action.label.trim()
-        : id;
-
-    if (!id || !label) {
-      return [];
-    }
-
-    return [
-      {
-        id,
-        label,
-        input: typeof action.input === "string" ? action.input : null,
-        open: action.open === true,
-        target: readOptionalHookTarget(action.target),
-        style: readHookActionStyle(action.style)
-      }
-    ];
-  });
-}
-
-function readHookContentBlocks(value: unknown): HookEventContentBlock[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value.flatMap<HookEventContentBlock>((entry) => {
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-      return [];
-    }
-
-    const block = entry as Record<string, unknown>;
-    const text =
-      typeof block.text === "string" && block.text.trim()
-        ? block.text.trim()
-        : "";
-
-    if (!text) {
-      return [];
-    }
-
-    if (block.type === "summary" || block.type === "text") {
-      return [{ type: block.type, text }];
-    }
-
-    if (block.type === "code") {
-      return [
-        {
-          type: "code",
-          text,
-          ...(typeof block.title === "string" && block.title.trim()
-            ? { title: block.title.trim() }
-            : {}),
-          ...(typeof block.language === "string" && block.language.trim()
-            ? { language: block.language.trim() }
-            : {}),
-          collapsed: block.collapsed !== false
-        }
-      ];
-    }
-
-    if (block.type === "details") {
-      return [
-        {
-          type: "details",
-          title:
-            typeof block.title === "string" && block.title.trim()
-              ? block.title.trim()
-              : "Details",
-          text,
-          collapsed: block.collapsed !== false
-        }
-      ];
-    }
-
-    return [];
-  });
-}
 
 export function deriveActionCenterItems(input: {
   prompts: InputPromptNotice[];
@@ -257,34 +102,34 @@ export function deriveActionCenterItems(input: {
     input.timelineEvents
       ?.filter((event) => event.type === "hook-event")
       .flatMap<ActionCenterItem>((event) => {
-        const status = readMetadataString(event.metadata, "status") ?? "info";
+        const adapted = adaptStructuredHookCompatibility(event);
+        if (!adapted) return [];
+        const status = adapted.presentation.status;
 
-        if (!ACTIONABLE_HOOK_STATUSES.has(status)) {
+        if (!ACTIONABLE_HOOK_STATUSES.has(status) && !adapted.presentation.attentionRequired) {
           return [];
         }
-
-        const content = readHookContentBlocks(
-          readMetadataJson(event.metadata, "content")
-        );
         const item: ActionCenterHookEventItem = {
             type: "hook-event",
             id: `hook:${event.id}`,
-            sessionName: event.sessionName ?? "",
-            source: readMetadataString(event.metadata, "source") ?? "custom",
-            eventType: readMetadataString(event.metadata, "eventType") ?? "event",
+            sessionName: adapted.presentation.sessionName ?? "",
+            source: adapted.source,
+            eventType: adapted.eventType,
             status,
-            title: event.message,
-            body: readMetadataString(event.metadata, "body"),
-            taskId: readMetadataString(event.metadata, "taskId"),
-            target: readHookTarget(
-              readMetadataJson(event.metadata, "target"),
-              event.sessionName ?? ""
-            ),
-            actions: readHookActions(readMetadataJson(event.metadata, "actions"))
+            title: adapted.presentation.title,
+            body: adapted.body ?? (adapted.presentation.summary === adapted.presentation.title ? null : adapted.presentation.summary),
+            taskId: adapted.taskId,
+            target: adapted.target,
+            actions: adapted.presentation.actions
+              .filter((action) => action.enabled)
+              .map(({ effectiveTarget, enabled: _enabled, disabledReason: _disabledReason, ...action }) => ({
+                ...action,
+                target: effectiveTarget
+              }))
           };
 
-        if (content.length > 0) {
-          item.content = content;
+        if (adapted.content.length > 0) {
+          item.content = adapted.content;
         }
 
         return [item];

@@ -133,8 +133,7 @@ type BaseTimelineEvent = {
     | "group-message-replied"
     | "pane-split"
     | "pane-selected"
-    | "pane-killed"
-    | "hook-event";
+    | "pane-killed";
   sessionName: string | null;
   message: string;
   createdAt: string;
@@ -153,14 +152,26 @@ type ConversationMessageTimelineEvent = {
   role: ConversationMessageRole;
   contentType: ConversationMessageContentType;
   content: string;
+  summary: string | null;
   status: ConversationMessageStatus;
   createdAt: string;
+  revision: number;
+  updatedAt: string;
   toolName: string | null;
   parentMessageId: string | null;
   metadata?: Record<string, string | number | boolean | null>;
 };
 
-type TimelineEvent = BaseTimelineEvent | ConversationMessageTimelineEvent;
+type HookEventTimelineEvent = HookEvent & {
+  type: "hook-event";
+  id: string;
+  createdAt: string;
+};
+
+type TimelineEvent =
+  | BaseTimelineEvent
+  | ConversationMessageTimelineEvent
+  | HookEventTimelineEvent;
 ```
 
 ## Health, Status, Timeline
@@ -169,11 +180,43 @@ type TimelineEvent = BaseTimelineEvent | ConversationMessageTimelineEvent;
 | --- | --- | --- | --- |
 | `GET` | `/api/health` | none | `AppHealth` |
 | `GET` | `/api/server-status` | none | `ServerStatus` |
-| `GET` | `/api/timeline?limit=20` | optional `limit` query | `{ events: TimelineEvent[] }` |
+| `GET` | `/api/timeline?limit=20&cursor=<opaque>` | optional `limit` and opaque `cursor` query | `{ events: TimelineEvent[], nextCursor: string \| null }` |
 
 Timeline contains generic operational events plus structured
 `conversation-message` events. Use conversation messages for Android/native chat
 views instead of parsing `/ws/terminal` ANSI output.
+
+Timeline pages are ordered by `(createdAt, id)` descending. Omit `cursor` for
+the latest page, then pass `nextCursor` unchanged to request older records. The
+cursor is server-owned and clients must not decode or construct it. New events
+inserted after the first request do not shift older pages. An invalid cursor
+returns `400` with code `timeline_cursor_invalid`; a cursor whose boundary was
+removed by retention returns `410` with code `timeline_cursor_expired`. Clients
+should notify the user that history expired and restart without a cursor. The
+server caps each page at 200 events. Each running server uses a new cursor epoch
+authenticated by a stable root secret. A valid cursor from an authenticated
+prior process epoch returns `410 timeline_cursor_expired` without reading or
+accepting its boundary data; malformed, unauthenticated, or integrity-invalid
+cursors return `400 timeline_cursor_invalid`.
+
+The dashboard requests 8 events initially and retains at most 1000 timeline
+events in client state while older pages and websocket updates are merged.
+
+By default the server atomically creates and reuses
+`~/.tmux-ui/timeline-cursor-secret` with file mode `0600`. Deployments may set
+`TMUX_UI_TIMELINE_CURSOR_SECRET` to a canonical base64url value encoding exactly
+32 random bytes. Generate one with:
+
+```bash
+node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('base64url'))"
+```
+
+Keep this value stable across restarts and never expose it to clients or logs.
+Rotating it intentionally invalidates outstanding cursors as
+`400 timeline_cursor_invalid`; clients then need to reload the latest page.
+
+Timeline retention is configured with `TMUX_UI_TIMELINE_MAX_EVENTS`. It defaults
+to `1000` and must be a positive integer.
 
 ## Conversation Messages
 
@@ -190,10 +233,12 @@ type ConversationMessageRequest = {
   role?: ConversationMessageRole; // default: "assistant"
   contentType?: ConversationMessageContentType; // default: "text"
   content: string;
+  summary?: string | null; // trimmed, max 320 characters
   status?: ConversationMessageStatus; // default: "complete"
   toolName?: string | null;
   parentMessageId?: string | null;
   metadata?: Record<string, string | number | boolean | null>;
+  revision?: number;
 };
 
 type ConversationMessageResponse = {
@@ -206,6 +251,56 @@ type ConversationMessageResponse = {
 | --- | --- | --- | --- |
 | `POST` | `/api/conversation/messages` | `ConversationMessageRequest` | `ConversationMessageResponse` |
 
+The logical key is `(sessionName, messageId)`. A first write defaults to
+`revision: 1`; if supplied on the first write, revision must equal `1`. Producers
+that update a streaming message must send the complete content snapshot with the
+next consecutive revision. Successful updates preserve `id` and `createdAt`, set
+a new `updatedAt`, and replace the mutable snapshot fields. Retrying the exact
+same normalized payload at the same revision is idempotent.
+
+Legacy producers that create each message only once remain compatible without
+`summary` or `revision`; the response contains `summary: null`, `revision: 1`, and
+`updatedAt`. Legacy streaming producers that reuse a message id must upgrade to
+the explicit monotonically increasing revision contract before using this API.
+
+### Phase 1 production compatibility gate
+
+Production publishing is blocked by `npm run check:structured-events-compat`.
+The command reads `config/structured-events-compat.json` locally and performs no
+network access. Local publishing runs it before checking the run file or invoking
+`ssh`/`scp`; the release workflow runs it before packing or uploading artifacts.
+
+Register every strict decoder of structured `/ws/events` payloads under
+`strictDecoders.entries`, and every producer that sends multiple
+`conversation-message` snapshots for one `messageId` under
+`repeatedMessageStreamingProducers.entries`. Each entry requires a stable `id`,
+an `owner`, the deployed `minimumCompatibleVersion`, and `compatible: true` only
+after compatibility has been verified. `minimumCompatibleVersion` must use the
+deterministic core SemVer form `major.minor.patch` (for example, `1.2.3`): all
+three identifiers are required, leading zeroes are forbidden except for `0`, and
+prerelease/build suffixes are not accepted. A category may remain empty only when
+its repository audit is recorded with an ISO `auditedAt` date and nonempty
+`owner`. Entry `id` values must be unique across both categories.
+
+The checker accepts an explicit manifest path for isolated validation, but
+`npm run publish` always passes the repository's canonical
+`config/structured-events-compat.json` path. Environment variables cannot
+redirect the production publish gate to another manifest.
+
+Before a Phase 1 server production release, update the manifest for every known
+consumer and producer, deploy the recorded minimum compatible versions, set
+`compatible: true`, and run the gate. Do not use an empty repository inventory as
+evidence that an unregistered external native client or producer is ready.
+
+| Status | Code | Meaning |
+| --- | --- | --- |
+| `400` | `invalid_revision` | A new message did not start at revision 1, or revision is not a finite integer. |
+| `428` | `revision_required` | An existing message update omitted revision. |
+| `409` | `stale_revision` | Revision is older, or repeats a revision with different normalized payload. |
+| `409` | `revision_gap` | Revision skipped the next consecutive value. |
+| `409` | `immutable_field` | An update changed identity, role, content type, tool, or parent fields. |
+| `409` | `terminal_conflict` | An update attempted to change a complete or failed message. |
+
 Example:
 
 ```json
@@ -215,11 +310,27 @@ Example:
   "role": "assistant",
   "contentType": "text",
   "content": "已经完成修改",
+  "summary": "修改完成",
   "status": "complete",
   "toolName": "apply_patch",
   "parentMessageId": "msg_122"
 }
 ```
+
+The example above creates one record and may omit `revision`. A producer that
+streams multiple snapshots for one logical message must send the same immutable
+fields and complete content at every step:
+
+```json
+{"messageId":"msg_123","sessionName":"codex","role":"assistant","contentType":"text","content":"Reading project docs","summary":"Reading project docs","status":"streaming","revision":1}
+{"messageId":"msg_123","sessionName":"codex","role":"assistant","contentType":"text","content":"Reading project docs and updating examples","summary":"Updating integration examples","status":"streaming","revision":2}
+{"messageId":"msg_123","sessionName":"codex","role":"assistant","contentType":"text","content":"Updated the integration examples","summary":"Integration examples updated","status":"complete","revision":3}
+```
+
+The bundled `tmux-ui-agent-hook.mjs` producer does not send these requests or
+generate revisions. It emits hook events only. Run
+`node scripts/install-agent-hooks.mjs --examples` to print both integration
+shapes without installing hooks.
 
 ## Sessions
 
@@ -545,7 +656,8 @@ type HookEvent = {
 ### `POST /api/hooks/events`
 
 Records an agent/tool event, adds a timeline event, and broadcasts over
-`/ws/events`.
+`/ws/events`. The response, stored timeline record, and websocket event are the
+same canonical typed record, including the same `id` and `createdAt`.
 
 ```ts
 type Request = Partial<HookEvent> & {
@@ -566,6 +678,27 @@ Defaults: `schemaVersion` is `"tmux-ui.hook/v1"`, `source` is `"custom"`,
 `eventType` is `"event"`, `status` is `"info"`, `severity` is `"info"`,
 `title` is `"<source> <eventType>"`, `target.sessionName` is `sessionName`,
 and `actions` / `content` are `[]`.
+
+Hook metadata accepts scalar values only. Original keys are processed in sorted
+order, then stored in lowercase alphanumeric form; normalized-key collisions
+keep the first key and emit a value-free diagnostic. Normalized keys containing
+`token`, `secret`, `password`, `authorization`, or `cookie`, or
+ends in `key`, are stored as `[redacted]`. Strings are limited to 2 KiB of UTF-8
+data including the `[truncated]` marker when shortened. User metadata is limited
+to 16 KiB and receives `_truncated: true` when the limit is reached. User keys
+that normalize to the reserved legacy names `status`, `source`, `eventtype`,
+`body`, `taskid`, `target`, `actions`, or `content` are dropped; `_truncated`
+is also protected from producer values. The optional
+display statistics are persisted under canonical keys and validated as follows:
+`fileschanged` is an integer from 0 to 100000, `testspassed` and `testsfailed`
+are integers from 0 to 1000000, and `durationms` is a finite number from 0 to
+86400000. Producers may use punctuation or case variants such as
+`filesChanged`; normalization maps them to these canonical keys.
+
+For compatibility, the record metadata also contains reserved legacy
+projections for `status`, `source`, `eventType`, `body`, `taskId`, `target`,
+`actions`, and `content`. These reserved fields do not consume
+the user metadata budget; typed top-level fields are canonical.
 
 `target` lets tmux-ui jump to the correct terminal or Kanban group when the event
 belongs to a different group than the current page. `actions` renders explicit
@@ -603,6 +736,57 @@ simple tools.
   ]
 }
 ```
+
+### Structured presentation behavior
+
+Activity contains conversation and hook records. Attention is the filtered view
+for failed, blocked, waiting, need-input, approval-required, and danger-action
+records. The compact Attention row includes its reason and primary action.
+Details are lazy-materialized from the record already in client state; expanding
+does not issue another request. Realtime records merge by canonical event `id`,
+so a revision update changes one item rather than appending another. Attention
+toasts select the same presentation item; ordinary completion events need not
+produce a toast.
+
+Conversation summary order is producer `summary`, then a deterministic fallback
+for its `contentType` (`text`, `code`, `command`, or `image`), then status text.
+Hook order is the first nonempty `summary`/`text` content block, `body`, then
+`title`. Missing failure or action reasons are labeled as missing and are never
+invented from terminal output.
+
+Action input resolves only `action.target` and then the event `target`; it does
+not fall back to the current page or parse a session from text. Input requires a
+live target session and executes before optional navigation. A missing target
+returns `404 target_session_not_found`; a target that cannot currently accept
+input returns `409 target_session_unavailable`. The client refreshes session
+state, keeps the event unresolved, displays the error, and does not navigate.
+Open-only actions may navigate to a valid terminal session or Kanban project.
+
+Client observability is content-free. The registered counters are
+`conversation_total`, `hook_total`, `missing_producer_summary`,
+`fallback_text`, `fallback_code`, `fallback_command`, `fallback_image`,
+`fallback_status`, and `attention_total`. The counter interface accepts only a
+registered enum plus a non-negative integer count; body, content, summary, and
+metadata values are outside this boundary.
+
+For production rollout, update `config/structured-events-compat.json` and run
+`npm run check:structured-events-compat`. Strict decoders must first accept the
+additive conversation fields and typed hook union member. Producers that update
+one message repeatedly must first implement consecutive revisions. Each manifest
+entry records `minimumCompatibleVersion`; `compatible: true` means that deployed
+version was verified, not merely that source code exists. Local publish and the
+GitHub release workflow fail before side effects when the gate fails.
+
+The rollback boundary is the Activity/Attention presentation entry point. It can
+be disabled or reverted while the additive timeline contract and legacy hook
+metadata projection remain available. Do not delete retained history or roll
+back a strict decoder/streaming producer independently of the manifest.
+
+Benchmark artifacts under `performance/` are provisional local evidence. The
+authoritative workflow records baseline and candidate sequentially on the same
+runner and requires repository variable `STRUCTURED_ACTIVITY_BASELINE_SHA` to
+name the completed Phase 1 commit. Missing, malformed, unavailable, or mismatched
+values fail closed.
 
 ## Uploads And Image Preview
 

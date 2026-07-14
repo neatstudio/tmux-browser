@@ -183,7 +183,11 @@ describe("deriveActionCenterItems", () => {
             input: "y\r",
             open: false,
             style: "primary",
-            target: null
+            target: {
+              sessionName: "project-codex",
+              projectName: "project",
+              view: "terminal"
+            }
           },
           {
             id: "details",
@@ -253,5 +257,57 @@ describe("deriveActionCenterItems", () => {
         ]
       }
     ]);
+  });
+
+  it("uses the shared adapter safety rules for corrupt typed hooks", () => {
+    const items = deriveActionCenterItems({
+      prompts: [PROMPT],
+      sessions: [{ ...BASE_SESSION, paneDead: true, paneDeadStatus: 1 }],
+      timelineEvents: [{
+        id: "corrupt",
+        type: "hook-event",
+        schemaVersion: "tmux-ui.hook/v1",
+        sessionName: "api",
+        title: "Bad record",
+        status: "waiting",
+        createdAt: "2026-07-14T01:00:00.000Z",
+        actions: [{ id: "unsafe", label: "Unsafe", input: "y" }]
+      } as never]
+    });
+
+    expect(items.map((item) => item.type)).toEqual(["input-prompt", "hook-event", "dead-pane"]);
+    expect(items[1]).toMatchObject({
+      type: "hook-event",
+      title: "Bad record",
+      body: "事件数据损坏",
+      actions: []
+    });
+  });
+
+  it("does not expose input actions without an explicit effective session target", () => {
+    const items = deriveActionCenterItems({
+      prompts: [],
+      sessions: [BASE_SESSION],
+      timelineEvents: [{
+        id: "typed-waiting",
+        type: "hook-event",
+        schemaVersion: "tmux-ui.hook/v1",
+        source: "codex",
+        sessionName: "api",
+        eventType: "approval-required",
+        status: "waiting",
+        title: "Approve",
+        body: "Approve?",
+        cwd: null,
+        taskId: null,
+        severity: "info",
+        target: { sessionName: null, projectName: null, view: "terminal" },
+        actions: [{ id: "approve", label: "Approve", input: "y", open: false, target: null, style: "primary" }],
+        content: [],
+        createdAt: "2026-07-14T01:00:00.000Z"
+      }]
+    });
+
+    expect(items).toMatchObject([{ type: "hook-event", actions: [] }]);
   });
 });

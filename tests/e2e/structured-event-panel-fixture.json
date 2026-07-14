@@ -1,0 +1,101 @@
+[
+  {
+    "type": "conversation-message",
+    "id": "complete-1",
+    "createdAt": "2026-07-14T08:00:00.000Z",
+    "updatedAt": "2026-07-14T08:00:00.000Z",
+    "sessionName": "codex",
+    "messageId": "message-1",
+    "parentMessageId": null,
+    "role": "assistant",
+    "contentType": "command",
+    "content": "npm test\n42 tests passed",
+    "status": "complete",
+    "toolName": null,
+    "revision": 1,
+    "summary": "All focused tests passed",
+    "metadata": { "testspassed": 42, "durationms": 1840, "fixturelongwordcharacters": 2048 }
+  },
+  {
+    "type": "conversation-message",
+    "id": "complete-2",
+    "createdAt": "2026-07-14T07:59:00.000Z",
+    "updatedAt": "2026-07-14T07:59:00.000Z",
+    "sessionName": "codex",
+    "messageId": "message-2",
+    "parentMessageId": null,
+    "role": "assistant",
+    "contentType": "text",
+    "content": "Structured event compatibility passed",
+    "status": "complete",
+    "toolName": null,
+    "revision": 1,
+    "summary": "Compatibility gate passed",
+    "metadata": {}
+  },
+  {
+    "type": "conversation-message",
+    "id": "complete-3",
+    "createdAt": "2026-07-14T07:58:00.000Z",
+    "updatedAt": "2026-07-14T07:58:00.000Z",
+    "sessionName": "codex",
+    "messageId": "message-3",
+    "parentMessageId": null,
+    "role": "assistant",
+    "contentType": "text",
+    "content": "Documentation examples generated",
+    "status": "complete",
+    "toolName": null,
+    "revision": 1,
+    "summary": "Integration docs generated",
+    "metadata": {}
+  },
+  {
+    "type": "conversation-message",
+    "id": "long-command",
+    "createdAt": "2026-07-14T07:57:00.000Z",
+    "updatedAt": "2026-07-14T07:57:00.000Z",
+    "sessionName": "codex",
+    "messageId": "message-long-command",
+    "parentMessageId": null,
+    "role": "tool",
+    "contentType": "command",
+    "content": "node scripts/benchmark-structured-activity.mjs --mode compare --evidence-scope local --target-commit 04aea66569c3ae0da65f043ab09076b0ace39bf1 --expected-baseline-commit 519ceee4e1e84480926f3b5b5de992ac88e51b9c --baseline performance/structured-activity-baseline.json --output /tmp/structured-activity-candidate.json --report /tmp/structured-activity-report.json --target-url http://127.0.0.1:4317/tests/e2e/structured-event-panel-harness.html",
+    "status": "complete",
+    "toolName": "benchmark",
+    "revision": 1,
+    "summary": "Structured Activity benchmark command completed",
+    "metadata": {}
+  },
+  {
+    "type": "hook-event",
+    "schemaVersion": "tmux-ui.hook/v1",
+    "id": "attention-1",
+    "createdAt": "2026-07-14T08:01:00.000Z",
+    "source": "codex",
+    "sessionName": "codex",
+    "eventType": "approval-required",
+    "status": "waiting",
+    "title": "Approval needed",
+    "body": null,
+    "cwd": null,
+    "taskId": "task-1",
+    "severity": "warning",
+    "target": { "sessionName": "codex", "projectName": null, "view": "terminal" },
+    "actions": [
+      {
+        "id": "approve",
+        "label": "Approve",
+        "input": "y\r",
+        "open": true,
+        "target": { "sessionName": "deleted-session", "projectName": null, "view": "terminal" },
+        "style": "primary"
+      }
+    ],
+    "content": [
+      { "type": "summary", "text": "Review the command before it runs" },
+      { "type": "details", "title": "Command", "text": "rm temporary-output.txt", "collapsed": true }
+    ],
+    "metadata": {}
+  }
+]

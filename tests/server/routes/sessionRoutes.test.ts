@@ -3,6 +3,7 @@ import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
 
 import { createSessionRoutes } from "../../../src/server/routes/sessionRoutes";
+import { createTmuxService } from "../../../src/server/services/tmux/createTmuxService";
 
 describe("sessionRoutes", () => {
   it("returns session rows from the tmux service", async () => {
@@ -143,7 +144,9 @@ describe("sessionRoutes", () => {
         splitPane: vi.fn(),
         selectPane: vi.fn(),
         killPane: vi.fn(),
-        getSessionStatus: vi.fn()
+        getSessionStatus: vi.fn().mockResolvedValue({
+          name: "build", paneDead: false, inputPrompt: { snippet: "Continue?", actions: [] }
+        })
       })
     );
 
@@ -154,6 +157,97 @@ describe("sessionRoutes", () => {
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ ok: true });
     expect(sendInput).toHaveBeenCalledWith("build", "\u001b");
+  });
+
+  it("uses fresh prompt validation only when structured action input requires it", async () => {
+    const app = express();
+    const sendInput = vi.fn();
+    const sendInputIfPromptAvailable = vi.fn().mockResolvedValue("unavailable");
+    app.use(express.json());
+    app.use("/api/sessions", createSessionRoutes({
+      listSessions: vi.fn(), createSession: vi.fn(), renameSession: vi.fn(),
+      killSession: vi.fn(), sendCommand: vi.fn(), sendInput, sendInputIfPromptAvailable,
+      splitPane: vi.fn(), selectPane: vi.fn(), killPane: vi.fn(), getSessionStatus: vi.fn()
+    }));
+    const response = await request(app).post("/api/sessions/build/input")
+      .send({ input: "y\r", requirePrompt: true });
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({ code: "target_session_unavailable" });
+    expect(sendInputIfPromptAvailable).toHaveBeenCalledWith("build", "y\r");
+    expect(sendInput).not.toHaveBeenCalled();
+  });
+
+  it("allows exactly one of two concurrent requests for the same fresh prompt", async () => {
+    const run = vi.fn(async (command: string) => command === "capture-pane"
+      ? { stdout: "Approve once? [y/N]", stderr: "" }
+      : { stdout: "", stderr: "" });
+    const tmux = createTmuxService({ run });
+    const app = express();
+    app.use(express.json());
+    app.use("/api/sessions", createSessionRoutes({
+      listSessions: vi.fn(), createSession: vi.fn(), renameSession: vi.fn(),
+      killSession: vi.fn(), sendCommand: vi.fn(), sendInput: tmux.sendInput,
+      sendInputIfPromptAvailable: tmux.sendInputIfPromptAvailable,
+      splitPane: vi.fn(), selectPane: vi.fn(), killPane: vi.fn(), getSessionStatus: vi.fn()
+    }));
+    const [first, second] = await Promise.all([
+      request(app).post("/api/sessions/build/input").send({ input: "y\r", requirePrompt: true }),
+      request(app).post("/api/sessions/build/input").send({ input: "y\r", requirePrompt: true })
+    ]);
+    expect([first.status, second.status].sort()).toEqual([200, 409]);
+    expect(run.mock.calls.filter(([command]) => command === "send-keys")).toHaveLength(2);
+  });
+
+  it("returns a stable 404 code when the input target no longer exists", async () => {
+    const app = express();
+    const sendInput = vi.fn();
+    app.use(express.json());
+    app.use("/api/sessions", createSessionRoutes({
+      listSessions: vi.fn(), createSession: vi.fn(), renameSession: vi.fn(),
+      killSession: vi.fn(), sendCommand: vi.fn(), sendInput,
+      sendInputIfPromptAvailable: vi.fn().mockResolvedValue("not_found"), splitPane: vi.fn(),
+      selectPane: vi.fn(), killPane: vi.fn(),
+      getSessionStatus: vi.fn().mockRejectedValue(new Error("Tmux session not found"))
+    }));
+    const response = await request(app).post("/api/sessions/gone/input").send({ input: "y", requirePrompt: true });
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({ code: "target_session_not_found" });
+    expect(sendInput).not.toHaveBeenCalled();
+  });
+
+  it("returns a stable 409 code when the target is not waiting for input", async () => {
+    const app = express();
+    const sendInput = vi.fn();
+    app.use(express.json());
+    app.use("/api/sessions", createSessionRoutes({
+      listSessions: vi.fn(), createSession: vi.fn(), renameSession: vi.fn(),
+      killSession: vi.fn(), sendCommand: vi.fn(), sendInput,
+      sendInputIfPromptAvailable: vi.fn().mockResolvedValue("unavailable"), splitPane: vi.fn(),
+      selectPane: vi.fn(), killPane: vi.fn(),
+      getSessionStatus: vi.fn().mockResolvedValue({ name: "busy", paneDead: false, inputPrompt: null })
+    }));
+    const response = await request(app).post("/api/sessions/busy/input").send({ input: "y", requirePrompt: true });
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({ code: "target_session_unavailable" });
+    expect(sendInput).not.toHaveBeenCalled();
+  });
+
+  it("returns the stable 404 when the target disappears during send", async () => {
+    const app = express();
+    app.use(express.json());
+    app.use("/api/sessions", createSessionRoutes({
+      listSessions: vi.fn(), createSession: vi.fn(), renameSession: vi.fn(),
+      killSession: vi.fn(), sendCommand: vi.fn(),
+      sendInput: vi.fn(),
+      sendInputIfPromptAvailable: vi.fn().mockResolvedValue("not_found"),
+      splitPane: vi.fn(), selectPane: vi.fn(), killPane: vi.fn(),
+      getSessionStatus: vi.fn().mockResolvedValue({
+        name: "vanished", paneDead: false, inputPrompt: { snippet: "Continue?", actions: [] }
+      })
+    }));
+    const response = await request(app).post("/api/sessions/vanished/input").send({ input: "y", requirePrompt: true });
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({ code: "target_session_not_found" });
   });
 
   it("splits a target session pane", async () => {

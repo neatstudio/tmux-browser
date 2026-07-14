@@ -8,6 +8,11 @@ import type { SessionRuntimeKind } from "../../shared/sessionRuntime";
 import type { SessionSettings } from "../../shared/sessionSettings";
 import type { TimelineEvent } from "../../shared/timeline";
 
+export type TimelinePage = {
+  events: TimelineEvent[];
+  nextCursor: string | null;
+};
+
 export type SessionSummary = {
   name: string;
   windows: number;
@@ -91,7 +96,7 @@ export type SessionApi = {
   listSessions: () => Promise<SessionSummary[]>;
   listPaneSessions: (mutedSessionNames?: string[]) => Promise<SessionSummary[]>;
   listDashboardSessions: (onlySessionNames?: string[]) => Promise<SessionSummary[]>;
-  listTimelineEvents: (limit?: number) => Promise<TimelineEvent[]>;
+  listTimelineEvents: (limit?: number, cursor?: string) => Promise<TimelinePage>;
   getPreferences: () => Promise<Preferences>;
   listKanbanProjects: () => Promise<KanbanProject[]>;
   createKanbanProject: (project: CreateKanbanProjectRequest) => Promise<string[]>;
@@ -120,11 +125,18 @@ export type SessionApi = {
   renameSession: (fromName: string, toName: string) => Promise<void>;
   killSession: (name: string) => Promise<void>;
   sendCommand: (name: string, command: string) => Promise<void>;
-  sendInput: (name: string, input: string) => Promise<void>;
+  sendInput: (name: string, input: string, options?: { requirePrompt?: boolean }) => Promise<void>;
   splitPane: (name: string, direction: SplitPaneDirection) => Promise<void>;
   selectPane: (name: string, paneId: string) => Promise<void>;
   killPane: (name: string, paneId: string) => Promise<void>;
 };
+
+export class SessionApiError extends Error {
+  constructor(message: string, public readonly status: number, public readonly code: string | null) {
+    super(message);
+    this.name = "SessionApiError";
+  }
+}
 
 export function createSessionApi(baseUrl = ""): SessionApi {
   return {
@@ -173,17 +185,29 @@ export function createSessionApi(baseUrl = ""): SessionApi {
 
       return (await response.json()) as SessionSummary[];
     },
-    async listTimelineEvents(limit = 20) {
+    async listTimelineEvents(limit = 20, cursor) {
       const params = new URLSearchParams({ limit: String(limit) });
+      if (cursor !== undefined) {
+        params.set("cursor", cursor);
+      }
       const response = await fetch(`${baseUrl}/api/timeline?${params.toString()}`);
 
       if (!response.ok) {
-        throw new Error("Failed to load timeline events");
+        let code: string | null = null;
+        try {
+          const payload = (await response.json()) as { code?: unknown };
+          code = typeof payload.code === "string" ? payload.code : null;
+        } catch {
+          // Keep the stable fallback when the server returns a non-JSON error.
+        }
+        throw new SessionApiError(
+          "Failed to load timeline events",
+          response.status,
+          code
+        );
       }
 
-      const payload = (await response.json()) as { events: TimelineEvent[] };
-
-      return payload.events;
+      return (await response.json()) as TimelinePage;
     },
     async getPreferences() {
       const response = await fetch(`${baseUrl}/api/preferences`);
@@ -439,7 +463,7 @@ export function createSessionApi(baseUrl = ""): SessionApi {
         throw new Error("Failed to send tmux command");
       }
     },
-    async sendInput(name: string, input: string) {
+    async sendInput(name: string, input: string, options = {}) {
       const response = await fetch(
         `${baseUrl}/api/sessions/${encodeURIComponent(name)}/input`,
         {
@@ -447,12 +471,19 @@ export function createSessionApi(baseUrl = ""): SessionApi {
           headers: {
             "Content-Type": "application/json"
           },
-          body: JSON.stringify({ input })
+          body: JSON.stringify({ input, ...(options.requirePrompt ? { requirePrompt: true } : {}) })
         }
       );
 
       if (!response.ok) {
-        throw new Error("Failed to send tmux input");
+        let code: string | null = null;
+        try {
+          const payload = await response.json() as { code?: unknown };
+          code = typeof payload.code === "string" ? payload.code : null;
+        } catch {
+          // Preserve the HTTP status even when an intermediary returns a non-JSON body.
+        }
+        throw new SessionApiError("Failed to send tmux input", response.status, code);
       }
     },
     async splitPane(name: string, direction: SplitPaneDirection) {

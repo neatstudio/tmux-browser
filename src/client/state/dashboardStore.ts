@@ -6,15 +6,49 @@ import type {
   SessionSummary,
   SplitPaneDirection
 } from "../api/sessionApi";
+import { SessionApiError, type TimelinePage } from "../api/sessionApi";
 import type { TimelineEvent } from "../../shared/timeline";
 import type { BrowserTab } from "./tabState";
 import type { SessionListCache } from "./sessionListCache";
+
+const TIMELINE_LIMIT = 8;
+const TIMELINE_MAX_EVENTS = 1000;
+const STREAMING_NOTIFY_INTERVAL_MS = 250;
+
+function compareTimelineIdsDescending(left: string, right: string) {
+  const numericIdPattern = /^\d+$/;
+  const leftIsNumeric = numericIdPattern.test(left);
+  const rightIsNumeric = numericIdPattern.test(right);
+  if (leftIsNumeric !== rightIsNumeric) {
+    return leftIsNumeric ? -1 : 1;
+  }
+
+  if (leftIsNumeric && rightIsNumeric) {
+    const leftNumber = BigInt(left);
+    const rightNumber = BigInt(right);
+    if (leftNumber !== rightNumber) {
+      return leftNumber > rightNumber ? -1 : 1;
+    }
+  }
+
+  return left === right ? 0 : left > right ? -1 : 1;
+}
+
+function compareTimelineEventsDescending(left: TimelineEvent, right: TimelineEvent) {
+  if (left.createdAt !== right.createdAt) {
+    return left.createdAt > right.createdAt ? -1 : 1;
+  }
+
+  return compareTimelineIdsDescending(left.id, right.id);
+}
 
 export type DashboardState = {
   sessions: SessionSummary[];
   serverStatus: ServerStatus | null;
   kanbanProjects: KanbanProject[];
   timelineEvents?: TimelineEvent[];
+  timelineNextCursor?: string | null;
+  timelineHistoryExpired?: boolean;
   loading: boolean;
   error: string | null;
 };
@@ -69,14 +103,39 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
     serverStatus: null,
     kanbanProjects: [],
     timelineEvents: [],
+    timelineNextCursor: null,
+    timelineHistoryExpired: false,
     loading: false,
     error: null
   };
   const listeners = new Set<(state: DashboardState) => void>();
+  let streamingNotifyTimer: ReturnType<typeof setTimeout> | null = null;
   let timer: ReturnType<typeof setInterval> | null = null;
   let dashboardTimer: ReturnType<typeof setInterval> | null = null;
   let serverStatusTimer: ReturnType<typeof setInterval> | null = null;
   let kanbanTimer: ReturnType<typeof setInterval> | null = null;
+  let timelineMergeSequence = 0;
+  const timelineMergeSequenceById = new Map<string, number>();
+  let timelineRefreshGeneration = 0;
+  let hasLoadedOlderTimeline = false;
+  const activeTimelineRefreshBaselines = new Map<number, number>();
+
+  function normalizeTimelinePage(
+    response: TimelinePage | TimelineEvent[]
+  ): TimelinePage {
+    return Array.isArray(response)
+      ? { events: response, nextCursor: null }
+      : response;
+  }
+
+  function pruneTimelineMergeSequences(timelineEvents: TimelineEvent[]) {
+    const retainedIds = new Set(timelineEvents.map((event) => event.id));
+    for (const eventId of timelineMergeSequenceById.keys()) {
+      if (!retainedIds.has(eventId)) {
+        timelineMergeSequenceById.delete(eventId);
+      }
+    }
+  }
 
   function sessionsEqual(previous: SessionSummary[], next: SessionSummary[]) {
     if (previous.length !== next.length) {
@@ -109,7 +168,10 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
     });
   }
 
-  function commit(nextState: DashboardState) {
+  function commit(
+    nextState: DashboardState,
+    notification: "immediate" | "streaming" = "immediate"
+  ) {
     const changed =
       state.loading !== nextState.loading ||
       state.error !== nextState.error ||
@@ -123,9 +185,23 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
 
     state = nextState;
 
-    if (changed) {
-      notify();
+    if (!changed) return;
+
+    if (notification === "streaming") {
+      if (streamingNotifyTimer === null) {
+        streamingNotifyTimer = setTimeout(() => {
+          streamingNotifyTimer = null;
+          notify();
+        }, STREAMING_NOTIFY_INTERVAL_MS);
+      }
+      return;
     }
+
+    if (streamingNotifyTimer !== null) {
+      clearTimeout(streamingNotifyTimer);
+      streamingNotifyTimer = null;
+    }
+    notify();
   }
 
   function notify() {
@@ -177,27 +253,191 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
     }
   }
 
-  async function refreshTimeline() {
+  async function refreshTimeline(options: { historyExpired?: boolean } = {}) {
     if (!deps.api.listTimelineEvents) {
       return;
     }
 
+    const refreshGeneration = (timelineRefreshGeneration += 1);
+    const mergeSequenceAtRequest = Math.min(
+      timelineMergeSequence,
+      ...activeTimelineRefreshBaselines.values()
+    );
+    activeTimelineRefreshBaselines.set(
+      refreshGeneration,
+      mergeSequenceAtRequest
+    );
+
     try {
-      const timelineEvents = await deps.api.listTimelineEvents(8);
+      const page = normalizeTimelinePage(
+        await deps.api.listTimelineEvents(TIMELINE_LIMIT)
+      );
+      const timelineEvents = page.events;
+      if (refreshGeneration !== timelineRefreshGeneration) {
+        return;
+      }
+
+      const eventsReceivedDuringRefresh = (state.timelineEvents ?? []).filter(
+        (event) =>
+          (timelineMergeSequenceById.get(event.id) ?? 0) > mergeSequenceAtRequest
+      );
+      const receivedDuringRefreshById = new Map(
+        eventsReceivedDuringRefresh.map((event) => [event.id, event])
+      );
+      const refreshedPageEvents = [
+        ...timelineEvents.map((snapshotEvent) => {
+          const receivedEvent = receivedDuringRefreshById.get(snapshotEvent.id);
+          if (!receivedEvent) {
+            return snapshotEvent;
+          }
+
+          receivedDuringRefreshById.delete(snapshotEvent.id);
+          if (
+            snapshotEvent.type === "conversation-message" &&
+            receivedEvent.type === "conversation-message"
+          ) {
+            return receivedEvent.revision > snapshotEvent.revision
+              ? receivedEvent
+              : snapshotEvent;
+          }
+
+          return receivedEvent;
+        }),
+        ...receivedDuringRefreshById.values()
+      ];
+      const refreshedIds = new Set(refreshedPageEvents.map((event) => event.id));
+      const refreshedTimelineEvents = [
+        ...refreshedPageEvents,
+        ...(hasLoadedOlderTimeline
+          ? (state.timelineEvents ?? []).filter((event) => !refreshedIds.has(event.id))
+          : [])
+      ]
+        .sort(compareTimelineEventsDescending)
+        .slice(0, hasLoadedOlderTimeline ? TIMELINE_MAX_EVENTS : TIMELINE_LIMIT);
+      pruneTimelineMergeSequences(refreshedTimelineEvents);
 
       commit({
         ...state,
-        timelineEvents,
+        timelineEvents: refreshedTimelineEvents,
+        timelineNextCursor: hasLoadedOlderTimeline
+          ? state.timelineNextCursor
+          : page.nextCursor,
+        timelineHistoryExpired: options.historyExpired ?? false,
         loading: false,
-        error: null
+        error: options.historyExpired
+          ? "Timeline history expired; showing the latest events"
+          : null
       });
     } catch (error) {
+      if (refreshGeneration !== timelineRefreshGeneration) {
+        return;
+      }
+
       commit({
         ...state,
         loading: false,
         error: error instanceof Error ? error.message : "Failed to refresh timeline"
       });
+    } finally {
+      activeTimelineRefreshBaselines.delete(refreshGeneration);
     }
+  }
+
+  async function loadOlderTimeline() {
+    if (!deps.api.listTimelineEvents || !state.timelineNextCursor) {
+      return;
+    }
+    try {
+      const page = normalizeTimelinePage(
+        await deps.api.listTimelineEvents(TIMELINE_LIMIT, state.timelineNextCursor)
+      );
+      const byId = new Map(page.events.map((event) => [event.id, event]));
+      for (const current of state.timelineEvents ?? []) {
+        const paged = byId.get(current.id);
+        if (!paged) {
+          byId.set(current.id, current);
+          continue;
+        }
+        if (
+          current.type === "conversation-message" &&
+          paged.type === "conversation-message"
+        ) {
+          if (current.revision >= paged.revision) byId.set(current.id, current);
+        } else if (timelineMergeSequenceById.has(current.id)) {
+          byId.set(current.id, current);
+        }
+      }
+      const timelineEvents = [...byId.values()]
+        .sort(compareTimelineEventsDescending)
+        .slice(0, TIMELINE_MAX_EVENTS);
+      hasLoadedOlderTimeline = true;
+      pruneTimelineMergeSequences(timelineEvents);
+      commit({
+        ...state,
+        timelineEvents,
+        timelineNextCursor: page.nextCursor,
+        timelineHistoryExpired: false,
+        loading: false,
+        error: null
+      });
+    } catch (error) {
+      if (
+        error instanceof SessionApiError &&
+        error.status === 410 &&
+        error.code === "timeline_cursor_expired"
+      ) {
+        hasLoadedOlderTimeline = false;
+        commit({
+          ...state,
+          timelineNextCursor: null,
+          timelineHistoryExpired: true,
+          loading: false,
+          error: "Timeline history expired; showing the latest events"
+        });
+        await refreshTimeline({ historyExpired: true });
+        return;
+      }
+      commit({
+        ...state,
+        loading: false,
+        error: error instanceof Error ? error.message : "Failed to load timeline history"
+      });
+    }
+  }
+
+  function mergeTimelineEvent(event: TimelineEvent) {
+    const existing = (state.timelineEvents ?? []).find(
+      (candidate) => candidate.id === event.id
+    );
+    if (
+      existing?.type === "conversation-message" &&
+      event.type === "conversation-message" &&
+      event.revision <= existing.revision
+    ) {
+      return;
+    }
+
+    timelineMergeSequence += 1;
+    timelineMergeSequenceById.set(event.id, timelineMergeSequence);
+    const timelineEvents = [
+      event,
+      ...(state.timelineEvents ?? []).filter((existing) => existing.id !== event.id)
+    ]
+      .sort(compareTimelineEventsDescending)
+      .slice(0, hasLoadedOlderTimeline ? TIMELINE_MAX_EVENTS : TIMELINE_LIMIT);
+    pruneTimelineMergeSequences(timelineEvents);
+
+    commit(
+      {
+        ...state,
+        timelineEvents,
+        loading: false,
+        error: null
+      },
+      event.type === "conversation-message" && event.status === "streaming"
+        ? "streaming"
+        : "immediate"
+    );
   }
 
   function mergeSessionStatus(session: SessionSummary) {
@@ -370,10 +610,18 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
     },
     subscribe(listener: (state: DashboardState) => void) {
       listeners.add(listener);
-      return () => listeners.delete(listener);
+      return () => {
+        listeners.delete(listener);
+        if (listeners.size === 0 && streamingNotifyTimer !== null) {
+          clearTimeout(streamingNotifyTimer);
+          streamingNotifyTimer = null;
+        }
+      };
     },
     refresh,
     refreshTimeline,
+    loadOlderTimeline,
+    mergeTimelineEvent,
     async createSession(name: string) {
       await deps.api.createSession(name);
       await refreshTimeline();

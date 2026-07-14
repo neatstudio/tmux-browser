@@ -2,7 +2,10 @@ import { createSessionApi } from "./api/sessionApi";
 import { deriveActionCenterItems } from "./actionCenter";
 import type { ActionCenterHookEventItem } from "./actionCenter";
 import { renderActionCenterPanel } from "./render/actionCenter";
-import { renderHookEventToast } from "./render/hookEventToast";
+import {
+  renderHookEventToast,
+  selectStructuredEventToasts
+} from "./render/hookEventToast";
 import { renderInputPromptToast } from "./render/inputPromptToast";
 import { renderDashboard } from "./render/renderDashboard";
 import {
@@ -40,7 +43,11 @@ import {
 } from "./imagePreviewFocus";
 import { getCompactPageTitle } from "./pageTitle";
 import { getResponsiveSessionDefaults } from "./responsiveSessionSettings";
-import { createAppEventRefreshScheduler } from "./events/appEventRefreshScheduler";
+import {
+  createAppEventRefreshScheduler,
+  createAppEventTimelineHandler,
+  createUnifiedPanelState
+} from "./events/appEventRefreshScheduler";
 import { createAppEventSocket } from "./events/appEventSocket";
 import { createPageActivityController } from "./events/pageActivityController";
 import { fetchAppHealth, isServerVersionNewer } from "./appVersion";
@@ -57,6 +64,11 @@ import {
   uploadImageForSession
 } from "./imageUpload";
 import { getResponsiveUiTier } from "./responsiveUiTier";
+import { adaptStructuredRecord } from "./structuredPresentation";
+import {
+  applyStructuredActionAvailability,
+  createStructuredActionRunner
+} from "./structuredActionRunner";
 import {
   buildViewUrl,
   getAppShellClasses,
@@ -247,6 +259,7 @@ function refreshCurrentViewState(options: { includeTimeline?: boolean } = {}) {
 const appEventRefreshScheduler = createAppEventRefreshScheduler(() => {
   void store.syncSessionAndKanbanState().then(() => scheduleRender());
 });
+const unifiedPanelState = createUnifiedPanelState();
 
 function shouldOpenActionCenterForHookEvent(event: {
   status?: string;
@@ -281,29 +294,24 @@ async function reloadIfServerVersionIsNewerAfterReconnect() {
   }
 }
 
+const appEventTimelineHandler = createAppEventTimelineHandler({
+  mergeTimelineEvent: (event) => store.mergeTimelineEvent(event),
+  refreshTimeline: () => void store.refreshTimeline().then(() => scheduleRender()),
+  scheduleSessionsRefresh: () => appEventRefreshScheduler.schedule(),
+  onAttentionEvent: (event) => {
+    if (shouldOpenActionCenterForHookEvent(event)) {
+      dismissedHookEventToastIds.delete(`hook:${event.id}`);
+      newlyArrivedHookEventIds.add(String(event.id));
+    }
+  }
+});
+
 const appEventSocket = createAppEventSocket({
   onReconnect: () => {
     void reloadIfServerVersionIsNewerAfterReconnect();
+    appEventTimelineHandler.onReconnect();
   },
-  onEvent: (event) => {
-    if (event.type === "sessions-invalidated") {
-      appEventRefreshScheduler.schedule();
-      return;
-    }
-
-    if (event.type === "hook-event") {
-      if (shouldOpenActionCenterForHookEvent(event)) {
-        dismissedHookEventToastIds.delete(`hook:${event.id}`);
-      }
-
-      void store.refreshTimeline().then(() => scheduleRender());
-      return;
-    }
-
-    if (event.type === "conversation-message") {
-      void store.refreshTimeline().then(() => scheduleRender());
-    }
-  }
+  onEvent: (event) => appEventTimelineHandler.onEvent(event)
 });
 const pageActivityController = createPageActivityController({
   document,
@@ -320,6 +328,7 @@ const pageActivityController = createPageActivityController({
 let activeImageSessionName: string | null = null;
 let isActionCenterOpen = false;
 const dismissedHookEventToastIds = new Set<string>();
+const newlyArrivedHookEventIds = new Set<string>();
 let imagePreviewScanToken = 0;
 let visibleTerminalPanelId: string | null = null;
 let lastDashboardActive = tabState.getActiveTabId() === null;
@@ -447,6 +456,9 @@ function moveKanbanSession(
 }
 
 function toggleActionCenter() {
+  if (!isActionCenterOpen) {
+    unifiedPanelState.openActivity();
+  }
   setActionCenterOpen(!isActionCenterOpen);
 }
 
@@ -1832,7 +1844,9 @@ function getHookEventToastItem(id: string) {
 }
 
 function dismissHookEventToast(id: string) {
-  dismissedHookEventToastIds.add(id);
+  const eventId = id.replace(/^hook:/, "");
+  dismissedHookEventToastIds.add(`hook:${eventId}`);
+  newlyArrivedHookEventIds.delete(eventId);
   scheduleRender();
 }
 
@@ -1848,7 +1862,10 @@ function openHookEventSession(id: string) {
 }
 
 function openHookEventActions(id: string) {
-  dismissedHookEventToastIds.add(id);
+  const eventId = id.replace(/^hook:/, "");
+  dismissedHookEventToastIds.add(`hook:${eventId}`);
+  newlyArrivedHookEventIds.delete(eventId);
+  unifiedPanelState.openAttention(eventId);
   setActionCenterOpen(true);
 }
 
@@ -1921,39 +1938,40 @@ function getHookEventAction(
   return item.actions.find((action) => action.id === actionId) ?? null;
 }
 
+function getStructuredHookItem(id: string) {
+  const eventId = id.replace(/^hook:/, "");
+  const event = store.getState().timelineEvents?.find((candidate) => String(candidate.id) === eventId);
+  const item = event ? adaptStructuredRecord(event) : null;
+  return item?.kind === "hook" ? item : null;
+}
+
+function navigateStructuredTarget(target: HookEventTarget) {
+  if (target.view === "kanban") {
+    openKanbanView(target.projectName ?? undefined);
+    return;
+  }
+  if (target.sessionName) {
+    getOrOpenTab(target.sessionName);
+    scheduleRender();
+  }
+}
+
+const structuredActionRunner = createStructuredActionRunner({
+  getSessions: () => store.getState().sessions,
+  sendInput: (sessionName, input, options) => api.sendInput(sessionName, input, options),
+  navigate: navigateStructuredTarget,
+  refreshSessions: () => refreshCurrentViewState({ includeTimeline: false }),
+  onStateChange: () => scheduleRender()
+});
+
 async function runHookEventAction(id: string, actionId: string) {
-  const item = getHookEventToastItem(id);
-
-  if (!item) {
-    return;
-  }
-
-  const action = getHookEventAction(item, actionId);
-
-  if (!action) {
-    return;
-  }
-
-  if (action.open) {
-    openHookEventTarget(item, action.target ?? item.target);
-  }
-
-  if (!action.input) {
+  const item = getStructuredHookItem(id);
+  if (!item) return;
+  const result = await structuredActionRunner.run(item, actionId);
+  if (result.ok) {
     dismissHookEventToast(id);
-    return;
-  }
-
-  const sessionName = getHookEventTargetSession(item, action.target);
-
-  if (!sessionName) {
-    return;
-  }
-
-  try {
-    await api.sendInput(sessionName, action.input);
-    dismissHookEventToast(id);
-  } catch (error) {
-    console.warn("Failed to run hook event action", error);
+  } else if (result.error) {
+    console.warn("Failed to run hook event action", result.error);
   }
 }
 
@@ -2099,9 +2117,16 @@ function render() {
     sessions: store.getState().sessions,
     timelineEvents: store.getState().timelineEvents
   });
-  const hookEventToastItems = actionCenterItems.filter(
-    (item): item is ActionCenterHookEventItem =>
-      item.type === "hook-event" && !dismissedHookEventToastIds.has(item.id)
+  const structuredItems = structuredActionRunner.applyState(applyStructuredActionAvailability(
+    (store.getState().timelineEvents ?? [])
+      .map((event) => adaptStructuredRecord(event))
+      .filter((item) => item !== null),
+    store.getState().sessions
+  ));
+  const hookEventToastItems = selectStructuredEventToasts(
+    structuredItems,
+    newlyArrivedHookEventIds,
+    new Set([...dismissedHookEventToastIds].map((id) => id.replace(/^hook:/, "")))
   );
   currentActionCount = actionCenterItems.length;
   const appShell = appRoot.querySelector(".app-shell");
@@ -2235,6 +2260,20 @@ function render() {
   renderActionCenterPanel(appRoot, {
     open: isActionCenterOpen,
     items: actionCenterItems,
+    structuredItems,
+    activeTab: unifiedPanelState.getState().activeTab,
+    expandedIds: unifiedPanelState.getState().expandedIds,
+    selectedEventId: unifiedPanelState.getState().selectedEventId,
+    loading: store.getState().loading,
+    error: store.getState().error,
+    onTabChange: (tab) => {
+      unifiedPanelState.selectTab(tab);
+      scheduleRender();
+    },
+    onToggleExpanded: (eventId) => {
+      unifiedPanelState.toggleExpanded(eventId);
+      scheduleRender();
+    },
     onClose: () => setActionCenterOpen(false),
     onOpenSession: openActionCenterSession,
     onDismissPrompt: closeInputPrompt,
@@ -2285,6 +2324,9 @@ function render() {
 }
 
 store.subscribe(() => {
+  unifiedPanelState.reconcileTimeline(
+    (store.getState().timelineEvents ?? []).map((event) => event.id)
+  );
   refreshKanbanStatusProjectsCache();
   scheduleRender();
 });

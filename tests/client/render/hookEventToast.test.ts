@@ -2,43 +2,41 @@
 
 import { describe, expect, it, vi } from "vitest";
 
-import { renderHookEventToast } from "../../../src/client/render/hookEventToast";
-import type { ActionCenterHookEventItem } from "../../../src/client/actionCenter";
+import {
+  renderHookEventToast,
+  selectStructuredEventToasts
+} from "../../../src/client/render/hookEventToast";
+import type { StructuredPresentationItem } from "../../../src/client/structuredPresentation";
 
-function hookItem(
-  overrides: Partial<ActionCenterHookEventItem> = {}
-): ActionCenterHookEventItem {
+function hookItem(overrides: Partial<StructuredPresentationItem> = {}): StructuredPresentationItem {
   return {
-    type: "hook-event",
-    id: "hook:1",
+    kind: "hook",
+    id: "1",
     sessionName: "codex",
-    source: "codex",
-    eventType: "approval-required",
     status: "waiting",
     title: "Codex approval needed",
-    body: "1. Yes, proceed (y)\n2. No (esc)",
-    taskId: "task-1",
-    target: {
-      sessionName: "codex",
-      projectName: "project",
-      view: "terminal"
-    },
+    summary: "Two files changed; approve patch?",
+    summarySource: "producer",
+    severity: "warning",
+    attentionRequired: true,
+    role: null, toolName: null, parentId: null, messageKey: null, parentMessageKey: null,
+    details: [], stats: {}, createdAt: "2026-07-14T08:00:00.000Z",
     actions: [
       {
         id: "approve",
         label: "Approve",
         input: "y\r",
         open: false,
-        target: null,
-        style: "primary"
+        target: null, effectiveTarget: { sessionName: "codex", projectName: null, view: "terminal" },
+        style: "primary", enabled: true, disabledReason: null
       },
       {
         id: "deny",
         label: "Deny",
         input: "n\r",
         open: false,
-        target: null,
-        style: "danger"
+        target: null, effectiveTarget: { sessionName: "codex", projectName: null, view: "terminal" },
+        style: "danger", enabled: true, disabledReason: null
       }
     ],
     ...overrides
@@ -46,6 +44,17 @@ function hookItem(
 }
 
 describe("renderHookEventToast", () => {
+  it("selects only newly arrived valuable Attention events", () => {
+    const complete = hookItem({ id: "complete", status: "complete", attentionRequired: false });
+    const oldAttention = hookItem({ id: "old" });
+    const newAttention = hookItem({ id: "new" });
+    expect(selectStructuredEventToasts(
+      [complete, oldAttention, newAttention],
+      new Set(["new"]),
+      new Set()
+    ).map((event) => event.id)).toEqual(["new"]);
+  });
+
   it("renders the latest hook event with quick actions", () => {
     const root = document.createElement("div");
     const onDismiss = vi.fn();
@@ -65,16 +74,14 @@ describe("renderHookEventToast", () => {
     expect(root.querySelector(".hook-event-toast")).not.toBeNull();
     expect(root.textContent).toContain("Codex approval needed");
     expect(root.textContent).toContain("codex · waiting");
-    expect(root.textContent).toContain("Yes, proceed");
+    expect(root.textContent).toContain("Two files changed; approve patch?");
     expect(root.textContent).toContain("Approve");
     expect(root.textContent).toContain("Deny");
 
     root
       .querySelector<HTMLButtonElement>("[data-action='hook-toast-run-action']")
       ?.click();
-    root
-      .querySelector<HTMLButtonElement>("[data-action='hook-toast-open']")
-      ?.click();
+    expect(root.querySelector("[data-action='hook-toast-open']")).toBeNull();
     root
       .querySelector<HTMLButtonElement>("[data-action='hook-toast-actions']")
       ?.click();
@@ -82,11 +89,11 @@ describe("renderHookEventToast", () => {
       .querySelector<HTMLButtonElement>("[data-action='hook-toast-close']")
       ?.click();
 
-    expect(onRunAction).toHaveBeenCalledWith("hook:1", "approve");
+    expect(onRunAction).toHaveBeenCalledWith("1", "approve");
     expect(onSendEnter).not.toHaveBeenCalled();
-    expect(onOpenSession).toHaveBeenCalledWith("hook:1");
-    expect(onOpenActions).toHaveBeenCalledWith("hook:1");
-    expect(onDismiss).toHaveBeenCalledWith("hook:1");
+    expect(onOpenSession).not.toHaveBeenCalled();
+    expect(onOpenActions).toHaveBeenCalledWith("1");
+    expect(onDismiss).toHaveBeenCalledWith("1");
   });
 
   it("uses structured summaries in the toast and hides bulky code blocks", () => {
@@ -95,19 +102,10 @@ describe("renderHookEventToast", () => {
     renderHookEventToast(
       root,
       [
-        hookItem({
-          body: "Legacy body with too much detail",
-          content: [
-            { type: "summary", text: "Two files changed; approve patch?" },
-            {
-              type: "code",
-              title: "src/app.ts",
-              language: "ts",
-              text: "export const answer = 42;",
-              collapsed: true
-            }
-          ]
-        })
+        hookItem({ summary: "Two files changed; approve patch?", details: [{
+          type: "code", title: "src/app.ts", language: "ts", collapsed: true,
+          materialize: () => "export const answer = 42;"
+        }] })
       ],
       {
         onDismiss: vi.fn(),
@@ -119,8 +117,90 @@ describe("renderHookEventToast", () => {
     );
 
     expect(root.textContent).toContain("Two files changed; approve patch?");
-    expect(root.textContent).not.toContain("Legacy body with too much detail");
     expect(root.textContent).not.toContain("export const answer");
+  });
+
+  it("stays silent for ordinary complete updates and shows at most two actions", () => {
+    const root = document.createElement("div");
+    const handlers = { onDismiss: vi.fn(), onOpenSession: vi.fn(), onOpenActions: vi.fn(), onSendEnter: vi.fn(), onRunAction: vi.fn() };
+    renderHookEventToast(root, [hookItem({ status: "complete", attentionRequired: false })], handlers);
+    expect(root.querySelector(".hook-event-toast")).toBeNull();
+
+    renderHookEventToast(root, [hookItem({ actions: [
+      ...hookItem().actions,
+      { id: "later", label: "Later", input: null, open: true, target: null,
+        effectiveTarget: { sessionName: "codex", projectName: null, view: "terminal" },
+        style: "secondary", enabled: true, disabledReason: null }
+    ] })], handlers);
+    expect(root.querySelectorAll("[data-action='hook-toast-run-action']")).toHaveLength(2);
+  });
+
+  it("routes View details to the unified Attention selection", () => {
+    const root = document.createElement("div");
+    const onOpenActions = vi.fn();
+    renderHookEventToast(root, [hookItem()], {
+      onDismiss: vi.fn(), onOpenSession: vi.fn(), onOpenActions,
+      onSendEnter: vi.fn(), onRunAction: vi.fn()
+    });
+    const button = root.querySelector<HTMLButtonElement>("[data-action='hook-toast-actions']")!;
+    expect(button.textContent).toBe("View details");
+    button.click();
+    expect(onOpenActions).toHaveBeenCalledWith("1");
+  });
+
+  it("does not invent an implicit input action when structured actions are absent", () => {
+    const root = document.createElement("div");
+    renderHookEventToast(root, [hookItem({ actions: [] })], {
+      onDismiss: vi.fn(), onOpenSession: vi.fn(), onOpenActions: vi.fn(),
+      onSendEnter: vi.fn(), onRunAction: vi.fn()
+    });
+    expect(root.querySelector("[data-action='hook-toast-enter']")).toBeNull();
+    expect(root.querySelector("[data-action='hook-toast-actions']")).not.toBeNull();
+  });
+
+  it("renders disabled corrupt actions and danger styling without making danger first", () => {
+    const root = document.createElement("div");
+    renderHookEventToast(root, [hookItem({ actions: [
+      hookItem().actions[1]!,
+      { ...hookItem().actions[0]!, enabled: false, disabledReason: "目标会话不可用" }
+    ] })], {
+      onDismiss: vi.fn(), onOpenSession: vi.fn(), onOpenActions: vi.fn(),
+      onSendEnter: vi.fn(), onRunAction: vi.fn()
+    });
+    const buttons = [...root.querySelectorAll<HTMLButtonElement>("[data-action='hook-toast-run-action']")];
+    expect(buttons[0]?.dataset.hookActionStyle).not.toBe("danger");
+    expect(buttons.find((button) => button.dataset.hookActionStyle === "danger")?.classList.contains("is-danger")).toBe(true);
+    expect(buttons.find((button) => button.textContent === "Approve")?.disabled).toBe(true);
+  });
+
+  it("disables a pending toast action and exposes its inline error", () => {
+    const root = document.createElement("div");
+    renderHookEventToast(root, [hookItem({ actions: [{
+      ...hookItem().actions[0]!, pending: true, error: "操作失败，请检查网络后重试"
+    }] })], {
+      onDismiss: vi.fn(), onOpenSession: vi.fn(), onOpenActions: vi.fn(),
+      onSendEnter: vi.fn(), onRunAction: vi.fn()
+    });
+    const button = root.querySelector<HTMLButtonElement>("[data-action='hook-toast-run-action']")!;
+    expect(button.disabled).toBe(true);
+    expect(button.getAttribute("aria-busy")).toBe("true");
+    expect(root.querySelector("[role='alert']")?.textContent).toContain("操作失败");
+  });
+
+  it("restores toast action focus after pending completes", () => {
+    const root = document.createElement("div");
+    document.body.append(root);
+    const handlers = {
+      onDismiss: vi.fn(), onOpenSession: vi.fn(), onOpenActions: vi.fn(),
+      onSendEnter: vi.fn(), onRunAction: vi.fn()
+    };
+    const action = hookItem().actions[0]!;
+    renderHookEventToast(root, [hookItem({ actions: [action] })], handlers);
+    root.querySelector<HTMLButtonElement>("[data-action='hook-toast-run-action']")!.focus();
+    renderHookEventToast(root, [hookItem({ actions: [{ ...action, pending: true }] })], handlers);
+    renderHookEventToast(root, [hookItem({ actions: [{ ...action, error: "操作失败" }] })], handlers);
+    expect(document.activeElement).toBe(root.querySelector("[data-action='hook-toast-run-action']"));
+    root.remove();
   });
 
   it("removes stale toast when no hook events remain", () => {

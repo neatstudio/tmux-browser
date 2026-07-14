@@ -47,22 +47,41 @@ describe("createSessionApi", () => {
               message: "created session build",
               createdAt: "2026-05-24T03:00:00.000Z"
             }
-          ]
+          ],
+          nextCursor: null
         })
     });
     vi.stubGlobal("fetch", fetch);
 
-    await expect(createSessionApi().listTimelineEvents(8)).resolves.toEqual([
-      {
+    await expect(createSessionApi().listTimelineEvents(8, "opaque-token")).resolves.toEqual({
+      events: [{
         id: "1",
         type: "session-created",
         sessionName: "build",
         message: "created session build",
         createdAt: "2026-05-24T03:00:00.000Z"
-      }
-    ]);
+      }],
+      nextCursor: null
+    });
 
-    expect(fetch).toHaveBeenCalledWith("/api/timeline?limit=8");
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/timeline?limit=8&cursor=opaque-token"
+    );
+  });
+
+  it("preserves the stable timeline cursor error code", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false,
+      status: 410,
+      json: () => Promise.resolve({ code: "timeline_cursor_expired" })
+    }));
+
+    await expect(
+      createSessionApi().listTimelineEvents(8, "opaque")
+    ).rejects.toMatchObject({
+      status: 410,
+      code: "timeline_cursor_expired"
+    });
   });
 
   it("loads and updates server-backed preferences", async () => {
@@ -499,6 +518,28 @@ describe("createSessionApi", () => {
       },
       body: JSON.stringify({ input: "\u001b" })
     });
+  });
+
+  it("preserves structured input failure status and code", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: vi.fn().mockResolvedValue({ code: "target_session_unavailable" })
+    }));
+    const api = createSessionApi();
+    await expect(api.sendInput("busy", "y")).rejects.toMatchObject({
+      status: 409,
+      code: "target_session_unavailable"
+    });
+  });
+
+  it("marks structured action input as requiring a fresh prompt", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true }));
+    const api = createSessionApi();
+    await api.sendInput("build", "y\r", { requirePrompt: true });
+    expect(fetch).toHaveBeenCalledWith("/api/sessions/build/input", expect.objectContaining({
+      body: JSON.stringify({ input: "y\r", requirePrompt: true })
+    }));
   });
 
   it("splits a tmux session pane", async () => {
