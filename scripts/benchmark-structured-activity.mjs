@@ -2,9 +2,9 @@
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createServer } from "node:net";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { chromium } from "@playwright/test";
@@ -240,7 +240,95 @@ export async function terminateProcessTree(child, overrides = {}) {
   }
 }
 
-async function withTargetServer(targetCommit, callback) {
+function injectBenchmarkHarness(worktree, fixture) {
+  const htmlPath = join(worktree, "structured-activity-benchmark.html");
+  const scriptPath = join(worktree, "structured-activity-benchmark.js");
+  writeFileSync(
+    htmlPath,
+    '<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" href="data:,"></head><body><button id="open-panel" type="button">Actions</button><main id="panel-root"></main><script type="module" src="/structured-activity-benchmark.js"></script></body></html>\n',
+    "utf8"
+  );
+  writeFileSync(
+    scriptPath,
+    `import "/src/client/styles.css";
+import { renderActionCenterPanel } from "/src/client/render/actionCenter.ts";
+
+const fixture = ${JSON.stringify(fixture)};
+const legacyItems = fixture.map((record, index) => ({
+  type: "hook-event",
+  id: \`legacy-\${record.id}\`,
+  sessionName: "benchmark",
+  source: "benchmark-fixture",
+  eventType: record.type,
+  status: record.status ?? "complete",
+  title: record.title ?? \`Activity \${index}\`,
+  body: record.summary,
+  content: [
+    { type: "summary", text: record.summary },
+    ...(record.details === null ? [] : [{ type: "details", title: "Details", text: record.details }])
+  ],
+  taskId: null,
+  target: { sessionName: "benchmark", projectName: null, view: "terminal" },
+  actions: []
+}));
+const structuredItems = fixture.map((record, index) => ({
+  id: record.id,
+  kind: record.type === "hook-event" ? "hook" : "conversation",
+  sessionName: "benchmark",
+  title: record.title ?? \`Activity \${index}\`,
+  summary: record.summary,
+  summarySource: "producer",
+  status: record.status ?? "complete",
+  severity: record.severity ?? "info",
+  attentionRequired: record.attention === true,
+  role: record.role ?? null,
+  toolName: record.toolName ?? null,
+  parentId: record.parentMessageId,
+  messageKey: record.id,
+  parentMessageKey: record.parentMessageId,
+  details: record.details === null ? [] : [{
+    type: "details",
+    title: "Details",
+    collapsed: true,
+    materialize: () => record.details
+  }],
+  actions: [],
+  stats: {},
+  createdAt: record.createdAt ?? "2026-07-14T00:00:00.000Z"
+}));
+const root = document.querySelector("#panel-root");
+let open = false;
+function render() {
+  renderActionCenterPanel(root, {
+    open,
+    items: legacyItems,
+    structuredItems,
+    activeTab: "activity",
+    expandedIds: new Set(),
+    selectedEventId: null,
+    loading: false,
+    error: null,
+    onTabChange: () => {},
+    onToggleExpanded: () => {},
+    onClose: () => { open = false; render(); },
+    onOpenSession: () => {},
+    onDismissPrompt: () => {},
+    onSendPrompt: () => {},
+    onRunHookAction: () => {}
+  });
+}
+document.querySelector("#open-panel").addEventListener("click", () => {
+  open = true;
+  render();
+});
+render();
+`,
+    "utf8"
+  );
+  return "/structured-activity-benchmark.html";
+}
+
+async function withTargetServer(targetCommit, fixture, callback) {
   const directory = mkdtempSync(join(tmpdir(), "tmux-ui-activity-baseline-"));
   const worktree = join(directory, "checkout");
   let server;
@@ -254,6 +342,7 @@ async function withTargetServer(targetCommit, callback) {
       const result = spawnSync(command[0], command[1], { cwd: worktree, stdio: "inherit" });
       if (result.status !== 0) throw new Error(`${command[0]} ${command[1].join(" ")} failed`);
     }
+    const harnessPath = injectBenchmarkHarness(worktree, fixture);
     const port = await freePort();
     server = spawn("npm", ["run", "dev:client", "--", "--host", "127.0.0.1", "--port", String(port)], {
       cwd: worktree,
@@ -262,10 +351,8 @@ async function withTargetServer(targetCommit, callback) {
       detached: process.platform !== "win32"
     });
     const url = `http://127.0.0.1:${port}`;
-    await waitForServer(`${url}/tests/e2e/structured-event-panel-harness.html`, server);
-    return await callback(
-      `${url}/tests/e2e/structured-event-panel-harness.html?benchmark`
-    );
+    await waitForServer(`${url}${harnessPath}`, server);
+    return await callback(`${url}${harnessPath}`);
   } finally {
     await terminateProcessTree(server);
     spawnSync("git", ["worktree", "remove", "--force", worktree], { cwd: root });
@@ -291,9 +378,12 @@ async function benchmark(options) {
   const fixture = JSON.parse(fixtureSource);
   const fixtureMetadata = validateFixture(fixture, fixtureSource);
   const runAt = async (targetUrl) => {
+    const localChrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
     const browser = await chromium.launch({
       headless: true,
-      executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+      executablePath:
+        process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ??
+        (existsSync(localChrome) ? localChrome : undefined)
     });
     try {
       const warmRunsMs = await runStructuredActivityHarness(browser, targetUrl, fixture);
@@ -308,7 +398,7 @@ async function benchmark(options) {
           start: "pre-activity-action-center-open-start",
           interactive: "pre-activity-action-center-responsive-settled"
         },
-        note: "Activity comparator: inject the 1,000-record fixture into the deterministic structured-panel harness, open the unified Activity panel, close it, and wait until the dialog is absent.",
+        note: "Trusted runner injects a version-neutral harness into the target checkout, passes 1,000 legacy and 1,000 structured fixture equivalents to that checkout's renderer, verifies exactly one render mode, then measures open through responsive close.",
         capturedAt: new Date().toISOString(),
         warmRunsMs,
         medianMs: median(warmRunsMs)
@@ -320,7 +410,7 @@ async function benchmark(options) {
   };
   const artifact = options.targetUrl
     ? await runAt(options.targetUrl)
-    : await withTargetServer(options.targetCommit, runAt);
+    : await withTargetServer(options.targetCommit, fixture, runAt);
   mkdirSync(dirname(resolve(options.output)), { recursive: true });
   writeFileSync(resolve(options.output), `${JSON.stringify(artifact, null, 2)}\n`, "utf8");
   if (options.mode === "compare") {

@@ -1,5 +1,7 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { spawnSync } from "node:child_process";
 
 import { describe, expect, it } from "vitest";
 
@@ -63,6 +65,39 @@ function artifact(overrides: Record<string, unknown> = {}) {
 }
 
 describe("structured activity benchmark", () => {
+  it("replays the historical baseline with the trusted current runner", () => {
+    const directory = mkdtempSync(join(tmpdir(), "structured-activity-history-test-"));
+    const output = join(directory, "baseline.json");
+    try {
+      const env = { ...process.env };
+      delete env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
+      const result = spawnSync(
+        process.execPath,
+        [
+          "--import", "tsx",
+          "scripts/benchmark-structured-activity.mjs",
+          "--mode", "baseline",
+          "--target-commit", "519ceee4e1e84480926f3b5b5de992ac88e51b9c",
+          "--output", output,
+          "--evidence-scope", "local"
+        ],
+        { cwd: resolve("."), env, encoding: "utf8", timeout: 120_000 }
+      );
+      expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+      const measured = validateBenchmarkArtifact(
+        JSON.parse(readFileSync(output, "utf8"))
+      );
+      expect(measured.targetCommit).toBe(
+        "519ceee4e1e84480926f3b5b5de992ac88e51b9c"
+      );
+      expect(measured.fixture).toEqual(fixtureMetadata);
+      expect(measured.warmRunsMs).toHaveLength(5);
+      expect(measured.warmRunsMs.every((value: number) => value > 0)).toBe(true);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 120_000);
+
   it("keeps checked provisional artifacts bound to the exact fixture", () => {
     expect(validateBenchmarkArtifact(checkedBaseline).fixture).toEqual(fixtureMetadata);
     expect(validateBenchmarkArtifact(checkedCandidate).fixture).toEqual(fixtureMetadata);
@@ -260,10 +295,11 @@ describe("structured activity benchmark", () => {
     expect(benchmarkSource).toMatch(
       /server = spawn\("npm", \["run", "dev:client", "--", "--host", "127\.0\.0\.1", "--port", String\(port\)\], \{/
     );
-    expect(benchmarkSource).toContain("await waitForServer(`${url}/tests/e2e/structured-event-panel-harness.html`, server)");
-    expect(benchmarkSource).toMatch(
-      /return await callback\(\s*`\$\{url\}\/tests\/e2e\/structured-event-panel-harness\.html\?benchmark`\s*\)/
-    );
+    expect(benchmarkSource).toContain("injectBenchmarkHarness(worktree, fixture)");
+    expect(benchmarkSource).toContain('import { renderActionCenterPanel } from "/src/client/render/actionCenter.ts"');
+    expect(benchmarkSource).toContain("items: legacyItems");
+    expect(benchmarkSource).toContain("structuredItems,");
+    expect(benchmarkSource).not.toContain("/tests/e2e/structured-event-panel-harness.html");
   });
 
   it("selects authoritative baseline only from a trusted repository variable", () => {

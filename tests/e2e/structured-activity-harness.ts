@@ -22,6 +22,15 @@ export async function runStructuredActivityHarness(
     await actions.click();
     const dialog = page.getByRole("dialog", { name: "Action Center" });
     await dialog.waitFor();
+    const renderedCounts = await dialog.evaluate((node) => ({
+      legacy: node.querySelectorAll(".action-center-item").length,
+      structured: node.querySelectorAll(".structured-event-row").length
+    }));
+    const validLegacy = renderedCounts.legacy === 1000 && renderedCounts.structured === 0;
+    const validStructured = renderedCounts.legacy === 0 && renderedCounts.structured === 200;
+    if (!validLegacy && !validStructured) {
+      throw new Error(`unexpected benchmark render counts: ${JSON.stringify(renderedCounts)}`);
+    }
     const close = page.getByRole("button", { name: "Close action center" });
     await close.click();
     await dialog.waitFor({ state: "hidden" });

@@ -17,14 +17,14 @@
     "start": "pre-activity-action-center-open-start",
     "interactive": "pre-activity-action-center-responsive-settled"
   },
-  "note": "Pre-Activity comparator: open the existing Action Center, wait for its dialog to render, click its close control, and wait until the dialog is absent. Task 7+ must replace these marks when the Activity panel exists.",
-  "capturedAt": "2026-07-13T17:56:36.824Z",
+  "note": "Trusted runner injects a version-neutral harness into the target checkout, passes 1,000 legacy and 1,000 structured fixture equivalents to that checkout's renderer, verifies exactly one render mode, then measures open through responsive close.",
+  "capturedAt": "2026-07-14T02:50:34.566Z",
   "warmRunsMs": [
-    95.5,
-    82.40000009536743,
-    86.90000009536743,
-    81.80000019073486,
-    93.09999990463257
+    227.7000002861023,
+    210.80000019073486,
+    223.69999980926514,
+    219.59999990463257,
+    196.19999980926514
   ],
-  "medianMs": 86.90000009536743
+  "medianMs": 219.59999990463257
 }

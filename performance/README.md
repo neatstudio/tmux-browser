@@ -28,3 +28,13 @@ The Activity comparator starts immediately before opening the unified Activity
 panel, waits for its bounded event window to render, clicks the deterministic
 close control, and ends only after observable dialog removal. The interval
 covers open, bounded render, and a responsive control click.
+
+Historical commits do not supply benchmark code. The current trusted runner
+injects an untracked, version-neutral HTML/JavaScript harness into each temporary
+target worktree and imports that checkout's own
+`/src/client/render/actionCenter.ts`. It passes both 1,000 legacy action items
+and 1,000 preconstructed structured items. A legacy renderer must produce
+exactly 1,000 legacy rows; a structured renderer must produce exactly 200
+bounded structured rows and no legacy rows. This keeps baseline and candidate
+on one fixture without importing candidate renderer or adapter code into the
+historical checkout.

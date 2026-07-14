@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "targetCommit": "1f5c762e7fff8d2bad47baeadef60cda5a2231b9",
+  "targetCommit": "a18350c78a920f1d6a1084cd6a403938165b7639",
   "evidence": "provisional-local",
   "runnerFingerprint": "darwin-arm64-node20.19.3-147.0.7727.56",
   "fixture": {
@@ -17,14 +17,14 @@
     "start": "pre-activity-action-center-open-start",
     "interactive": "pre-activity-action-center-responsive-settled"
   },
-  "note": "Activity comparator: inject the 1,000-record fixture into the deterministic structured-panel harness, open the unified Activity panel, close it, and wait until the dialog is absent.",
-  "capturedAt": "2026-07-14T02:35:22.053Z",
+  "note": "Trusted runner injects a version-neutral harness into the target checkout, passes 1,000 legacy and 1,000 structured fixture equivalents to that checkout's renderer, verifies exactly one render mode, then measures open through responsive close.",
+  "capturedAt": "2026-07-14T02:51:01.407Z",
   "warmRunsMs": [
-    76.80000019073486,
-    96,
-    91,
-    88.69999980926514,
-    83.7999997138977
+    85.09999990463257,
+    126.5,
+    93.59999990463257,
+    85.69999980926514,
+    54.5
   ],
-  "medianMs": 88.69999980926514
+  "medianMs": 85.69999980926514
 }
