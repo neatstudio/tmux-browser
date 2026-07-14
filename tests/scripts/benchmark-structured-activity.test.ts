@@ -46,6 +46,9 @@ const checkedBaseline = JSON.parse(
 const checkedCandidate = JSON.parse(
   readFileSync(resolve("performance/structured-activity-candidate.json"), "utf8")
 );
+const checkedComparison = JSON.parse(
+  readFileSync(resolve("performance/structured-activity-compare.json"), "utf8")
+);
 
 function artifact(overrides: Record<string, unknown> = {}) {
   return {
@@ -101,6 +104,16 @@ describe("structured activity benchmark", () => {
   it("keeps checked provisional artifacts bound to the exact fixture", () => {
     expect(validateBenchmarkArtifact(checkedBaseline).fixture).toEqual(fixtureMetadata);
     expect(validateBenchmarkArtifact(checkedCandidate).fixture).toEqual(fixtureMetadata);
+  });
+
+  it("keeps checked comparison evidence synchronized with validated artifacts", () => {
+    expect(checkedComparison).toEqual(
+      compareBenchmarkArtifacts(checkedBaseline, checkedCandidate, {
+        evidenceScope: "local",
+        expectedBaselineCommit: "519ceee4e1e84480926f3b5b5de992ac88e51b9c",
+        expectedCandidateCommit: "a18350c78a920f1d6a1084cd6a403938165b7639"
+      })
+    );
   });
 
   it("uses the fixed 1,000-record fixture", () => {
