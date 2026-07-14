@@ -1145,6 +1145,36 @@ export function createTerminalTab(deps: {
     return true;
   });
 
+  const handleDocumentKeyDown = (event: KeyboardEvent) => {
+    if (
+      event.defaultPrevented ||
+      !event.ctrlKey ||
+      event.altKey ||
+      event.metaKey ||
+      event.key.toLowerCase() !== "c"
+    ) {
+      return;
+    }
+
+    const target = event.target as HTMLElement | null;
+    const tagName = target?.tagName?.toLowerCase();
+    const editable =
+      target?.isContentEditable === true ||
+      tagName === "input" ||
+      tagName === "textarea" ||
+      tagName === "select";
+
+    if (editable || !deps.container.closest(".terminal-panel.is-active")) {
+      return;
+    }
+
+    controller?.sendInput("\x03");
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  };
+
+  document.addEventListener("keydown", handleDocumentKeyDown, { capture: true });
+
   const handleWindowResize = () => {
     safeFitAndResize();
   };
@@ -1249,6 +1279,7 @@ export function createTerminalTab(deps: {
       deps.container.removeEventListener("mousemove", handleMouseMove, true);
       deps.container.removeEventListener("mouseup", handleMouseUp, true);
       document.removeEventListener("mousemove", handleDocumentMouseMove, true);
+      document.removeEventListener("keydown", handleDocumentKeyDown, true);
       selectionChangeDisposable?.dispose?.();
       window.removeEventListener("resize", handleWindowResize);
       controller?.destroy();

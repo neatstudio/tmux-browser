@@ -1918,7 +1918,7 @@ describe("createTerminalTab", () => {
       }
     );
 
-    createTerminalTab({
+    const mounted = createTerminalTab({
       container: document.createElement("div"),
       tabId: "tab-1",
       sessionName: "build",
@@ -1936,6 +1936,66 @@ describe("createTerminalTab", () => {
     expect(socket.send).toHaveBeenCalledWith(
       JSON.stringify({ type: "input", data: "\x03" })
     );
+
+    mounted.destroy();
+  });
+
+  it("forwards Ctrl-C from an active terminal panel when the Agent-output view owns focus", () => {
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    };
+
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        constructor() {
+          return socket;
+        }
+      }
+    );
+
+    const panel = document.createElement("div");
+    panel.className = "terminal-panel is-active";
+    const container = document.createElement("div");
+    panel.append(container);
+    const mounted = createTerminalTab({
+      container,
+      tabId: "tab-1",
+      sessionName: "build",
+      onClosed: vi.fn()
+    });
+
+    socket.send.mockClear();
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        key: "c",
+        ctrlKey: true
+      })
+    );
+
+    expect(socket.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: "input", data: "\x03" })
+    );
+
+    const textarea = document.createElement("textarea");
+    panel.append(textarea);
+    socket.send.mockClear();
+    textarea.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        key: "c",
+        ctrlKey: true
+      })
+    );
+
+    expect(socket.send).not.toHaveBeenCalled();
+    mounted.destroy();
   });
 
   it("does not intercept IME composition key events", () => {
