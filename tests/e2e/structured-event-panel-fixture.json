@@ -51,6 +51,23 @@
     "metadata": {}
   },
   {
+    "type": "conversation-message",
+    "id": "long-command",
+    "createdAt": "2026-07-14T07:57:00.000Z",
+    "updatedAt": "2026-07-14T07:57:00.000Z",
+    "sessionName": "codex",
+    "messageId": "message-long-command",
+    "parentMessageId": null,
+    "role": "tool",
+    "contentType": "command",
+    "content": "node scripts/benchmark-structured-activity.mjs --mode compare --evidence-scope local --target-commit 04aea66569c3ae0da65f043ab09076b0ace39bf1 --expected-baseline-commit 519ceee4e1e84480926f3b5b5de992ac88e51b9c --baseline performance/structured-activity-baseline.json --output /tmp/structured-activity-candidate.json --report /tmp/structured-activity-report.json --target-url http://127.0.0.1:4317/tests/e2e/structured-event-panel-harness.html",
+    "status": "complete",
+    "toolName": "benchmark",
+    "revision": 1,
+    "summary": "Structured Activity benchmark command completed",
+    "metadata": {}
+  },
+  {
     "type": "hook-event",
     "schemaVersion": "tmux-ui.hook/v1",
     "id": "attention-1",
