@@ -11,9 +11,21 @@ import {
   validateFixture
 } from "../../scripts/benchmark-structured-activity.mjs";
 
-const fixture = JSON.parse(
-  readFileSync(resolve("tests/fixtures/structured-activity.json"), "utf8")
+const fixtureText = readFileSync(
+  resolve("tests/fixtures/structured-activity.json"),
+  "utf8"
 );
+const fixture = JSON.parse(fixtureText);
+const fixtureMetadata = {
+  schemaVersion: "structured-activity/v1",
+  sha256: "856e507a53e296d2971b246388ef0702ad013ecd6cf13b7a9d988c418eaf5335",
+  records: 1000,
+  toolChildren: 100,
+  attention: 20,
+  summaryCharacters: 160,
+  detailBytes: 8192,
+  recordsWithDetails: 100
+};
 const harnessSource = readFileSync(
   resolve("tests/e2e/structured-activity-harness.ts"),
   "utf8"
@@ -26,6 +38,12 @@ const workflowSource = readFileSync(
   resolve(".github/workflows/structured-activity-benchmark.yml"),
   "utf8"
 );
+const checkedBaseline = JSON.parse(
+  readFileSync(resolve("performance/structured-activity-baseline.json"), "utf8")
+);
+const checkedCandidate = JSON.parse(
+  readFileSync(resolve("performance/structured-activity-candidate.json"), "utf8")
+);
 
 function artifact(overrides: Record<string, unknown> = {}) {
   return {
@@ -33,6 +51,7 @@ function artifact(overrides: Record<string, unknown> = {}) {
     targetCommit: "519ceee4e1e84480926f3b5b5de992ac88e51b9c",
     runnerFingerprint: "linux-x64-node22-chromium",
     evidence: "authoritative-ci",
+    fixture: fixtureMetadata,
     marks: {
       start: "pre-activity-action-center-open-start",
       interactive: "pre-activity-action-center-responsive-settled"
@@ -44,8 +63,15 @@ function artifact(overrides: Record<string, unknown> = {}) {
 }
 
 describe("structured activity benchmark", () => {
+  it("keeps checked provisional artifacts bound to the exact fixture", () => {
+    expect(validateBenchmarkArtifact(checkedBaseline).fixture).toEqual(fixtureMetadata);
+    expect(validateBenchmarkArtifact(checkedCandidate).fixture).toEqual(fixtureMetadata);
+  });
+
   it("uses the fixed 1,000-record fixture", () => {
-    expect(validateFixture(fixture)).toEqual({
+    expect(validateFixture(fixture, fixtureText)).toEqual({
+      schemaVersion: "structured-activity/v1",
+      sha256: "856e507a53e296d2971b246388ef0702ad013ecd6cf13b7a9d988c418eaf5335",
       records: 1000,
       toolChildren: 100,
       attention: 20,
@@ -53,6 +79,10 @@ describe("structured activity benchmark", () => {
       detailBytes: 8192,
       recordsWithDetails: 100
     });
+  });
+
+  it("rejects fixture bytes that do not match the fixed schema hash", () => {
+    expect(() => validateFixture(fixture, `${fixtureText} `)).toThrow("fixture sha256");
   });
 
   it("requires an explicit target commit in baseline mode", () => {
@@ -108,12 +138,29 @@ describe("structured activity benchmark", () => {
     ).toThrow("runner fingerprint mismatch");
   });
 
+  it("rejects baseline and candidate fixture metadata mismatches", () => {
+    expect(() =>
+      compareBenchmarkArtifacts(
+        artifact(),
+        artifact({
+          fixture: { ...fixtureMetadata, schemaVersion: "structured-activity/v2" }
+        })
+      )
+    ).toThrow("fixture");
+  });
+
   it.each([
     ["null", null, "artifact must be an object"],
     ["schema", artifact({ schemaVersion: 2 }), "schemaVersion"],
     ["evidence", artifact({ evidence: "maybe" }), "evidence"],
     ["commit", artifact({ targetCommit: "" }), "targetCommit"],
     ["fingerprint", artifact({ runnerFingerprint: "" }), "runnerFingerprint"],
+    ["fixture missing", artifact({ fixture: undefined }), "fixture"],
+    [
+      "fixture hash",
+      artifact({ fixture: { ...fixtureMetadata, sha256: "0".repeat(64) } }),
+      "fixture"
+    ],
     ["marks", artifact({ marks: { start: "", interactive: "end" } }), "marks"],
     ["run count", artifact({ warmRunsMs: [1, 2, 3, 4] }), "warmRunsMs"],
     ["negative run", artifact({ warmRunsMs: [1, 2, -1, 4, 5] }), "warmRunsMs"],

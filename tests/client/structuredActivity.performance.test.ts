@@ -3,6 +3,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createDashboardStore } from "../../src/client/state/dashboardStore";
+import { renderActionCenterPanel } from "../../src/client/render/actionCenter";
+import { adaptStructuredRecord } from "../../src/client/structuredPresentation";
 import type { TimelineEvent } from "../../src/shared/timeline";
 
 function conversation(revision: number): TimelineEvent {
@@ -69,6 +71,75 @@ describe("structured activity performance", () => {
       revision: 300
     });
     expect(renders.mock.calls.length).toBeLessThanOrEqual(150);
+  });
+
+  it("renders exactly one event through the real unified panel for 300 revisions over 30 seconds", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const store = createStore();
+    const root = document.createElement("div");
+    document.body.append(root);
+    let notifications = 0;
+    let maximumEventNodes = 0;
+    store.subscribe((state) => {
+      notifications += 1;
+      renderActionCenterPanel(root, {
+        open: true,
+        items: [],
+        structuredItems: (state.timelineEvents ?? [])
+          .map((event) => adaptStructuredRecord(event))
+          .filter((item) => item !== null),
+        activeTab: "activity",
+        expandedIds: new Set(),
+        selectedEventId: null,
+        loading: false,
+        error: null,
+        onClose: vi.fn(),
+        onOpenSession: vi.fn(),
+        onDismissPrompt: vi.fn(),
+        onSendPrompt: vi.fn(),
+        onRunHookAction: vi.fn()
+      });
+      maximumEventNodes = Math.max(
+        maximumEventNodes,
+        root.querySelectorAll("[data-event-id]").length
+      );
+    });
+
+    for (let revision = 1; revision <= 300; revision += 1) {
+      store.mergeTimelineEvent(conversation(revision));
+      vi.advanceTimersByTime(100);
+    }
+    expect(Date.now()).toBe(30_000);
+    vi.advanceTimersByTime(250);
+    expect(Date.now()).toBe(30_250);
+
+    expect(store.getState().timelineEvents).toHaveLength(1);
+    expect(store.getState().timelineEvents?.[0]).toMatchObject({ revision: 300 });
+    expect(root.querySelectorAll("[data-event-id]")).toHaveLength(1);
+    expect(root.querySelector("[data-event-id='canonical-message']")?.textContent)
+      .toContain("revision 300");
+    expect(maximumEventNodes).toBe(1);
+    expect(notifications).toBeLessThanOrEqual(150);
+  });
+
+  it("cancels a pending streaming notification when the last subscriber detaches", () => {
+    vi.useFakeTimers();
+    const store = createStore();
+    const detached = vi.fn();
+    const unsubscribe = store.subscribe(detached);
+    store.mergeTimelineEvent(conversation(1));
+    unsubscribe();
+
+    const resubscribed = vi.fn();
+    store.subscribe(resubscribed);
+    vi.advanceTimersByTime(250);
+    expect(detached).not.toHaveBeenCalled();
+    expect(resubscribed).not.toHaveBeenCalled();
+
+    store.mergeTimelineEvent(conversation(2));
+    vi.advanceTimersByTime(250);
+    expect(resubscribed).toHaveBeenCalledOnce();
   });
 
   it("notifies attention immediately without waiting for a streaming batch", () => {

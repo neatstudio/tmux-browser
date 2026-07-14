@@ -3,6 +3,16 @@
   "targetCommit": "506177e84a9a56369c03d7d9dfa698917b4ca3e8",
   "evidence": "provisional-local",
   "runnerFingerprint": "darwin-arm64-node20.19.3-147.0.7727.56",
+  "fixture": {
+    "schemaVersion": "structured-activity/v1",
+    "sha256": "856e507a53e296d2971b246388ef0702ad013ecd6cf13b7a9d988c418eaf5335",
+    "records": 1000,
+    "toolChildren": 100,
+    "attention": 20,
+    "summaryCharacters": 160,
+    "detailBytes": 8192,
+    "recordsWithDetails": 100
+  },
   "marks": {
     "start": "pre-activity-action-center-open-start",
     "interactive": "pre-activity-action-center-responsive-settled"

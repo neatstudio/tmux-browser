@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { createServer } from "node:net";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -12,6 +13,18 @@ import { runStructuredActivityHarness } from "../tests/e2e/structured-activity-h
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_OUTPUT = join(root, "performance", "structured-activity-baseline.json");
+const FIXTURE_SCHEMA_VERSION = "structured-activity/v1";
+const FIXTURE_SHA256 = "856e507a53e296d2971b246388ef0702ad013ecd6cf13b7a9d988c418eaf5335";
+const EXPECTED_FIXTURE_METADATA = {
+  schemaVersion: FIXTURE_SCHEMA_VERSION,
+  sha256: FIXTURE_SHA256,
+  records: 1000,
+  toolChildren: 100,
+  attention: 20,
+  summaryCharacters: 160,
+  detailBytes: 8192,
+  recordsWithDetails: 100
+};
 
 export function parseBenchmarkArguments(args) {
   const values = new Map();
@@ -44,13 +57,18 @@ export function parseBenchmarkArguments(args) {
   };
 }
 
-export function validateFixture(fixture) {
+export function validateFixture(fixture, fixtureSource) {
   if (!Array.isArray(fixture) || fixture.length !== 1000) {
     throw new Error("fixture must contain exactly 1000 records");
   }
+  if (typeof fixtureSource !== "string") throw new Error("fixture source is required");
+  const sha256 = createHash("sha256").update(fixtureSource).digest("hex");
+  if (sha256 !== FIXTURE_SHA256) throw new Error("fixture sha256 mismatch");
   const summaryLengths = new Set(fixture.map((record) => record.summary.length));
   const details = fixture.filter((record) => record.details !== null);
   const result = {
+    schemaVersion: FIXTURE_SCHEMA_VERSION,
+    sha256,
     records: fixture.length,
     toolChildren: fixture.filter((record) => record.parentMessageId !== null).length,
     attention: fixture.filter((record) => record.attention === true).length,
@@ -61,14 +79,12 @@ export function validateFixture(fixture) {
     recordsWithDetails: details.length
   };
   const expected = JSON.stringify({
-    records: 1000,
-    toolChildren: 100,
-    attention: 20,
-    summaryCharacters: 160,
-    detailBytes: 8192,
-    recordsWithDetails: 100
+    ...EXPECTED_FIXTURE_METADATA
   });
   if (JSON.stringify(result) !== expected) throw new Error("fixture shape is invalid");
+  if (fixture.some((record, index) => (record.details !== null) !== (index % 10 === 0))) {
+    throw new Error("fixture details cadence is invalid");
+  }
   if (details.some((record) => Buffer.byteLength(record.details, "utf8") !== 8192)) {
     throw new Error("fixture detail payload must be exactly 8 KiB");
   }
@@ -92,6 +108,9 @@ export function validateBenchmarkArtifact(artifact) {
   }
   if (typeof artifact.runnerFingerprint !== "string" || artifact.runnerFingerprint.length === 0) {
     throw new Error("invalid runnerFingerprint");
+  }
+  if (JSON.stringify(artifact.fixture) !== JSON.stringify(EXPECTED_FIXTURE_METADATA)) {
+    throw new Error("fixture metadata mismatch");
   }
   if (
     !artifact.marks ||
@@ -265,8 +284,12 @@ async function benchmark(options) {
   if (options.evidenceScope === "ci" && process.env.GITHUB_ACTIONS !== "true") {
     throw new Error("authoritative CI evidence can only be generated in GitHub Actions");
   }
-  const fixture = JSON.parse(readFileSync(join(root, "tests/fixtures/structured-activity.json"), "utf8"));
-  validateFixture(fixture);
+  const fixtureSource = readFileSync(
+    join(root, "tests/fixtures/structured-activity.json"),
+    "utf8"
+  );
+  const fixture = JSON.parse(fixtureSource);
+  const fixtureMetadata = validateFixture(fixture, fixtureSource);
   const runAt = async (targetUrl) => {
     const browser = await chromium.launch({
       headless: true,
@@ -280,6 +303,7 @@ async function benchmark(options) {
         evidence:
           options.evidenceScope === "ci" ? "authoritative-ci" : "provisional-local",
         runnerFingerprint: runnerFingerprint(browser.version()),
+        fixture: fixtureMetadata,
         marks: {
           start: "pre-activity-action-center-open-start",
           interactive: "pre-activity-action-center-responsive-settled"

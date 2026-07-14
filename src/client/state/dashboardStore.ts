@@ -610,7 +610,13 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
     },
     subscribe(listener: (state: DashboardState) => void) {
       listeners.add(listener);
-      return () => listeners.delete(listener);
+      return () => {
+        listeners.delete(listener);
+        if (listeners.size === 0 && streamingNotifyTimer !== null) {
+          clearTimeout(streamingNotifyTimer);
+          streamingNotifyTimer = null;
+        }
+      };
     },
     refresh,
     refreshTimeline,

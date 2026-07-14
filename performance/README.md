@@ -4,6 +4,13 @@
 from the exact Phase 1 commit. It is not authoritative CI evidence and must not
 be used by CI comparison mode.
 
+Both baseline and candidate artifacts identify the immutable benchmark input as
+`structured-activity/v1` with SHA-256
+`856e507a53e296d2971b246388ef0702ad013ecd6cf13b7a9d988c418eaf5335`.
+Validation fails unless the exact fixture bytes and metadata match: 1,000
+records, 100 tool children, 20 Attention records, 160-character summaries, and
+8 KiB details on every tenth record.
+
 The `structured-activity-benchmark` workflow creates the authoritative baseline
 and candidate sequentially on one pinned Node 22 and Playwright Chromium runner.
 It uploads both measurements and the comparison report. A candidate passes only
@@ -17,8 +24,7 @@ variable is absent, malformed, unavailable in git history, or different from
 the generated baseline artifact. Neither the candidate checkout nor the
 checked-in provisional artifact selects the authoritative baseline.
 
-The pre-Activity comparator starts immediately before opening the existing
-Action Center, waits for the dialog to render, clicks its deterministic close
-control, and ends only after observable dialog removal. The interval therefore
-covers open, render, and a responsive control click. When Activity exists,
-replace the mark names and interaction with the new panel's comparable response.
+The Activity comparator starts immediately before opening the unified Activity
+panel, waits for its bounded event window to render, clicks the deterministic
+close control, and ends only after observable dialog removal. The interval
+covers open, bounded render, and a responsive control click.
