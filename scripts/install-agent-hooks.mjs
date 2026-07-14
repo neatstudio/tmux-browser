@@ -45,18 +45,26 @@ function writeJson(path, value) {
   writeFileSync(path, readFileSync(`${path}.tmp`, "utf8"), "utf8");
 }
 
+function shellQuote(value) {
+  if (value.includes("\0")) {
+    throw new TypeError("Shell command values cannot contain NUL bytes");
+  }
+
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
 function buildCommand(mode) {
   const env = [];
 
   if (hookUrl) {
-    env.push(`TMUX_UI_HOOK_URL=${JSON.stringify(hookUrl)}`);
+    env.push(`TMUX_UI_HOOK_URL=${shellQuote(hookUrl)}`);
   }
 
   if (hookToken) {
-    env.push(`TMUX_UI_HOOK_TOKEN=${JSON.stringify(hookToken)}`);
+    env.push(`TMUX_UI_HOOK_TOKEN=${shellQuote(hookToken)}`);
   }
 
-  env.push(`node ${JSON.stringify(helperPath)} ${mode}`);
+  env.push(`node ${shellQuote(helperPath)} ${shellQuote(mode)}`);
 
   return env.join(" ");
 }

@@ -1,10 +1,81 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 
 describe("install-agent-hooks", () => {
+  it("quotes generated hook commands without shell expansion and preserves exact bytes", () => {
+    const dir = mkdtempSync(join(tmpdir(), "tmux-ui-hook-shell-"));
+    const hooksFile = join(dir, "hooks.json");
+    const captureFile = join(dir, "capture.json");
+    const urlMarker = join(dir, "url-command-substitution-ran");
+    const backtickMarker = join(dir, "backtick-substitution-ran");
+    const tokenMarker = join(dir, "token-command-substitution-ran");
+    const helperPath = join(dir, "helper $HOME * ; ' `not-a-command`\nagent.mjs");
+    const hookUrl =
+      `https://example.invalid/a b;$(touch ${urlMarker});` +
+      `\`touch ${backtickMarker}\`;*'$HOME\nnext`;
+    const hookToken = `token value;$(touch ${tokenMarker});*'\`$HOME\nnext`;
+
+    writeFileSync(
+      helperPath,
+      `import { writeFileSync } from "node:fs";
+writeFileSync(process.env.CAPTURE_FILE, JSON.stringify({
+  url: process.env.TMUX_UI_HOOK_URL,
+  token: process.env.TMUX_UI_HOOK_TOKEN,
+  args: process.argv.slice(2)
+}));
+`,
+      "utf8"
+    );
+
+    try {
+      const install = spawnSync(
+        process.execPath,
+        ["scripts/install-agent-hooks.mjs", "--codex"],
+        {
+          cwd: process.cwd(),
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            CODEX_HOOKS_FILE: hooksFile,
+            TMUX_UI_AGENT_HOOK: helperPath,
+            TMUX_UI_HOOK_URL: hookUrl,
+            TMUX_UI_HOOK_TOKEN: hookToken
+          }
+        }
+      );
+      expect(install.status).toBe(0);
+      const command = JSON.parse(readFileSync(hooksFile, "utf8"))
+        .hooks.PermissionRequest[0].hooks[0].command as string;
+
+      const execute = spawnSync("/bin/sh", ["-c", command], {
+        cwd: dir,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          CAPTURE_FILE: captureFile,
+          HOME: "expanded-home-must-not-appear"
+        }
+      });
+
+      expect(execute.stderr).toBe("");
+      expect(execute.status).toBe(0);
+      expect(JSON.parse(readFileSync(captureFile, "utf8"))).toEqual({
+        url: hookUrl,
+        token: hookToken,
+        args: ["codex-permission"]
+      });
+      expect(command).toContain("'\\''");
+      expect(existsSync(urlMarker)).toBe(false);
+      expect(existsSync(backtickMarker)).toBe(false);
+      expect(existsSync(tokenMarker)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("posts factual summary content and canonical metadata from bundled adapters", async () => {
     const dir = mkdtempSync(join(tmpdir(), "tmux-ui-hook-capture-"));
     const captureFile = join(dir, "capture.json");
