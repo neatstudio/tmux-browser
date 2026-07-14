@@ -414,6 +414,38 @@ If the service is not listening on `127.0.0.1:3000`, set
 `TMUX_UI_HOOK_URL=http://100.x.y.z:3000/api/hooks/events` in the hook
 environment.
 
+## Terminal Agent Output
+
+An Agent can publish a structured response for the terminal's Agent output view.
+The view defaults to the summary and expands the complete response on demand;
+users can always switch back to the unchanged raw terminal. The helper never
+extracts or rewrites the Agent's terminal text.
+
+Run it inside the target tmux session. `TMUX_UI_SESSION_NAME` is inferred from
+tmux and an input `sessionName` that disagrees with it is rejected:
+
+```bash
+TMUX_UI_CONVERSATION_URL=http://127.0.0.1:3000/api/conversation/messages \
+TMUX_UI_HOOK_TOKEN="$TMUX_UI_HOOK_TOKEN" \
+node ~/.tmux-ui/bin/tmux-ui-agent-hook agent-output <<'JSON'
+{
+  "messageId": "turn-42",
+  "revision": 1,
+  "role": "assistant",
+  "contentType": "text",
+  "summary": "Focused tests passed",
+  "content": "Complete Agent response",
+  "status": "complete"
+}
+JSON
+```
+
+`TMUX_UI_CONVERSATION_URL` is independent of `TMUX_UI_HOOK_URL`; do not point
+conversation payloads at `/api/hooks/events`. When `TMUX_UI_HOOK_TOKEN` is
+configured on the server, conversation producers must send the matching bearer
+token, including local producers. Without a configured token, the existing local
+development path remains compatible.
+
 ## Structured Activity Integration
 
 The unified panel opens on **Activity**, where ordinary conversation and hook

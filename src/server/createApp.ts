@@ -259,6 +259,16 @@ function assertHookAuthorized(req: express.Request, hookToken: string) {
   }
 }
 
+function assertConversationAuthorized(req: express.Request, hookToken: string) {
+  if (!hookToken) {
+    return;
+  }
+
+  if (getHookBearerToken(req) !== hookToken) {
+    throw new HttpError("Invalid hook token", 401);
+  }
+}
+
 function normalizeGroupMessageTarget(value: unknown): GroupMessageTarget {
   const target = value && typeof value === "object"
     ? (value as Record<string, unknown>)
@@ -706,6 +716,7 @@ export function createApp(options: {
 
   app.post("/api/conversation/messages", (req, res, next) => {
     try {
+      assertConversationAuthorized(req, hookToken);
       const conversationMessage = normalizeConversationMessage(req.body);
       const timelineEvent =
         timelineStore.upsertConversationMessage(conversationMessage);

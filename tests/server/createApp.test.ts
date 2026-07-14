@@ -255,6 +255,35 @@ describe("createApp", () => {
     ]);
   });
 
+  it("requires the configured hook token for conversation producers, including localhost", async () => {
+    const app = createApp({ hookToken: "conversation-token" });
+    const body = {
+      sessionName: "project-codex",
+      messageId: "agent-message-1",
+      revision: 1,
+      role: "assistant",
+      contentType: "text",
+      content: "Complete response",
+      status: "complete"
+    };
+
+    const missing = await request(app)
+      .post("/api/conversation/messages")
+      .send(body);
+    const wrong = await request(app)
+      .post("/api/conversation/messages")
+      .set("Authorization", "Bearer wrong")
+      .send(body);
+    const authorized = await request(app)
+      .post("/api/conversation/messages")
+      .set("Authorization", "Bearer conversation-token")
+      .send(body);
+
+    expect(missing.status).toBe(401);
+    expect(wrong.status).toBe(401);
+    expect(authorized.status).toBe(201);
+  });
+
   it("maps conversation revision conflicts to stable HTTP codes without broadcasting", async () => {
     const timelineStore = createTimelineStore();
     const eventHub = createAppEventHub();
