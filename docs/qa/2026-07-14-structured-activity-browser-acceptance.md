@@ -1,7 +1,7 @@
 # Structured Activity 浏览器验收记录
 
-日期：2026-07-14  
-范围：Activity / Attention 结构化事件面板  
+日期：2026-07-14
+范围：Activity / Attention 结构化事件面板
 状态：本地验收通过；authoritative CI benchmark 待仓库变量配置后执行
 
 ## 本地会话
