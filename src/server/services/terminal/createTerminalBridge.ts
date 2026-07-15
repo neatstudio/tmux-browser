@@ -84,6 +84,8 @@ const defaultRunTmuxCommand: RunTmuxCommand = (args) => {
   child.unref();
 };
 
+const TERMINAL_INTERRUPT_INPUTS = new Set(["\x03", "\x1b[99;5u"]);
+
 function runTmuxCommandSync(args: string[]) {
   spawnSync("tmux", args, {
     cwd: process.cwd(),
@@ -179,7 +181,7 @@ export const createTerminalBridge: CreateTerminalBridge = (
       exitListeners.add(listener);
     },
     write(data) {
-      if (data === "\x03") {
+      if (TERMINAL_INTERRUPT_INPUTS.has(data)) {
         runTmuxCommand(["send-keys", "-t", sessionName, "C-c"]);
         return;
       }

@@ -165,4 +165,57 @@ describe("createTerminalBridge", () => {
     ]);
     expect(write).not.toHaveBeenCalled();
   });
+
+  it("normalizes CSI-u Ctrl-C before writing to the terminal PTY", () => {
+    const write = vi.fn();
+    const runTmuxCommand = vi.fn();
+    const bridge = createTerminalBridge(
+      { sessionName: "build", cols: 120, rows: 40 },
+      {
+        configureTmux: vi.fn(),
+        runTmuxCommand,
+        spawnPty: vi.fn(() => ({
+          write,
+          resize: vi.fn(),
+          kill: vi.fn(),
+          onData: vi.fn(),
+          onExit: vi.fn()
+        }))
+      }
+    );
+
+    bridge.write("\x1b[99;5u");
+
+    expect(runTmuxCommand).toHaveBeenCalledWith([
+      "send-keys",
+      "-t",
+      "build",
+      "C-c"
+    ]);
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it("keeps non-interrupt CSI-u input on the terminal PTY path", () => {
+    const write = vi.fn();
+    const runTmuxCommand = vi.fn();
+    const bridge = createTerminalBridge(
+      { sessionName: "build", cols: 120, rows: 40 },
+      {
+        configureTmux: vi.fn(),
+        runTmuxCommand,
+        spawnPty: vi.fn(() => ({
+          write,
+          resize: vi.fn(),
+          kill: vi.fn(),
+          onData: vi.fn(),
+          onExit: vi.fn()
+        }))
+      }
+    );
+
+    bridge.write("\x1b[13;2u");
+
+    expect(write).toHaveBeenCalledWith("\x1b[13;2u");
+    expect(runTmuxCommand).not.toHaveBeenCalled();
+  });
 });
