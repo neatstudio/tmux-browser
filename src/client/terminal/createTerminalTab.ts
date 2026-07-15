@@ -1255,8 +1255,8 @@ export function createTerminalTab(deps: {
       clearReconnectTimer();
       if (pendingResizeFrame !== null) {
         window.cancelAnimationFrame(pendingResizeFrame);
-      pendingResizeFrame = null;
-    }
+        pendingResizeFrame = null;
+      }
 
       clearPaneSelectionOverlay();
       resizeObserver?.disconnect();

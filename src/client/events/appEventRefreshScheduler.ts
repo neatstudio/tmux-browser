@@ -83,7 +83,14 @@ export function createUnifiedPanelState() {
       state = { ...state, activeTab: "activity", selectedEventId: null };
     },
     openAttention(eventId: string) {
-      state = { ...state, activeTab: "attention", selectedEventId: eventId };
+      const expandedIds = new Set(state.expandedIds);
+      expandedIds.add(eventId);
+      state = {
+        ...state,
+        activeTab: "attention",
+        selectedEventId: eventId,
+        expandedIds
+      };
     },
     toggleExpanded(eventId: string) {
       const expandedIds = new Set(state.expandedIds);

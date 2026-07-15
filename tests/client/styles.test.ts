@@ -92,6 +92,15 @@ describe("client layout styles", () => {
       /\.terminal-session-rail\s*\{[^}]*display:\s*flex;[^}]*min-height:\s*34px;/s
     );
     expect(styles).toMatch(
+      /\.terminal-session-rail\s*\{[^}]*overflow-x:\s*auto;[^}]*overflow-y:\s*hidden;/s
+    );
+    expect(styles).toMatch(
+      /\.terminal-session-rail-sessions\s*\{[^}]*overflow:\s*visible;/s
+    );
+    expect(styles).toMatch(
+      /\.terminal-session-rail-session\s*\{[^}]*flex:\s*0\s+0\s+auto;/s
+    );
+    expect(styles).toMatch(
       /\.terminal-session-rail-session\.is-active\s*\{[^}]*background:\s*rgba\(94,\s*255,\s*130,\s*0\.14\);/s
     );
     expect(styles).toMatch(
@@ -295,7 +304,7 @@ describe("client layout styles", () => {
       /\.app-shell\[data-ui-tier="desktop"\]\s+\.terminal-session-rail-project\s*\{[^}]*font-size:\s*0\.94rem;/s
     );
     expect(styles).toMatch(
-      /\.app-shell\[data-ui-tier="desktop"\]\s+\.terminal-session-rail-session,\s*\.app-shell\[data-ui-tier="desktop"\]\s+\.terminal-session-rail-overflow\s*\{[^}]*font-size:\s*0\.94rem;/s
+      /\.app-shell\[data-ui-tier="desktop"\]\s+\.terminal-session-rail-session\s*\{[^}]*font-size:\s*0\.94rem;/s
     );
     expect(styles).toMatch(
       /\.app-shell\[data-ui-tier="desktop"\]\s+\.terminal-session-rail-action\s*\{[^}]*font-size:\s*0\.82rem;/s

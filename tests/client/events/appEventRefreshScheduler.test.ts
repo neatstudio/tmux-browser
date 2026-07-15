@@ -98,6 +98,7 @@ describe("createUnifiedPanelState", () => {
       activeTab: "attention",
       selectedEventId: "hook-7"
     });
+    expect(panel.getState().expandedIds).toEqual(new Set(["hook-7"]));
   });
 
   it("selects Attention without requiring a structured event to focus", () => {

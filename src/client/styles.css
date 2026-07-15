@@ -2436,6 +2436,8 @@ select {
   min-width: 0;
   min-height: 34px;
   border-bottom: 1px solid rgba(217, 226, 234, 0.1);
+  overflow-x: auto;
+  overflow-y: hidden;
   background:
     linear-gradient(90deg, rgba(91, 192, 255, 0.1), transparent 42%),
     rgba(255, 255, 255, 0.035);
@@ -2473,12 +2475,11 @@ select {
   align-items: center;
   gap: 0.24rem;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
-.terminal-session-rail-session,
-.terminal-session-rail-overflow {
-  flex: 0 1 auto;
+.terminal-session-rail-session {
+  flex: 0 0 auto;
   min-width: 0;
   border: 1px solid rgba(217, 226, 234, 0.16);
   border-radius: 3px;
@@ -2495,8 +2496,7 @@ select {
   white-space: nowrap;
 }
 
-.app-shell[data-ui-tier="desktop"] .terminal-session-rail-session,
-.app-shell[data-ui-tier="desktop"] .terminal-session-rail-overflow {
+.app-shell[data-ui-tier="desktop"] .terminal-session-rail-session {
   font-size: 0.94rem;
   padding: 0.36rem 0.62rem;
 }
@@ -2524,11 +2524,6 @@ select {
   border-style: dashed;
   cursor: not-allowed;
   opacity: 0.52;
-}
-
-.terminal-session-rail-overflow {
-  flex: 0 0 auto;
-  color: rgba(217, 226, 234, 0.52);
 }
 
 .terminal-session-rail-action {
@@ -3860,9 +3855,7 @@ select {
     overflow: visible;
   }
 
-  .terminal-session-rail-session,
-  .terminal-session-rail-overflow {
-    flex: 0 0 auto;
+  .terminal-session-rail-session {
     max-width: 7rem;
     font-size: 0.58rem;
     padding: 0.2rem 0.32rem;
@@ -4215,8 +4208,7 @@ select {
     font-size: 0.52rem;
   }
 
-  .terminal-session-rail-session,
-  .terminal-session-rail-overflow {
+  .terminal-session-rail-session {
     max-width: 5.8rem;
     font-size: 0.52rem;
     padding: 0.17rem 0.26rem;

@@ -63,12 +63,13 @@ describe("sessionGroupRail", () => {
     expect(onOpenGroupTask).toHaveBeenCalledOnce();
   });
 
-  it("keeps group session order stable while still highlighting the current session", () => {
+  it("renders every group session in order instead of replacing hidden sessions with an overflow label", () => {
     const root = document.createElement("div");
+    const onOpenSession = vi.fn();
 
     renderSessionGroupRail(
       root,
-      "s5",
+      "s9",
       {
         name: "big",
         sessions: [
@@ -76,12 +77,15 @@ describe("sessionGroupRail", () => {
           { name: "s2", label: "two" },
           { name: "s3", label: "three" },
           { name: "s4", label: "four" },
-          { name: "s5", label: "five" }
+          { name: "s5", label: "five" },
+          { name: "s6", label: "six" },
+          { name: "s7", label: "seven" },
+          { name: "s8", label: "eight" },
+          { name: "s9", label: "nine" }
         ]
       },
       {
-        maxVisibleSessions: 3,
-        onOpenSession: vi.fn()
+        onOpenSession
       }
     );
 
@@ -91,19 +95,22 @@ describe("sessionGroupRail", () => {
         "[data-action='top-switch-kanban-session']"
       )
     ];
-    const overflow = rail.querySelector<HTMLElement>(
-      "[data-action='top-kanban-overflow']"
-    )!;
-
     expect(buttons.map((button) => button.dataset.sessionName)).toEqual([
       "s1",
       "s2",
-      "s5"
+      "s3",
+      "s4",
+      "s5",
+      "s6",
+      "s7",
+      "s8",
+      "s9"
     ]);
-    expect(buttons[2]?.classList.contains("is-active")).toBe(true);
-    expect(overflow.textContent).toBe("+2");
-    expect(overflow.title).toContain("three");
-    expect(overflow.title).toContain("four");
+    expect(buttons[8]?.classList.contains("is-active")).toBe(true);
+    expect(rail.querySelector("[data-action='top-kanban-overflow']")).toBeNull();
+
+    buttons[3]?.click();
+    expect(onOpenSession).toHaveBeenCalledWith("s4");
   });
 
   it("disables switching to saved group sessions that are not currently live", () => {

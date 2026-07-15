@@ -5,37 +5,10 @@ import type {
 import type { ResponsiveUiTier } from "../responsiveUiTier";
 
 export type SessionGroupRailActions = {
-  maxVisibleSessions?: number;
   onOpenSession?: (sessionName: string) => void;
   onOpenGroupTask?: () => void;
   uiTier?: ResponsiveUiTier;
 };
-
-function getVisibleSessions(
-  currentSessionName: string,
-  sessions: KanbanStatusSession[],
-  maxVisibleSessions: number
-) {
-  const firstVisibleSessions = sessions.slice(0, maxVisibleSessions);
-  const currentVisible = firstVisibleSessions.some(
-    (session) => session.name === currentSessionName
-  );
-
-  if (currentVisible || maxVisibleSessions >= sessions.length) {
-    return firstVisibleSessions;
-  }
-
-  const current = sessions.find((session) => session.name === currentSessionName);
-
-  if (!current) {
-    return firstVisibleSessions;
-  }
-
-  return [
-    ...firstVisibleSessions.slice(0, Math.max(0, maxVisibleSessions - 1)),
-    current
-  ];
-}
 
 function createSessionButton(
   currentSessionName: string,
@@ -87,18 +60,6 @@ export function renderSessionGroupRail(
     return;
   }
 
-  const maxVisibleSessions = Math.max(1, actions.maxVisibleSessions ?? 8);
-  const visibleSessions = getVisibleSessions(
-    currentSessionName,
-    project.sessions,
-    maxVisibleSessions
-  );
-  const visibleSessionNames = new Set(
-    visibleSessions.map((session) => session.name)
-  );
-  const hiddenSessions = project.sessions.filter(
-    (session) => !visibleSessionNames.has(session.name)
-  );
   const rail = document.createElement("nav");
   rail.className = "terminal-session-rail";
   rail.setAttribute(
@@ -130,20 +91,9 @@ export function renderSessionGroupRail(
   const sessions = document.createElement("div");
   sessions.className = "terminal-session-rail-sessions";
 
-  visibleSessions.forEach((session) => {
+  project.sessions.forEach((session) => {
     sessions.append(createSessionButton(currentSessionName, session, actions));
   });
-
-  if (hiddenSessions.length > 0) {
-    const overflow = document.createElement("span");
-    overflow.className = "terminal-session-rail-overflow";
-    overflow.dataset.action = "top-kanban-overflow";
-    overflow.textContent = `+${hiddenSessions.length}`;
-    overflow.title = hiddenSessions
-      .map((session) => session.label)
-      .join(", ");
-    sessions.append(overflow);
-  }
 
   rail.append(sessions);
   root.classList.add("has-session-rail");
