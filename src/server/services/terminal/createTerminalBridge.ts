@@ -179,6 +179,11 @@ export const createTerminalBridge: CreateTerminalBridge = (
       exitListeners.add(listener);
     },
     write(data) {
+      if (data === "\x03") {
+        runTmuxCommand(["send-keys", "-t", sessionName, "C-c"]);
+        return;
+      }
+
       pty.write(data);
     },
     resize(nextCols, nextRows) {

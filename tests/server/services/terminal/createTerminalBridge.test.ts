@@ -136,4 +136,33 @@ describe("createTerminalBridge", () => {
     ]);
     expect(kill).toHaveBeenCalledTimes(1);
   });
+
+  it("sends Ctrl-C through tmux instead of an attaching PTY", () => {
+    const write = vi.fn();
+    const runTmuxCommand = vi.fn();
+    const bridge = createTerminalBridge(
+      { sessionName: "build", cols: 120, rows: 40 },
+      {
+        configureTmux: vi.fn(),
+        runTmuxCommand,
+        spawnPty: vi.fn(() => ({
+          write,
+          resize: vi.fn(),
+          kill: vi.fn(),
+          onData: vi.fn(),
+          onExit: vi.fn()
+        }))
+      }
+    );
+
+    bridge.write("\x03");
+
+    expect(runTmuxCommand).toHaveBeenCalledWith([
+      "send-keys",
+      "-t",
+      "build",
+      "C-c"
+    ]);
+    expect(write).not.toHaveBeenCalled();
+  });
 });
