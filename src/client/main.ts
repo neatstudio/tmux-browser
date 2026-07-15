@@ -36,7 +36,11 @@ import {
   type TerminalInputPrompt
 } from "./terminal/inputPromptDetector";
 import { syncTerminalPanelVisibility } from "./terminal/panelVisibility";
-import { deriveTerminalStructuredOutput } from "./terminal/structuredOutput";
+import {
+  deriveTerminalOutputPresentation,
+  shouldRenderTerminalOutputPresentation
+} from "./terminal/structuredOutput";
+import type { TerminalStyledLine } from "./terminal/structuredOutput";
 import { createTerminalStructuredOutputState } from "./terminal/structuredOutputState";
 import {
   renderTerminalStructuredOutput
@@ -233,6 +237,15 @@ const inactiveTerminalPruner = createInactiveTerminalPruner({
 const activeOutputTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const busyTerminalTabIds = new Set<string>();
 const terminalPromptSignatures = new Map<string, string>();
+const terminalVisibleOutputByTab = new Map<
+  string,
+  {
+    text: string;
+    startLine: number;
+    styledLines: TerminalStyledLine[];
+    isTranscriptCandidate: boolean;
+  }
+>();
 const terminalStructuredOutputState = createTerminalStructuredOutputState();
 let versionReloadCheckInFlight = false;
 function refreshCurrentViewState(options: { includeTimeline?: boolean } = {}) {
@@ -610,6 +623,7 @@ function toggleMutedSession(sessionName: string) {
 
 function closeTab(tabId: string, options: { force?: boolean } = {}) {
   clearInputPromptForTab(tabId);
+  terminalVisibleOutputByTab.delete(tabId);
   terminalStructuredOutputState.remove(tabId);
   inactiveTerminalPruner.cancel(tabId);
   mountedTerminals.get(tabId)?.destroy();
@@ -635,6 +649,7 @@ function detachTerminal(tabId: string) {
   }
 
   busyTerminalTabIds.delete(tabId);
+  terminalVisibleOutputByTab.delete(tabId);
   terminalStructuredOutputState.remove(tabId);
   pendingTerminalMounts.delete(tabId);
 
@@ -722,7 +737,22 @@ function rememberSessionInputPrompts() {
   });
 }
 
-function handleTerminalOutput(tabId: string, _data: string, visibleText: string) {
+function handleTerminalOutput(
+  tabId: string,
+  _data: string,
+  visibleText: string,
+  visibleStartLine: number,
+  styledLines: TerminalStyledLine[],
+  isTranscriptCandidate: boolean
+) {
+  handleTerminalSnapshot(
+    tabId,
+    visibleText,
+    visibleStartLine,
+    styledLines,
+    isTranscriptCandidate
+  );
+
   if (!isPageVisible()) {
     return;
   }
@@ -748,6 +778,26 @@ function handleTerminalOutput(tabId: string, _data: string, visibleText: string)
       refreshCurrentViewState();
     }, 1500)
   );
+}
+
+function handleTerminalSnapshot(
+  tabId: string,
+  visibleText: string,
+  visibleStartLine: number,
+  styledLines: TerminalStyledLine[],
+  isTranscriptCandidate: boolean
+) {
+  const previous = terminalVisibleOutputByTab.get(tabId);
+  terminalVisibleOutputByTab.set(tabId, {
+    text: visibleText,
+    startLine: visibleStartLine,
+    styledLines,
+    isTranscriptCandidate
+  });
+
+  if (isTranscriptCandidate || previous?.isTranscriptCandidate) {
+    scheduleRender();
+  }
 }
 
 function ensureTerminal(tab: BrowserTab) {
@@ -823,7 +873,34 @@ function ensureTerminal(tab: BrowserTab) {
       fontFamily: settings.fontFamily,
       lineHeight: settings.lineHeight,
       terminalTheme: getTheme(settings.themeId).terminalTheme,
-      onOutput: (data, visibleText) => handleTerminalOutput(tab.id, data, visibleText),
+      onOutput: (
+        data,
+        visibleText,
+        visibleStartLine,
+        styledLines,
+        isTranscriptCandidate
+      ) =>
+        handleTerminalOutput(
+          tab.id,
+          data,
+          visibleText,
+          visibleStartLine,
+          styledLines,
+          isTranscriptCandidate
+        ),
+      onSnapshot: (
+        visibleText,
+        visibleStartLine,
+        styledLines,
+        isTranscriptCandidate
+      ) =>
+        handleTerminalSnapshot(
+          tab.id,
+          visibleText,
+          visibleStartLine,
+          styledLines,
+          isTranscriptCandidate
+        ),
       onPaneClick: (event) => selectPaneAtTerminalPoint(tab.sessionName, event),
       getPaneSummaries: () =>
         store.getState().sessions.find((session) => session.name === tab.sessionName)?.panes ?? [],
@@ -982,18 +1059,40 @@ function syncTerminalStructuredOutputs() {
       return;
     }
 
-    const items = deriveTerminalStructuredOutput(tab.sessionName, timelineEvents);
+    const visibleOutput = terminalVisibleOutputByTab.get(tab.id);
+    const output = deriveTerminalOutputPresentation(
+      tab.sessionName,
+      timelineEvents,
+      visibleOutput?.text,
+      visibleOutput?.startLine,
+      visibleOutput?.styledLines
+    );
+    if (!shouldRenderTerminalOutputPresentation(
+      output,
+      frame.classList.contains("has-agent-output")
+    )) {
+      return;
+    }
+    const outputIds = [
+      ...output.items.map((item) => item.id),
+      ...(output.transcript?.blocks.map((block) => block.id) ?? [])
+    ];
+    const transcriptActivityIds = output.transcript?.blocks
+      .filter((block) => block.kind === "activity")
+      .map((block) => block.id) ?? [];
+    const hasOutput = outputIds.length > 0;
     terminalStructuredOutputState.reconcile(
       tab.id,
-      items.map((item) => item.id)
+      outputIds
     );
-    const view = terminalStructuredOutputState.getView(tab.id, items.length > 0);
+    const view = terminalStructuredOutputState.getView(tab.id, hasOutput);
     frame.classList.toggle(
       "is-agent-output-hidden",
-      view === "agent-output" && items.length > 0
+      view === "agent-output" && hasOutput
     );
     renderTerminalStructuredOutput(frame, {
-      items,
+      items: output.items,
+      transcript: output.transcript,
       view,
       expandedIds: terminalStructuredOutputState.getExpandedIds(tab.id),
       onViewChange: (nextView) => {
@@ -1001,7 +1100,15 @@ function syncTerminalStructuredOutputs() {
         scheduleRender();
       },
       onToggleExpanded: (id) => {
-        terminalStructuredOutputState.toggleExpanded(tab.id, id);
+        if (transcriptActivityIds.includes(id)) {
+          terminalStructuredOutputState.toggleTranscriptExpanded(
+            tab.id,
+            id,
+            transcriptActivityIds
+          );
+        } else {
+          terminalStructuredOutputState.toggleExpanded(tab.id, id);
+        }
         scheduleRender();
       }
     });
@@ -2103,6 +2210,9 @@ function createSessionStatusActions(tab: BrowserTab, mounted: MountedTerminal) {
     },
     onClear: () => {
       mounted.clear();
+      terminalVisibleOutputByTab.delete(tab.id);
+      terminalStructuredOutputState.reconcile(tab.id, []);
+      scheduleRender();
     },
     onRedraw: () => {
       mounted.redraw();

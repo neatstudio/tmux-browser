@@ -38,6 +38,53 @@ describe("client layout styles", () => {
     );
   });
 
+  it("renders transcript activities as compact groups without card spacing", () => {
+    expect(styles).toMatch(
+      /\.terminal-agent-transcript\s*\{(?![^}]*gap:)[^}]*display:\s*block;/s
+    );
+    expect(styles).toMatch(
+      /\.terminal-agent-transcript-activity-group\s*\{[^}]*display:\s*inline-flex;[^}]*flex-wrap:\s*wrap;[^}]*column-gap:\s*0\.22rem;[^}]*row-gap:\s*0;/s
+    );
+    expect(styles).toMatch(
+      /\.terminal-agent-transcript-activity-group\s*>\s*button\s*\{[^}]*flex:\s*0\s+0\s+auto;[^}]*border:\s*0;[^}]*background:\s*rgba\(255,\s*255,\s*255,\s*0\.06\);/s
+    );
+    expect(styles).toMatch(
+      /\.terminal-agent-transcript-activity-group\s*>\s*button\[aria-expanded="true"\]\s*\{[^}]*background:\s*rgba\(255,\s*255,\s*255,\s*0\.12\);/s
+    );
+    expect(styles).toMatch(
+      /\.terminal-agent-transcript-blank\s*\{[^}]*height:\s*calc\(var\(--terminal-agent-transcript-blank-lines\)\s*\*\s*1lh\);/s
+    );
+    expect(styles).toMatch(
+      /\.terminal-agent-transcript-activity-group\s*>\s*\.terminal-agent-transcript-blank\s*\{[^}]*flex:\s*0\s+0\s+100%;/s
+    );
+    expect(styles).not.toMatch(/\.terminal-agent-transcript-activity\s*\{/);
+    expect(styles).not.toMatch(/\.terminal-agent-transcript-detail\s*\{[^}]*border(?:-top)?:/s);
+  });
+
+  it("inherits terminal typography throughout the transcript", () => {
+    expect(styles).toMatch(
+      /\.terminal-agent-transcript\s*\{[^}]*font-family:\s*var\(--terminal-output-font-family\);[^}]*font-size:\s*var\(--terminal-output-font-size\);[^}]*line-height:\s*var\(--terminal-output-line-height\);/s
+    );
+    expect(styles).toMatch(
+      /\.terminal-agent-transcript-narrative,[\s\S]*\.terminal-agent-transcript-blank\s*\{[^}]*font-family:\s*inherit;[^}]*font-size:\s*inherit;[^}]*line-height:\s*inherit;/s
+    );
+    expect(styles).toMatch(
+      /\.terminal-agent-transcript-activity-group\s*>\s*button\s*\{[^}]*font-family:\s*inherit;[^}]*font-size:\s*inherit;[^}]*line-height:\s*inherit;/s
+    );
+    expect(styles).toMatch(
+      /\.terminal-agent-transcript-detail\s*\{[^}]*font-family:\s*inherit;[^}]*font-size:\s*inherit;[^}]*line-height:\s*inherit;/s
+    );
+  });
+
+  it("keeps the raw terminal restore control clear of the session menu", () => {
+    expect(styles).toMatch(
+      /\.terminal-structured-output-restore\s*\{[^}]*right:\s*4rem;/s
+    );
+    expect(styles).toMatch(
+      /\.terminal-structured-output\[hidden\]\s*\{[^}]*display:\s*none;/s
+    );
+  });
+
   it("keeps the xterm cursor visibly blinking", () => {
     expect(styles).toContain("@keyframes tmux-ui-terminal-cursor-blink");
     expect(styles).toMatch(

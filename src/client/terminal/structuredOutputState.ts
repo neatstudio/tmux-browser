@@ -45,6 +45,21 @@ export function createTerminalStructuredOutputState() {
         expandedIds.add(id);
       }
     },
+    toggleTranscriptExpanded(tabId: string, id: string, transcriptIds: Iterable<string>) {
+      const expandedIds = getOrCreate(tabId).expandedIds;
+      const transcriptIdSet = new Set(transcriptIds);
+
+      if (!transcriptIdSet.has(id)) {
+        return;
+      }
+
+      const wasExpanded = expandedIds.has(id);
+      transcriptIdSet.forEach((transcriptId) => expandedIds.delete(transcriptId));
+
+      if (!wasExpanded) {
+        expandedIds.add(id);
+      }
+    },
     reconcile(tabId: string, ids: Iterable<string>) {
       const state = states.get(tabId);
 

@@ -2364,11 +2364,16 @@ select {
   color: rgba(239, 246, 252, 0.9);
 }
 
+.terminal-structured-output[hidden] {
+  display: none;
+}
+
 .terminal-structured-output > header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
+  padding-right: 3.25rem;
   font-size: 0.78rem;
 }
 
@@ -2422,10 +2427,78 @@ select {
   white-space: pre-wrap;
 }
 
+.terminal-agent-transcript {
+  display: block;
+  font-family: var(--terminal-output-font-family);
+  font-size: var(--terminal-output-font-size);
+  line-height: var(--terminal-output-line-height);
+}
+
+.terminal-agent-transcript-narrative,
+.terminal-agent-transcript-activity-group,
+.terminal-agent-transcript-blank {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.terminal-agent-transcript-narrative {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.terminal-agent-transcript-blank {
+  height: calc(var(--terminal-agent-transcript-blank-lines) * 1lh);
+  pointer-events: none;
+}
+
+.terminal-agent-transcript-activity-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 0.22rem;
+  row-gap: 0;
+  max-width: 100%;
+  vertical-align: top;
+}
+
+.terminal-agent-transcript-activity-group > button {
+  flex: 0 0 auto;
+  max-width: 100%;
+  border: 0;
+  background: rgba(255, 255, 255, 0.06);
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.terminal-agent-transcript-activity-group > button[aria-expanded="true"] {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.terminal-agent-transcript-activity-group > .terminal-agent-transcript-blank {
+  flex: 0 0 100%;
+}
+
+.terminal-agent-transcript-detail {
+  flex: 0 0 100%;
+  width: 100%;
+  max-height: 16rem;
+  margin: 0;
+  padding: 0.4rem 0 0;
+  overflow: auto;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  white-space: pre-wrap;
+}
+
 .terminal-structured-output-restore {
   position: absolute;
   top: 0.35rem;
-  right: 0.35rem;
+  right: 4rem;
   z-index: 5;
 }
 

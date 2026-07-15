@@ -30,4 +30,42 @@ describe("createTerminalStructuredOutputState", () => {
 
     expect(state.getExpandedIds("tab-1")).toEqual(new Set(["message-2"]));
   });
+
+  it("keeps conversation expansions additive while transcript activities are exclusive", () => {
+    const state = createTerminalStructuredOutputState();
+
+    state.toggleExpanded("tab-1", "conversation-1");
+    state.toggleExpanded("tab-1", "conversation-2");
+    state.toggleTranscriptExpanded("tab-1", "activity-1", ["activity-1", "activity-2"]);
+
+    expect(state.getExpandedIds("tab-1")).toEqual(new Set([
+      "conversation-1",
+      "conversation-2",
+      "activity-1"
+    ]));
+
+    state.toggleTranscriptExpanded("tab-1", "activity-2", ["activity-1", "activity-2"]);
+    expect(state.getExpandedIds("tab-1")).toEqual(new Set([
+      "conversation-1",
+      "conversation-2",
+      "activity-2"
+    ]));
+
+    state.toggleTranscriptExpanded("tab-1", "activity-2", ["activity-1", "activity-2"]);
+    expect(state.getExpandedIds("tab-1")).toEqual(new Set([
+      "conversation-1",
+      "conversation-2"
+    ]));
+  });
+
+  it("reconciles a vanished transcript activity without clearing conversation expansions", () => {
+    const state = createTerminalStructuredOutputState();
+
+    state.toggleExpanded("tab-1", "conversation-1");
+    state.toggleTranscriptExpanded("tab-1", "activity-1", ["activity-1", "activity-2"]);
+    state.reconcile("tab-1", ["conversation-1", "activity-2"]);
+
+    expect(state.getExpandedIds("tab-1")).toEqual(new Set(["conversation-1"]));
+  });
+
 });

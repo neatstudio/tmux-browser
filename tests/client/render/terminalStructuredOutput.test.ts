@@ -5,7 +5,10 @@ import { describe, expect, it, vi } from "vitest";
 import {
   renderTerminalStructuredOutput
 } from "../../../src/client/render/terminalStructuredOutput";
-import type { TerminalStructuredOutputItem } from "../../../src/client/terminal/structuredOutput";
+import type {
+  TerminalAgentTranscript,
+  TerminalStructuredOutputItem
+} from "../../../src/client/terminal/structuredOutput";
 
 function item(
   overrides: Partial<TerminalStructuredOutputItem> = {}
@@ -38,6 +41,209 @@ function item(
 }
 
 describe("renderTerminalStructuredOutput", () => {
+  it("keeps transcript narration visible and expands process records on demand", () => {
+    const root = document.createElement("div");
+    const onToggleExpanded = vi.fn();
+    const transcript: TerminalAgentTranscript = {
+      blocks: [
+        { id: "narrative:0", kind: "narrative", text: "• Ctrl+C 映射已恢复。" },
+        {
+          id: "activity:1",
+          kind: "activity",
+          title: "Ran npm test",
+          text: "✓ 65 tests passed"
+        }
+      ]
+    };
+
+    renderTerminalStructuredOutput(root, {
+      items: [],
+      transcript,
+      view: "agent-output",
+      expandedIds: new Set(),
+      onViewChange: vi.fn(),
+      onToggleExpanded
+    });
+
+    expect(root.textContent).toContain("Ctrl+C 映射已恢复。");
+    expect(root.textContent).toContain("Ran npm test");
+    expect(root.textContent).not.toContain("65 tests passed");
+
+    root.querySelector<HTMLButtonElement>("[data-action='toggle-terminal-transcript']")?.click();
+    expect(onToggleExpanded).toHaveBeenCalledWith("activity:1");
+
+    renderTerminalStructuredOutput(root, {
+      items: [],
+      transcript,
+      view: "agent-output",
+      expandedIds: new Set(["activity:1"]),
+      onViewChange: vi.fn(),
+      onToggleExpanded
+    });
+
+    expect(root.textContent).toContain("✓ 65 tests passed");
+  });
+
+  it("preserves xterm foreground and font attributes in transcript details", () => {
+    const root = document.createElement("div");
+    const transcript: TerminalAgentTranscript = {
+      blocks: [{
+        id: "activity:styled",
+        kind: "activity",
+        title: "Ran",
+        text: "Ran npm test\n✓ 852 tests passed"
+      }]
+    };
+    Object.assign(transcript.blocks[0]!, {
+      styledLines: [{
+        absoluteLine: 42,
+        spans: [{ text: "• Ran npm test", style: { color: "#92d192", bold: true } }]
+      }, {
+        absoluteLine: 43,
+        spans: [{ text: "✓ 852 tests passed", style: { color: "#8bb8ff", italic: true, dim: true } }]
+      }]
+    });
+
+    renderTerminalStructuredOutput(root, {
+      items: [],
+      transcript,
+      view: "agent-output",
+      expandedIds: new Set(["activity:styled"]),
+      onViewChange: vi.fn(),
+      onToggleExpanded: vi.fn()
+    });
+
+    const spans = root.querySelectorAll<HTMLElement>(".terminal-agent-transcript-detail span");
+    expect(spans).toHaveLength(2);
+    const toggle = root.querySelector<HTMLElement>("[data-action='toggle-terminal-transcript']");
+    expect(toggle?.style.color).toBe("rgb(146, 209, 146)");
+    expect(toggle?.style.fontWeight).toBe("700");
+    expect(spans[0]?.style.color).toBe("rgb(146, 209, 146)");
+    expect(spans[0]?.style.fontWeight).toBe("700");
+    expect(spans[1]?.style.color).toBe("rgb(139, 184, 255)");
+    expect(spans[1]?.style.fontStyle).toBe("italic");
+    expect(spans[1]?.style.opacity).toBe("0.65");
+  });
+
+  it("renders styled narration with its physical blank lines intact", () => {
+    const root = document.createElement("div");
+    const transcript: TerminalAgentTranscript = {
+      blocks: [{
+        id: "narrative:styled-blank",
+        kind: "narrative",
+        text: "First conclusion\n\n\nSecond conclusion",
+        styledLines: [
+          { absoluteLine: 60, spans: [{ text: "First conclusion", style: { color: "#8bb8ff" } }] },
+          { absoluteLine: 61, spans: [] },
+          { absoluteLine: 62, spans: [] },
+          { absoluteLine: 63, spans: [{ text: "Second conclusion", style: { color: "#92d192" } }] }
+        ]
+      }]
+    };
+
+    renderTerminalStructuredOutput(root, {
+      items: [],
+      transcript,
+      view: "agent-output",
+      expandedIds: new Set(),
+      onViewChange: vi.fn(),
+      onToggleExpanded: vi.fn()
+    });
+
+    expect(root.querySelector(".terminal-agent-transcript-narrative")?.textContent)
+      .toBe("First conclusion\n\n\nSecond conclusion");
+  });
+
+  it("groups consecutive transcript activities while preserving blank terminal lines", () => {
+    const root = document.createElement("div");
+    const onToggleExpanded = vi.fn();
+    const transcript: TerminalAgentTranscript = {
+      blocks: [
+        { id: "activity:ran", kind: "activity", groupId: "group:0", title: "Ran", text: "Ran npm test" },
+        { id: "blank:0", kind: "narrative", text: "", blankLineCount: 2 },
+        { id: "activity:explored", kind: "activity", groupId: "group:0", title: "Explored", text: "Read output.ts" },
+        { id: "narrative:0", kind: "narrative", text: "The next update is separate." },
+        { id: "activity:edited", kind: "activity", groupId: "group:1", title: "Edited", text: "Updated styles.css" }
+      ]
+    };
+
+    renderTerminalStructuredOutput(root, {
+      items: [],
+      transcript,
+      view: "agent-output",
+      expandedIds: new Set(["activity:ran"]),
+      onViewChange: vi.fn(),
+      onToggleExpanded
+    });
+
+    const groups = root.querySelectorAll<HTMLElement>(
+      ".terminal-agent-transcript-activity-group"
+    );
+    const buttons = groups[0]?.querySelectorAll<HTMLButtonElement>(
+      "[data-action='toggle-terminal-transcript']"
+    );
+    const spacer = root.querySelector<HTMLElement>(".terminal-agent-transcript-blank");
+
+    expect(groups).toHaveLength(2);
+    expect(buttons).toHaveLength(2);
+    expect([...groups[0]!.children].slice(0, 4).map((child) => child.tagName)).toEqual([
+      "BUTTON",
+      "PRE",
+      "DIV",
+      "BUTTON"
+    ]);
+    expect(groups[0]?.children[2]?.classList.contains("terminal-agent-transcript-blank"))
+      .toBe(true);
+    expect(buttons?.[0]?.textContent).toBe("Ran");
+    expect(buttons?.[0]?.getAttribute("aria-expanded")).toBe("true");
+    expect(buttons?.[1]?.textContent).toBe("Explored");
+    expect(buttons?.[1]?.getAttribute("aria-expanded")).toBe("false");
+    expect(groups[0]?.querySelectorAll(".terminal-agent-transcript-detail")).toHaveLength(1);
+    expect(groups[1]?.querySelectorAll(".terminal-agent-transcript-detail")).toHaveLength(0);
+    const detail = groups[0]?.querySelector<HTMLElement>(".terminal-agent-transcript-detail");
+    const narrative = root.querySelector<HTMLElement>(".terminal-agent-transcript-narrative");
+    expect(buttons?.[0]?.getAttribute("aria-controls")).toBe(detail?.id);
+    expect(buttons?.[1]?.hasAttribute("aria-controls")).toBe(false);
+    expect(spacer?.style.getPropertyValue("--terminal-agent-transcript-blank-lines")).toBe("2");
+    expect(narrative?.textContent).toBe("The next update is separate.");
+    expect(detail?.tagName).toBe("PRE");
+
+    buttons?.[0]?.click();
+    expect(onToggleExpanded).toHaveBeenCalledWith("activity:ran");
+  });
+
+  it("scopes transcript detail ids to their renderer root", () => {
+    const firstRoot = document.createElement("div");
+    const secondRoot = document.createElement("div");
+    const transcript: TerminalAgentTranscript = {
+      blocks: [{
+        id: "activity:shared",
+        kind: "activity",
+        title: "Ran",
+        text: "Ran npm test"
+      }]
+    };
+
+    for (const root of [firstRoot, secondRoot]) {
+      renderTerminalStructuredOutput(root, {
+        items: [],
+        transcript,
+        view: "agent-output",
+        expandedIds: new Set(["activity:shared"]),
+        onViewChange: vi.fn(),
+        onToggleExpanded: vi.fn()
+      });
+    }
+
+    const firstButton = firstRoot.querySelector("[data-action='toggle-terminal-transcript']");
+    const secondButton = secondRoot.querySelector("[data-action='toggle-terminal-transcript']");
+    const firstDetail = firstRoot.querySelector(".terminal-agent-transcript-detail");
+    const secondDetail = secondRoot.querySelector(".terminal-agent-transcript-detail");
+    expect(firstButton?.getAttribute("aria-controls")).toBe(firstDetail?.id);
+    expect(secondButton?.getAttribute("aria-controls")).toBe(secondDetail?.id);
+    expect(firstDetail?.id).not.toBe(secondDetail?.id);
+  });
+
   it("shows compact summaries by default and expands the complete record on demand", () => {
     const root = document.createElement("div");
     const onToggleExpanded = vi.fn();
