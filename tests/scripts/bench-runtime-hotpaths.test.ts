@@ -118,6 +118,9 @@ describe("runtime hotpath benchmark helpers", () => {
         },
         allRootIdentitiesStable: true,
         allChildIdentitiesStable: true,
+        zeroReplacementPassed: true,
+        identityPassed: true,
+        elapsedWithinBudget: true,
         passed: true
       });
     });

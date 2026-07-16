@@ -125,19 +125,22 @@ export function summarizeTerminalChromeProbe(probe) {
   }
   const allRootIdentitiesStable = probe.rootIdentityStable.every(Boolean);
   const allChildIdentitiesStable = probe.childIdentityStable.every(Boolean);
+  const zeroReplacementPassed =
+    probe.counts.added === 0 &&
+    probe.counts.removed === 0 &&
+    probe.counts.replacements === 0;
+  const identityPassed = allRootIdentitiesStable && allChildIdentitiesStable;
+  const elapsedWithinBudget = probe.elapsedMs <= 420;
   return {
     cycles: probe.cycles,
     elapsedMs: probe.elapsedMs,
     counts: Object.fromEntries(countFields.map((field) => [field, probe.counts[field]])),
     allRootIdentitiesStable,
     allChildIdentitiesStable,
-    passed:
-      probe.counts.added === 0 &&
-      probe.counts.removed === 0 &&
-      probe.counts.replacements === 0 &&
-      allRootIdentitiesStable &&
-      allChildIdentitiesStable &&
-      probe.elapsedMs <= 420
+    zeroReplacementPassed,
+    identityPassed,
+    elapsedWithinBudget,
+    passed: zeroReplacementPassed && identityPassed && elapsedWithinBudget
   };
 }
 
@@ -457,8 +460,8 @@ async function collectTerminalChromeNoOpResizeMutations(page, cycles = 10) {
         requestAnimationFrame(() => requestAnimationFrame(resolveWait))
       );
     }
-    await new Promise((resolveWait) => setTimeout(resolveWait, 100));
     const elapsedMs = performance.now() - startedAt;
+    await new Promise((resolveWait) => setTimeout(resolveWait, 100));
     observer.disconnect();
     const rootsAfter = selectors.map((selector) => panel.querySelector(selector));
     const childrenAfter = rootsAfter.map((root) => root ? [...root.childNodes] : []);
