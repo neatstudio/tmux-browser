@@ -291,6 +291,14 @@ export function isDashboardDataReady(rendered, expected) {
   );
 }
 
+export function normalizeKanbanProjects(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (payload && typeof payload === "object" && Array.isArray(payload.projects)) {
+    return payload.projects;
+  }
+  throw new Error("kanban projects response must contain a projects array");
+}
+
 async function waitForDashboardData(page, expected, timeoutMs) {
   const startedAt = performance.now();
   while (performance.now() - startedAt < timeoutMs) {
@@ -396,7 +404,7 @@ async function collectBrowserMetrics(baseUrl, runs, timeoutMs) {
         );
       }
       const sessions = await sessionsResponse.json();
-      const projects = await projectsResponse.json();
+      const projects = normalizeKanbanProjects(await projectsResponse.json());
       await waitForDashboardData(
         page,
         {
@@ -465,6 +473,7 @@ async function collectBrowserMetrics(baseUrl, runs, timeoutMs) {
     }
     return {
       chromiumVersion: browser.version(),
+      requestedRuns: runs,
       raw,
       summary: {
         dashboardReadyMs: summarizeSamples(raw.map((run) => run.dashboardReadyMs)),
@@ -490,7 +499,7 @@ async function collectBrowserMetrics(baseUrl, runs, timeoutMs) {
   }
 }
 
-export function collectReportIssues(api, _browser, idleProcess) {
+export function collectReportIssues(api, browser, idleProcess) {
   const issues = Object.entries(api).flatMap(([target, result]) => {
     if (result.supported === false) return [`${target}: ${result.error}`];
     return ["sequential", "concurrent"].flatMap((mode) =>
@@ -501,6 +510,22 @@ export function collectReportIssues(api, _browser, idleProcess) {
   });
   if (idleProcess?.supported !== true) {
     issues.push(`idle-process: ${idleProcess?.error ?? "evidence is missing"}`);
+  }
+  const browserRuns = browser?.raw;
+  if (!Array.isArray(browserRuns) || browserRuns.length === 0) {
+    issues.push("browser-fcp: evidence is missing");
+  } else {
+    const requestedRuns = browser.requestedRuns ?? browserRuns.length;
+    const missingRuns =
+      Math.max(0, requestedRuns - browserRuns.length) +
+      browserRuns.filter(
+        (run) =>
+          typeof run.firstContentfulPaintMs !== "number" ||
+          !Number.isFinite(run.firstContentfulPaintMs)
+      ).length;
+    if (missingRuns > 0) {
+      issues.push(`browser-fcp: missing for ${missingRuns} of ${requestedRuns} runs`);
+    }
   }
   return issues;
 }
@@ -573,6 +598,19 @@ function gitSha(revision = "HEAD") {
   }).trim();
 }
 
+function worktreeStatus() {
+  return execFileSync("git", ["status", "--porcelain", "--untracked-files=normal"], {
+    cwd: root,
+    encoding: "utf8"
+  });
+}
+
+export function assertCleanWorktree(status) {
+  if (status.trim().length > 0) {
+    throw new Error("benchmark worktree must be clean before sampling");
+  }
+}
+
 export function resolveBenchmarkCommits(expectCommit, resolveSha = gitSha) {
   return {
     gitSha: resolveSha(expectCommit),
@@ -594,6 +632,7 @@ function defaultOutputPath(commit) {
 }
 
 export async function runBenchmark(options) {
+  assertCleanWorktree(worktreeStatus());
   const healthResponse = await timedFetch(options.url, "/api/health", {
     timeoutMs: options.timeoutMs
   });

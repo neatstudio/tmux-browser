@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import { createServer } from "node:http";
 
 import {
+  assertCleanWorktree,
   compareRelativeBudget,
   collectReportIssues,
   isDashboardDataReady,
+  normalizeKanbanProjects,
   parseCliOptions,
   resolveBenchmarkCommits,
   summarizeMutations,
@@ -175,10 +177,44 @@ describe("runtime hotpath benchmark helpers", () => {
     expect(
       collectReportIssues(
         {},
-        { summary: {} },
+        { raw: [{ firstContentfulPaintMs: 10 }] },
         { supported: false, error: "Expected one listening PID, found 0" }
       )
     ).toEqual(["idle-process: Expected one listening PID, found 0"]);
+  });
+
+  it("normalizes the real kanban response wrapper and documented array form", () => {
+    const projects = [{ name: "alpha", agents: [] }];
+    expect(normalizeKanbanProjects({ projects })).toEqual(projects);
+    expect(normalizeKanbanProjects(projects)).toEqual(projects);
+    expect(() => normalizeKanbanProjects({ projects: null })).toThrow(
+      "kanban projects response"
+    );
+  });
+
+  it("fails preflight for any tracked or untracked worktree change", () => {
+    expect(() => assertCleanWorktree("")).not.toThrow();
+    expect(() => assertCleanWorktree(" M scripts/bench.mjs\n?? notes.txt\n")).toThrow(
+      "worktree must be clean"
+    );
+  });
+
+  it("invalidates missing or partial first-contentful-paint evidence", () => {
+    expect(
+      collectReportIssues(
+        {},
+        {
+          raw: [
+            { firstContentfulPaintMs: 12 },
+            { firstContentfulPaintMs: null }
+          ]
+        },
+        { supported: true }
+      )
+    ).toEqual(["browser-fcp: missing for 1 of 2 runs"]);
+    expect(
+      collectReportIssues({}, { raw: [] }, { supported: true })
+    ).toEqual(["browser-fcp: evidence is missing"]);
   });
 
   it("requires API-returned project and session identities in the rendered dashboard", () => {
