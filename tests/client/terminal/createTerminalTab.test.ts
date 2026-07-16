@@ -11,7 +11,6 @@ const terminalTestState = vi.hoisted(() => {
       loadAddon: ReturnType<typeof vi.fn>;
       open: ReturnType<typeof vi.fn>;
       onData: ReturnType<typeof vi.fn>;
-      onScroll: ReturnType<typeof vi.fn>;
       attachCustomKeyEventHandler: ReturnType<typeof vi.fn>;
       focus: ReturnType<typeof vi.fn>;
       scrollLines: ReturnType<typeof vi.fn>;
@@ -21,7 +20,6 @@ const terminalTestState = vi.hoisted(() => {
       refresh: ReturnType<typeof vi.fn>;
       clearTextureAtlas: ReturnType<typeof vi.fn>;
       clearSelection: ReturnType<typeof vi.fn>;
-      hasSelection: ReturnType<typeof vi.fn>;
       getSelectionPosition: ReturnType<typeof vi.fn>;
       onSelectionChange: ReturnType<typeof vi.fn>;
       dispose: ReturnType<typeof vi.fn>;
@@ -37,7 +35,6 @@ const terminalTestState = vi.hoisted(() => {
         };
       };
       customKeyEventHandler?: (event: KeyboardEvent) => boolean;
-      scrollListener?: (viewportY: number) => void;
     };
   }> = [];
   const fitAddons: Array<{
@@ -100,10 +97,6 @@ vi.mock("@xterm/xterm", () => ({
       container.append(xterm);
     });
     onData = vi.fn();
-    onScroll = vi.fn((listener: (viewportY: number) => void) => {
-      this.scrollListener = listener;
-      return { dispose: vi.fn() };
-    });
     attachCustomKeyEventHandler = vi.fn(
       (handler: (event: KeyboardEvent) => boolean) => {
         this.customKeyEventHandler = handler;
@@ -117,7 +110,6 @@ vi.mock("@xterm/xterm", () => ({
     refresh = vi.fn();
     clearTextureAtlas = vi.fn();
     clearSelection = vi.fn();
-    hasSelection = vi.fn(() => false);
     getSelectionPosition = vi.fn();
     onSelectionChange = vi.fn((handler: () => void) => {
       this.selectionChangeHandler = handler;
@@ -149,7 +141,6 @@ vi.mock("@xterm/xterm", () => ({
       }
     };
     customKeyEventHandler?: (event: KeyboardEvent) => boolean;
-    scrollListener?: (viewportY: number) => void;
     selectionChangeHandler?: () => void;
 
     constructor(options: Record<string, unknown>) {
@@ -218,10 +209,8 @@ import {
   createTerminalTab,
   createTerminalOutputBuffer,
   createTerminalTabController,
-  stripTerminalDeviceAttributeResponses,
-  getTerminalLiveTailRows
+  stripTerminalDeviceAttributeResponses
 } from "../../../src/client/terminal/createTerminalTab";
-import { deriveTerminalAgentTranscript } from "../../../src/client/terminal/structuredOutput";
 import { createTabState } from "../../../src/client/state/tabState";
 import type { PaneSummary } from "../../../src/client/api/sessionApi";
 
@@ -501,14 +490,6 @@ describe("createTerminalOutputBuffer", () => {
 });
 
 describe("createTerminalTab", () => {
-  it("derives one live-tail row contract from the fitted terminal height", () => {
-    expect(getTerminalLiveTailRows(36)).toBe(8);
-    expect(getTerminalLiveTailRows(13)).toBe(5);
-    expect(getTerminalLiveTailRows(4)).toBe(3);
-    expect(getTerminalLiveTailRows(3)).toBe(0);
-    expect(getTerminalLiveTailRows(2)).toBe(0);
-    expect(getTerminalLiveTailRows(1)).toBe(0);
-  });
   beforeEach(() => {
     terminalTestState.terminals.length = 0;
     terminalTestState.fitAddons.length = 0;
@@ -595,45 +576,13 @@ describe("createTerminalTab", () => {
       onOutput
     });
     const terminal = terminalTestState.terminals[0]?.instance;
-    terminal!.rows = 4;
-    terminal!.buffer.active.viewportY = 42;
-    terminal!.buffer.active.baseY = 42;
-    terminal!.buffer.active.length = 46;
+    terminal!.rows = 3;
+    terminal!.buffer.active.baseY = 0;
     terminal!.visibleLines = [
-      "• Ran npm test",
-      "  ✓ focused tests passed",
-      "• Explored",
-      "  └ Read terminal output"
+      "Old stale prompt: continue? [y/a/n]",
+      "Status line",
+      "Do you want to continue? [y/a/n]"
     ];
-    terminal!.buffer.active.getLine.mockImplementation((index: number) => {
-      const line = terminal!.visibleLines[index - 42];
-
-      return line === undefined
-        ? undefined
-        : {
-            length: line.length,
-            isWrapped: false,
-            translateToString: vi.fn(() => line),
-            getCell: vi.fn((column: number) => {
-              const character = line[column];
-              const styled = index === 43 && column < 3;
-
-              return character === undefined
-                ? undefined
-                : {
-                    getChars: () => character,
-                    getWidth: () => 1,
-                    isFgRGB: () => styled,
-                    isFgPalette: () => false,
-                    isFgDefault: () => !styled,
-                    getFgColor: () => 0x92d192,
-                    isBold: () => styled ? 1 : 0,
-                    isItalic: () => 0,
-                    isDim: () => 0
-                  };
-            })
-          };
-    });
 
     socketListeners.get("message")?.({
       data: JSON.stringify({ type: "output", data: "\x1b[2Jraw tui repaint" })
@@ -651,244 +600,8 @@ describe("createTerminalTab", () => {
 
     expect(onOutput).toHaveBeenCalledWith(
       "\x1b[2Jraw tui repaint",
-      "• Ran npm test\n  ✓ focused tests passed\n• Explored\n  └ Read terminal output",
-      42,
-      expect.any(Array),
-      true,
-      3
+      "Old stale prompt: continue? [y/a/n]\nStatus line\nDo you want to continue? [y/a/n]"
     );
-    expect(onOutput.mock.calls[0]?.[3]?.[1]).toMatchObject({
-      absoluteLine: 43,
-      spans: [
-        {
-          text: "  ✓",
-          style: { color: "#92d192", bold: true }
-        },
-        {
-          text: " focused tests passed",
-          style: {}
-        }
-      ]
-    });
-
-    mounted.destroy();
-  });
-
-  it("recognizes a process title split across wrapped xterm lines", () => {
-    let scheduledCallback: FrameRequestCallback | null = null;
-    const socketListeners = new Map<string, (event?: MessageEvent<string>) => void>();
-    const socket = {
-      send: vi.fn(),
-      close: vi.fn(),
-      addEventListener: vi.fn(
-        (type: string, listener: (event?: MessageEvent<string>) => void) => {
-          socketListeners.set(type, listener);
-        }
-      ),
-      removeEventListener: vi.fn()
-    };
-    const onOutput = vi.fn();
-
-    vi.spyOn(window, "requestAnimationFrame").mockImplementation(
-      (callback: FrameRequestCallback) => {
-        scheduledCallback = callback;
-        return 1;
-      }
-    );
-    vi.stubGlobal("WebSocket", class {
-      constructor() {
-        return socket;
-      }
-    });
-
-    const mounted = createTerminalTab({
-      container: document.createElement("div"),
-      tabId: "tab-1",
-      sessionName: "agents",
-      onClosed: vi.fn(),
-      onOutput
-    });
-    const terminal = terminalTestState.terminals[0]!.instance;
-    const lines = [
-      "• Waiting for",
-      " agents",
-      "  ✓ agent complete",
-      "• Explored",
-      "  └ Read result"
-    ];
-    terminal.rows = lines.length;
-    terminal.buffer.active.viewportY = 20;
-    terminal.buffer.active.baseY = 20;
-    terminal.buffer.active.length = 25;
-    terminal.buffer.active.getLine.mockImplementation((index: number) => {
-      const lineIndex = index - 20;
-      const text = lines[lineIndex];
-      return text === undefined ? undefined : {
-        length: text.length,
-        isWrapped: lineIndex === 1,
-        translateToString: vi.fn(() => text),
-        getCell: vi.fn((column: number) => {
-          const character = text[column];
-          return character === undefined ? undefined : {
-            getChars: () => character,
-            getWidth: () => 1,
-            isFgRGB: () => false,
-            isFgPalette: () => false,
-            isFgDefault: () => true,
-            getFgColor: () => 0,
-            isBold: () => 0,
-            isItalic: () => 0,
-            isDim: () => 0
-          };
-        })
-      };
-    });
-
-    socketListeners.get("message")?.({
-      data: JSON.stringify({ type: "output", data: "wrapped agent output" })
-    } as MessageEvent<string>);
-    scheduledCallback?.(performance.now());
-    const writeCallback = terminal.write.mock.calls[0]?.[1] as (() => void) | undefined;
-    writeCallback?.();
-
-    expect(onOutput).toHaveBeenCalledWith(
-      "wrapped agent output",
-      lines.join("\n"),
-      20,
-      expect.any(Array),
-      true,
-      3
-    );
-    const [, visibleText, startLine, styledLines] = onOutput.mock.calls[0]!;
-    expect(styledLines).toHaveLength(lines.length);
-    expect(deriveTerminalAgentTranscript(visibleText, startLine, styledLines)?.blocks)
-      .toMatchObject([
-        { kind: "activity", title: "Waiting for agents" },
-        { kind: "activity", title: "Explored" }
-      ]);
-
-    mounted.destroy();
-  });
-
-  it("skips cell styling for ordinary shell output", () => {
-    let scheduledCallback: FrameRequestCallback | null = null;
-    const socketListeners = new Map<string, (event?: MessageEvent<string>) => void>();
-    const socket = {
-      send: vi.fn(),
-      close: vi.fn(),
-      addEventListener: vi.fn(
-        (type: string, listener: (event?: MessageEvent<string>) => void) => {
-          socketListeners.set(type, listener);
-        }
-      ),
-      removeEventListener: vi.fn()
-    };
-    const onOutput = vi.fn();
-    const getCell = vi.fn();
-
-    vi.spyOn(window, "requestAnimationFrame").mockImplementation(
-      (callback: FrameRequestCallback) => {
-        scheduledCallback = callback;
-        return 1;
-      }
-    );
-    vi.stubGlobal("WebSocket", class {
-      constructor() {
-        return socket;
-      }
-    });
-
-    const mounted = createTerminalTab({
-      container: document.createElement("div"),
-      tabId: "tab-1",
-      sessionName: "shell",
-      onClosed: vi.fn(),
-      onOutput
-    });
-    const terminal = terminalTestState.terminals[0]!.instance;
-    const lines = [
-      "64 bytes from host: icmp_seq=1",
-      "64 bytes from host: icmp_seq=2",
-      "64 bytes from host: icmp_seq=3"
-    ];
-    terminal.rows = 3;
-    terminal.buffer.active.viewportY = 0;
-    terminal.buffer.active.baseY = 0;
-    terminal.buffer.active.length = 3;
-    terminal.buffer.active.getLine.mockImplementation((index: number) => ({
-      length: lines[index]?.length ?? 0,
-      isWrapped: false,
-      translateToString: vi.fn(() => lines[index] ?? ""),
-      getCell
-    }));
-
-    socketListeners.get("message")?.({
-      data: JSON.stringify({ type: "output", data: "ping output" })
-    } as MessageEvent<string>);
-    scheduledCallback?.(performance.now());
-    const writeCallback = terminal.write.mock.calls[0]?.[1] as (() => void) | undefined;
-    writeCallback?.();
-
-    expect(getCell).not.toHaveBeenCalled();
-    expect(onOutput).toHaveBeenCalledWith(
-      "ping output",
-      lines.join("\n"),
-      0,
-      [],
-      false,
-      0
-    );
-
-    mounted.destroy();
-  });
-
-  it("publishes a viewport snapshot when xterm scrolls without faking PTY output", () => {
-    const socket = {
-      send: vi.fn(),
-      close: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn()
-    };
-    vi.stubGlobal("WebSocket", class {
-      constructor() {
-        return socket;
-      }
-    });
-    const onOutput = vi.fn();
-    const onSnapshot = vi.fn();
-    const mounted = createTerminalTab({
-      container: document.createElement("div"),
-      tabId: "tab-1",
-      sessionName: "shell",
-      onClosed: vi.fn(),
-      onOutput,
-      onSnapshot
-    });
-    const terminal = terminalTestState.terminals[0]!.instance;
-    const lines = new Map([
-      [3, "viewport line three"],
-      [4, "viewport line four"],
-      [8, "base line eight"],
-      [9, "base line nine"]
-    ]);
-    terminal.rows = 2;
-    terminal.buffer.active.viewportY = 3;
-    terminal.buffer.active.baseY = 8;
-    terminal.buffer.active.length = 10;
-    terminal.buffer.active.getLine.mockImplementation((index: number) => ({
-      translateToString: vi.fn(() => lines.get(index) ?? "")
-    }));
-
-    terminal.scrollListener?.(3);
-
-    expect(onSnapshot).toHaveBeenCalledWith(
-      "viewport line three\nviewport line four",
-      3,
-      [],
-      false,
-      0
-    );
-    expect(onOutput).not.toHaveBeenCalled();
 
     mounted.destroy();
   });
@@ -990,45 +703,27 @@ describe("createTerminalTab", () => {
       }
     );
 
-    const container = document.createElement("div");
     const mounted = createTerminalTab({
-      container,
+      container: document.createElement("div"),
       tabId: "tab-1",
       sessionName: "build",
-      fontSize: 17,
       fontFamily: "Menlo, monospace",
       lineHeight: 1.2,
       onClosed: vi.fn()
     });
 
     expect(terminalTestState.terminals[0]?.options).toMatchObject({
-      fontSize: 17,
       fontFamily: "Menlo, monospace",
       lineHeight: 1.2
     });
-    expect(container.style.getPropertyValue("--terminal-output-font-family")).toBe(
-      "Menlo, monospace"
+
+    mounted.setFontFamily("JetBrains Mono, monospace");
+    mounted.setLineHeight(1.5);
+
+    expect(terminalTestState.terminals[0]?.instance.options.fontFamily).toBe(
+      "JetBrains Mono, monospace"
     );
-    expect(container.style.getPropertyValue("--terminal-output-font-size")).toBe("17px");
-    expect(container.style.getPropertyValue("--terminal-output-line-height")).toBe("1.2");
-    expect(container.style.getPropertyValue("--terminal-row-height")).toBe("20.4px");
-    expect(container.style.getPropertyValue("--terminal-live-tail-rows")).toBe("8");
-    expect(container.style.getPropertyValue("--terminal-live-tail-height")).toBe("163.2px");
-    expect(container.style.getPropertyValue("--terminal-live-tail-bottom")).toBe("163.2px");
-
-    mounted.setFontFamily("Fira Code");
-    mounted.setFontSize(19);
-    mounted.setLineHeight(1.55);
-
-    expect(terminalTestState.terminals[0]?.instance.options.fontFamily).toBe("Fira Code");
-    expect(terminalTestState.terminals[0]?.instance.options.fontSize).toBe(19);
-    expect(terminalTestState.terminals[0]?.instance.options.lineHeight).toBe(1.55);
-    expect(container.style.getPropertyValue("--terminal-output-font-family")).toBe("Fira Code");
-    expect(container.style.getPropertyValue("--terminal-output-font-size")).toBe("19px");
-    expect(container.style.getPropertyValue("--terminal-output-line-height")).toBe("1.55");
-    expect(container.style.getPropertyValue("--terminal-row-height")).toBe("29.45px");
-    expect(container.style.getPropertyValue("--terminal-live-tail-height")).toBe("235.6px");
-    expect(container.style.getPropertyValue("--terminal-live-tail-bottom")).toBe("235.6px");
+    expect(terminalTestState.terminals[0]?.instance.options.lineHeight).toBe(1.5);
 
     mounted.destroy();
   });
@@ -2223,7 +1918,7 @@ describe("createTerminalTab", () => {
       }
     );
 
-    const mounted = createTerminalTab({
+    createTerminalTab({
       container: document.createElement("div"),
       tabId: "tab-1",
       sessionName: "build",
@@ -2241,66 +1936,6 @@ describe("createTerminalTab", () => {
     expect(socket.send).toHaveBeenCalledWith(
       JSON.stringify({ type: "input", data: "\x03" })
     );
-
-    mounted.destroy();
-  });
-
-  it("forwards Ctrl-C from an active terminal panel when the Agent-output view owns focus", () => {
-    const socket = {
-      send: vi.fn(),
-      close: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn()
-    };
-
-    vi.stubGlobal(
-      "WebSocket",
-      class {
-        constructor() {
-          return socket;
-        }
-      }
-    );
-
-    const panel = document.createElement("div");
-    panel.className = "terminal-panel is-active";
-    const container = document.createElement("div");
-    panel.append(container);
-    const mounted = createTerminalTab({
-      container,
-      tabId: "tab-1",
-      sessionName: "build",
-      onClosed: vi.fn()
-    });
-
-    socket.send.mockClear();
-    document.dispatchEvent(
-      new KeyboardEvent("keydown", {
-        bubbles: true,
-        cancelable: true,
-        key: "c",
-        ctrlKey: true
-      })
-    );
-
-    expect(socket.send).toHaveBeenCalledWith(
-      JSON.stringify({ type: "input", data: "\x03" })
-    );
-
-    const textarea = document.createElement("textarea");
-    panel.append(textarea);
-    socket.send.mockClear();
-    textarea.dispatchEvent(
-      new KeyboardEvent("keydown", {
-        bubbles: true,
-        cancelable: true,
-        key: "c",
-        ctrlKey: true
-      })
-    );
-
-    expect(socket.send).not.toHaveBeenCalled();
-    mounted.destroy();
   });
 
   it("does not intercept IME composition key events", () => {
@@ -3059,21 +2694,6 @@ describe("createTerminalTab", () => {
         clientX: 580,
         clientY: 15
       })
-    );
-
-    socket.send.mockClear();
-    const ctrlCHandled = terminal?.customKeyEventHandler?.(
-      new KeyboardEvent("keydown", {
-        key: "c",
-        ctrlKey: true,
-        bubbles: true,
-        cancelable: true
-      })
-    );
-
-    expect(ctrlCHandled).toBe(false);
-    expect(socket.send).not.toHaveBeenCalledWith(
-      JSON.stringify({ type: "input", data: "\x03" })
     );
 
     const copyEvent = new Event("copy", {

@@ -4,7 +4,6 @@ dist/
 release/
 .deepseek/
 .playwright-mcp/
-test-results/
 .tmux-ui.publish.json
 .env
 .superpowers/

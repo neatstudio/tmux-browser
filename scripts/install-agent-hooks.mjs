@@ -167,7 +167,6 @@ Usage:
 Environment:
   TMUX_UI_AGENT_HOOK   Path to tmux-ui-agent-hook helper
   TMUX_UI_HOOK_URL     Optional hook endpoint URL
-  TMUX_UI_CONVERSATION_URL  Optional conversation producer endpoint URL
   TMUX_UI_HOOK_TOKEN   Optional token for non-local/non-Tailscale endpoints
   CODEX_HOOKS_FILE     Override ~/.codex/hooks.json
   CLAUDE_SETTINGS_FILE Override ~/.claude/settings.json
@@ -199,14 +198,6 @@ ${[
   { messageId: "msg-example", sessionName: "project-codex", role: "assistant", contentType: "text", content: "Reading project docs and updating examples", summary: "Updating integration examples", status: "streaming", revision: 2 },
   { messageId: "msg-example", sessionName: "project-codex", role: "assistant", contentType: "text", content: "Updated the integration examples", summary: "Integration examples updated", status: "complete", revision: 3 }
 ].map((entry) => JSON.stringify(entry, null, 2)).join("\n")}
-
-Agent-output helper example. It uses TMUX_UI_CONVERSATION_URL, not
-TMUX_UI_HOOK_URL, and derives sessionName from the active tmux session:
-
-  TMUX_UI_CONVERSATION_URL=http://127.0.0.1:3000/api/conversation/messages \\
-  node ~/.tmux-ui/bin/tmux-ui-agent-hook agent-output <<'JSON'
-  {"messageId":"turn-42","revision":1,"role":"assistant","contentType":"text","summary":"Focused tests passed","content":"Full response","status":"complete"}
-  JSON
 
 Before a production server release, register every strict decoder and repeated-
 message streaming producer in config/structured-events-compat.json with its

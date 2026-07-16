@@ -3,12 +3,9 @@ import { spawnSync } from "node:child_process";
 import { basename } from "node:path";
 
 const mode = process.argv[2] || "generic";
-const hookEndpoint =
+const endpoint =
   process.env.TMUX_UI_HOOK_URL ||
   `http://127.0.0.1:${process.env.PORT || "3000"}/api/hooks/events`;
-const conversationEndpoint =
-  process.env.TMUX_UI_CONVERSATION_URL ||
-  `http://127.0.0.1:${process.env.PORT || "3000"}/api/conversation/messages`;
 const token = process.env.TMUX_UI_HOOK_TOKEN || "";
 const schemaVersion = "tmux-ui.hook/v1";
 
@@ -330,34 +327,17 @@ function toHookEvent(payload) {
   });
 }
 
-function toConversationOutput(payload, sessionName) {
-  if (
-    payload.sessionName !== undefined &&
-    (typeof payload.sessionName !== "string" || payload.sessionName !== sessionName)
-  ) {
-    throw new Error("Agent output sessionName does not match the active tmux session");
-  }
-
-  return {
-    ...payload,
-    sessionName
-  };
-}
-
 async function main() {
   const payload = parseJson(await readStdin());
   const sessionName = inferTmuxSessionName();
-  const isAgentOutput = mode === "agent-output";
-  const hookEvent = isAgentOutput ? null : toHookEvent(payload);
-  const event = isAgentOutput
-    ? toConversationOutput(payload, sessionName)
-    : {
-        schemaVersion,
-        ...hookEvent,
-        sessionName,
-        target: normalizeTarget(hookEvent.target, sessionName),
-        actions: normalizeActions(hookEvent.actions)
-      };
+  const hookEvent = toHookEvent(payload);
+  const event = {
+    schemaVersion,
+    ...hookEvent,
+    sessionName,
+    target: normalizeTarget(hookEvent.target, sessionName),
+    actions: normalizeActions(hookEvent.actions)
+  };
   const headers = {
     "Content-Type": "application/json"
   };
@@ -366,14 +346,14 @@ async function main() {
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(isAgentOutput ? conversationEndpoint : hookEndpoint, {
+  const response = await fetch(endpoint, {
     method: "POST",
     headers,
     body: JSON.stringify(event)
   });
 
   if (!response.ok) {
-    throw new Error(`tmux-ui ${isAgentOutput ? "conversation" : "hook"} endpoint returned ${response.status}`);
+    throw new Error(`tmux-ui hook endpoint returned ${response.status}`);
   }
 }
 

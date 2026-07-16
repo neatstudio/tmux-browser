@@ -7,11 +7,6 @@ import { Terminal } from "@xterm/xterm";
 
 import type { PaneSummary } from "../api/sessionApi";
 import type { TerminalTheme } from "../theme/themeState";
-import {
-  hasTerminalAgentTranscriptCandidates,
-  type TerminalStyledLine,
-  type TerminalStyledSpan
-} from "./structuredOutput";
 import type {
   AttachMessage,
   ServerMessage
@@ -50,21 +45,7 @@ type Disposable = {
   dispose: () => void;
 };
 
-type RenderedOutputListener = (
-  rawData: string,
-  visibleText: string,
-  visibleStartLine: number,
-  styledLines: TerminalStyledLine[],
-  isTranscriptCandidate: boolean,
-  tailRows: number
-) => void;
-type RenderedSnapshotListener = (
-  visibleText: string,
-  visibleStartLine: number,
-  styledLines: TerminalStyledLine[],
-  isTranscriptCandidate: boolean,
-  tailRows: number
-) => void;
+type RenderedOutputListener = (rawData: string, visibleText: string) => void;
 type PaneClickListener = (event: {
   clientX: number;
   clientY: number;
@@ -417,16 +398,11 @@ function refreshTerminalRenderer(terminal: Terminal) {
   }
 }
 
-function getRenderedTerminalSnapshot(terminal: Terminal) {
+function getRenderedTerminalText(terminal: Terminal) {
   const buffer = terminal.buffer.active;
-  const startLine = getTerminalViewportY(terminal);
+  const startLine = Math.max(0, buffer.baseY);
   const endLine = Math.min(buffer.length, startLine + terminal.rows);
-  const lines: Array<{
-    absoluteLine: number;
-    line: NonNullable<ReturnType<typeof buffer.getLine>>;
-    text: string;
-    wrapped: boolean;
-  }> = [];
+  const lines: string[] = [];
 
   for (let lineIndex = startLine; lineIndex < endLine; lineIndex += 1) {
     const line = buffer.getLine(lineIndex);
@@ -435,162 +411,10 @@ function getRenderedTerminalSnapshot(terminal: Terminal) {
       continue;
     }
 
-    const text = line.translateToString(true);
-    const wrapped = "isWrapped" in line && line.isWrapped === true;
-    lines.push({ absoluteLine: lineIndex, line, text, wrapped });
+    lines.push(line.translateToString(true));
   }
 
-  const text = lines.map((line) => line.text).join("\n").trimEnd();
-  const logicalLines: string[] = [];
-  lines.forEach((line) => {
-    if (line.wrapped && logicalLines.length > 0) {
-      logicalLines[logicalLines.length - 1] += line.text;
-    } else {
-      logicalLines.push(line.text);
-    }
-  });
-  const isTranscriptCandidate = hasTerminalAgentTranscriptCandidates(
-    logicalLines.join("\n")
-  );
-  const styledLines = isTranscriptCandidate
-    ? lines.map(({ absoluteLine, line, text: lineText }) =>
-        createStyledTerminalLine(
-          line,
-          lineText,
-          absoluteLine,
-          terminal.cols,
-          terminal.options.theme as TerminalTheme | undefined
-        ))
-    : [];
-
-  return { text, startLine, styledLines, isTranscriptCandidate };
-}
-
-const ANSI_THEME_KEYS = [
-  "black", "red", "green", "yellow", "blue", "magenta", "cyan", "white",
-  "brightBlack", "brightRed", "brightGreen", "brightYellow", "brightBlue",
-  "brightMagenta", "brightCyan", "brightWhite"
-] as const;
-
-function paletteColor(index: number, theme?: TerminalTheme) {
-  if (index < ANSI_THEME_KEYS.length) {
-    return theme?.[ANSI_THEME_KEYS[index]!];
-  }
-  if (index < 232) {
-    const value = [0, 95, 135, 175, 215, 255];
-    const offset = index - 16;
-    return `rgb(${value[Math.floor(offset / 36)]}, ${value[Math.floor(offset / 6) % 6]}, ${value[offset % 6]})`;
-  }
-
-  const gray = 8 + (index - 232) * 10;
-  return `rgb(${gray}, ${gray}, ${gray})`;
-}
-
-function rgbColor(value: number) {
-  return `#${value.toString(16).padStart(6, "0")}`;
-}
-
-function createStyledTerminalLine(
-  line: ReturnType<Terminal["buffer"]["active"]["getLine"]> & object,
-  text: string,
-  absoluteLine: number,
-  columns: number,
-  theme?: TerminalTheme
-): TerminalStyledLine {
-  const wrapped = "isWrapped" in line && line.isWrapped === true;
-  if (!("getCell" in line) || typeof line.getCell !== "function") {
-    return { absoluteLine, wrapped, spans: text ? [{ text, style: {} }] : [] };
-  }
-
-  const spans: TerminalStyledSpan[] = [];
-  const limit = Math.min("length" in line && typeof line.length === "number" ? line.length : columns, columns);
-
-  for (let column = 0; column < limit; column += 1) {
-    const cell = line.getCell(column);
-    if (!cell || cell.getWidth() === 0) continue;
-
-    const style: TerminalStyledSpan["style"] = {};
-    if (cell.isFgRGB()) style.color = rgbColor(cell.getFgColor());
-    else if (cell.isFgPalette()) style.color = paletteColor(cell.getFgColor(), theme);
-    if (cell.isBold()) style.bold = true;
-    if (cell.isItalic()) style.italic = true;
-    if (cell.isDim()) style.dim = true;
-
-    const character = cell.getChars() || " ";
-    const previous = spans.at(-1);
-    if (previous && JSON.stringify(previous.style) === JSON.stringify(style)) {
-      previous.text += character;
-    } else {
-      spans.push({ text: character, style });
-    }
-  }
-
-  while (spans.length > 0) {
-    const last = spans.at(-1)!;
-    last.text = last.text.trimEnd();
-    if (last.text) break;
-    spans.pop();
-  }
-
-  return { absoluteLine, wrapped, spans };
-}
-
-function getRenderedTerminalText(terminal: Terminal) {
-  return getRenderedTerminalSnapshot(terminal).text;
-}
-
-function syncTerminalOutputTypography(container: HTMLElement, terminal: Terminal) {
-  const fontSize = Number(terminal.options.fontSize);
-  const lineHeight = Number(terminal.options.lineHeight);
-  container.style.setProperty(
-    "--terminal-output-font-family",
-    String(terminal.options.fontFamily)
-  );
-  container.style.setProperty(
-    "--terminal-output-font-size",
-    `${terminal.options.fontSize}px`
-  );
-  container.style.setProperty(
-    "--terminal-output-line-height",
-    String(terminal.options.lineHeight)
-  );
-  container.style.setProperty(
-    "--terminal-row-height",
-    `${fontSize * lineHeight}px`
-  );
-}
-
-export function getTerminalLiveTailRows(rows: number) {
-  const tailRows = Math.min(8, Math.max(3, Math.floor(rows * 0.42)));
-  return rows <= tailRows ? 0 : tailRows;
-}
-
-function syncTerminalLiveTailRows(container: HTMLElement, terminal: Terminal) {
-  const tailRows = getTerminalLiveTailRows(terminal.rows);
-  const screenRect = container.querySelector<HTMLElement>(".xterm-screen")
-    ?.getBoundingClientRect();
-  const frameRect = container.getBoundingClientRect();
-  let rowHeight = Number(terminal.options.fontSize) * Number(terminal.options.lineHeight);
-  if (screenRect && screenRect.height > 0 && terminal.rows > 0) {
-    rowHeight = screenRect.height / terminal.rows;
-    container.style.setProperty(
-      "--terminal-row-height",
-      `${rowHeight}px`
-    );
-  }
-  container.style.setProperty("--terminal-live-tail-rows", String(tailRows));
-  container.style.setProperty(
-    "--terminal-live-tail-height",
-    `${rowHeight * tailRows}px`
-  );
-  const screenBottomOffset = screenRect
-    ? Math.max(0, frameRect.bottom - screenRect.bottom)
-    : 0;
-  container.style.setProperty(
-    "--terminal-live-tail-bottom",
-    `${rowHeight * tailRows + screenBottomOffset}px`
-  );
-  return tailRows;
+  return lines.join("\n").trim();
 }
 
 export function createTerminalTab(deps: {
@@ -604,7 +428,6 @@ export function createTerminalTab(deps: {
   terminalTheme?: TerminalTheme;
   onClosed: () => void;
   onOutput?: RenderedOutputListener;
-  onSnapshot?: RenderedSnapshotListener;
   onConnectionStateChange?: (state: TerminalConnectionState) => void;
   onPaneClick?: PaneClickListener;
   getPaneSummaries?: () => PaneSummary[];
@@ -622,20 +445,10 @@ export function createTerminalTab(deps: {
   terminal.loadAddon(fitAddon);
   terminal.loadAddon(webLinksAddon);
   terminal.open(deps.container);
-  syncTerminalOutputTypography(deps.container, terminal);
-  syncTerminalLiveTailRows(deps.container, terminal);
 
   const outputBuffer = createTerminalOutputBuffer((data) => {
     terminal.write(data, () => {
-      const snapshot = getRenderedTerminalSnapshot(terminal);
-      deps.onOutput?.(
-        data,
-        snapshot.text,
-        snapshot.startLine,
-        snapshot.styledLines,
-        snapshot.isTranscriptCandidate,
-        syncTerminalLiveTailRows(deps.container, terminal)
-      );
+      deps.onOutput?.(data, getRenderedTerminalText(terminal));
     });
   });
   let socket: WebSocket | null = null;
@@ -679,16 +492,7 @@ export function createTerminalTab(deps: {
     }
 
     refreshTerminalRenderer(terminal);
-    const tailRows = syncTerminalLiveTailRows(deps.container, terminal);
     controller?.resize(terminal.cols, terminal.rows);
-    const snapshot = getRenderedTerminalSnapshot(terminal);
-    deps.onSnapshot?.(
-      snapshot.text,
-      snapshot.startLine,
-      snapshot.styledLines,
-      snapshot.isTranscriptCandidate,
-      tailRows
-    );
   }
 
   function scheduleFitAndResize() {
@@ -1136,17 +940,8 @@ export function createTerminalTab(deps: {
   const shouldUsePaneTextSelection = () =>
     (deps.getPaneSummaries?.() ?? []).filter((pane) => pane.windowActive)
       .length > 1;
-  const hasCopySelection = () =>
-    paneTextSelection?.moved === true || terminal.hasSelection();
 
   const handleMouseDown = (event: MouseEvent) => {
-    const target = event.target as Element | null;
-    if (target?.closest(".terminal-structured-output")) {
-      clearPendingMouseFocus();
-      paneTextSelection = null;
-      return;
-    }
-
     if (browserScrollEnabled || event.button !== 0) {
       clearPendingMouseFocus();
       paneTextSelection = null;
@@ -1308,10 +1103,6 @@ export function createTerminalTab(deps: {
       !event.metaKey &&
       event.key.toLowerCase() === "c"
     ) {
-      if (hasCopySelection()) {
-        return false;
-      }
-
       controller?.sendInput("\x03");
       return false;
     }
@@ -1354,42 +1145,8 @@ export function createTerminalTab(deps: {
     return true;
   });
 
-  const handleDocumentKeyDown = (event: KeyboardEvent) => {
-    if (
-      event.defaultPrevented ||
-      !event.ctrlKey ||
-      event.altKey ||
-      event.metaKey ||
-      event.key.toLowerCase() !== "c"
-    ) {
-      return;
-    }
-
-    const target = event.target as HTMLElement | null;
-    const tagName = target?.tagName?.toLowerCase();
-    const editable =
-      target?.isContentEditable === true ||
-      tagName === "input" ||
-      tagName === "textarea" ||
-      tagName === "select";
-
-    if (editable || !deps.container.closest(".terminal-panel.is-active")) {
-      return;
-    }
-
-    if (hasCopySelection()) {
-      return;
-    }
-
-    controller?.sendInput("\x03");
-    event.preventDefault();
-    event.stopImmediatePropagation();
-  };
-
-  document.addEventListener("keydown", handleDocumentKeyDown, { capture: true });
-
   const handleWindowResize = () => {
-    scheduleFitAndResize();
+    safeFitAndResize();
   };
 
   window.addEventListener("resize", handleWindowResize);
@@ -1407,16 +1164,6 @@ export function createTerminalTab(deps: {
     if (userInput) {
       controller?.sendInput(userInput);
     }
-  });
-  const scrollDisposable = terminal.onScroll(() => {
-    const snapshot = getRenderedTerminalSnapshot(terminal);
-    deps.onSnapshot?.(
-      snapshot.text,
-      snapshot.startLine,
-      snapshot.styledLines,
-      snapshot.isTranscriptCandidate,
-      syncTerminalLiveTailRows(deps.container, terminal)
-    );
   });
 
   return {
@@ -1463,17 +1210,14 @@ export function createTerminalTab(deps: {
     },
     setFontSize(fontSize: number) {
       terminal.options.fontSize = fontSize;
-      syncTerminalOutputTypography(deps.container, terminal);
       safeFitAndResize();
     },
     setFontFamily(fontFamily: string) {
       terminal.options.fontFamily = fontFamily;
-      syncTerminalOutputTypography(deps.container, terminal);
       safeFitAndResize();
     },
     setLineHeight(lineHeight: number) {
       terminal.options.lineHeight = lineHeight;
-      syncTerminalOutputTypography(deps.container, terminal);
       safeFitAndResize();
     },
     destroy() {
@@ -1505,9 +1249,7 @@ export function createTerminalTab(deps: {
       deps.container.removeEventListener("mousemove", handleMouseMove, true);
       deps.container.removeEventListener("mouseup", handleMouseUp, true);
       document.removeEventListener("mousemove", handleDocumentMouseMove, true);
-      document.removeEventListener("keydown", handleDocumentKeyDown, true);
       selectionChangeDisposable?.dispose?.();
-      scrollDisposable.dispose();
       window.removeEventListener("resize", handleWindowResize);
       controller?.destroy();
       controller = null;

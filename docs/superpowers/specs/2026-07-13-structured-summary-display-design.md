@@ -24,7 +24,7 @@ tmux-ui 已支持两类结构化数据：
 
 ### 2.2 非目标
 
-- Activity、Attention 和 Toast 不解析 `/ws/terminal` 的 ANSI/TUI 输出，也不从终端文本重建对话；终端内受限 Codex transcript 的例外规则由 `2026-07-14-terminal-structured-output-design.md` 定义。
+- 不解析 `/ws/terminal` 的 ANSI/TUI 输出，也不从终端文本重建对话。
 - 不在客户端调用模型生成摘要。
 - 不在本轮改变 tmux 输入、PTY 传输或终端渲染。
 - 不承诺从任意自由文本中推断“修改文件数”“测试数量”等事实；只有结构化数据明确提供时才展示。

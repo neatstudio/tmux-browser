@@ -367,30 +367,6 @@ echo "Approve file edit?" | \
 
 如果服务没有监听 `127.0.0.1:3000`，在 hook 环境里额外设置 `TMUX_UI_HOOK_URL=http://100.x.y.z:3000/api/hooks/events`。
 
-## 终端 Agent 输出
-
-Agent 可以主动发布结构化回复，终端默认显示摘要，点击后展开完整回复；用户始终可以切回未改写的原始终端。helper 不会提取、猜测或改写 Agent 的终端文本。
-
-在目标 tmux session 中执行。脚本从 tmux 推导 `TMUX_UI_SESSION_NAME`，如果输入 JSON 的 `sessionName` 与它不一致，会拒绝发送：
-
-```bash
-TMUX_UI_CONVERSATION_URL=http://127.0.0.1:3000/api/conversation/messages \
-TMUX_UI_HOOK_TOKEN="$TMUX_UI_HOOK_TOKEN" \
-node ~/.tmux-ui/bin/tmux-ui-agent-hook agent-output <<'JSON'
-{
-  "messageId": "turn-42",
-  "revision": 1,
-  "role": "assistant",
-  "contentType": "text",
-  "summary": "Focused tests passed",
-  "content": "完整 Agent 回复",
-  "status": "complete"
-}
-JSON
-```
-
-`TMUX_UI_CONVERSATION_URL` 与 `TMUX_UI_HOOK_URL` 独立，不能把 conversation payload 发送到 `/api/hooks/events`。服务端配置 `TMUX_UI_HOOK_TOKEN` 后，本机和远端 conversation producer 都必须发送匹配的 bearer token；未配置 token 时保留既有本机开发兼容行为。
-
 ## 结构化 Activity 接入
 
 统一面板默认打开 **Activity**，普通 conversation 与 hook record 保持折叠。

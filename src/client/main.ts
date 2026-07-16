@@ -36,17 +36,6 @@ import {
   type TerminalInputPrompt
 } from "./terminal/inputPromptDetector";
 import { syncTerminalPanelVisibility } from "./terminal/panelVisibility";
-import {
-  deriveTerminalOutputPresentation,
-  deriveTerminalAgentTranscriptForStructuredHistory,
-  shouldRenderTerminalOutputPresentation,
-  splitTerminalSnapshotForStructuredHistory
-} from "./terminal/structuredOutput";
-import type { TerminalStyledLine } from "./terminal/structuredOutput";
-import { createTerminalStructuredOutputState } from "./terminal/structuredOutputState";
-import {
-  renderTerminalStructuredOutput
-} from "./render/terminalStructuredOutput";
 import { getVisibleImagePaths } from "./imagePreviewPaths";
 import {
   applyImagePreviewOpenFocus,
@@ -239,17 +228,6 @@ const inactiveTerminalPruner = createInactiveTerminalPruner({
 const activeOutputTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const busyTerminalTabIds = new Set<string>();
 const terminalPromptSignatures = new Map<string, string>();
-const terminalVisibleOutputByTab = new Map<
-  string,
-  {
-    text: string;
-    startLine: number;
-    styledLines: TerminalStyledLine[];
-    isTranscriptCandidate: boolean;
-    tailRows: number;
-  }
->();
-const terminalStructuredOutputState = createTerminalStructuredOutputState();
 let versionReloadCheckInFlight = false;
 function refreshCurrentViewState(options: { includeTimeline?: boolean } = {}) {
   const refreshPromise =
@@ -626,8 +604,6 @@ function toggleMutedSession(sessionName: string) {
 
 function closeTab(tabId: string, options: { force?: boolean } = {}) {
   clearInputPromptForTab(tabId);
-  terminalVisibleOutputByTab.delete(tabId);
-  terminalStructuredOutputState.remove(tabId);
   inactiveTerminalPruner.cancel(tabId);
   mountedTerminals.get(tabId)?.destroy();
   mountedTerminals.get(tabId)?.panel.remove();
@@ -652,8 +628,6 @@ function detachTerminal(tabId: string) {
   }
 
   busyTerminalTabIds.delete(tabId);
-  terminalVisibleOutputByTab.delete(tabId);
-  terminalStructuredOutputState.remove(tabId);
   pendingTerminalMounts.delete(tabId);
 
   if (!mounted) {
@@ -740,24 +714,7 @@ function rememberSessionInputPrompts() {
   });
 }
 
-function handleTerminalOutput(
-  tabId: string,
-  _data: string,
-  visibleText: string,
-  visibleStartLine: number,
-  styledLines: TerminalStyledLine[],
-  isTranscriptCandidate: boolean,
-  tailRows: number
-) {
-  handleTerminalSnapshot(
-    tabId,
-    visibleText,
-    visibleStartLine,
-    styledLines,
-    isTranscriptCandidate,
-    tailRows
-  );
-
+function handleTerminalOutput(tabId: string, _data: string, visibleText: string) {
   if (!isPageVisible()) {
     return;
   }
@@ -783,28 +740,6 @@ function handleTerminalOutput(
       refreshCurrentViewState();
     }, 1500)
   );
-}
-
-function handleTerminalSnapshot(
-  tabId: string,
-  visibleText: string,
-  visibleStartLine: number,
-  styledLines: TerminalStyledLine[],
-  isTranscriptCandidate: boolean,
-  tailRows: number
-) {
-  const previous = terminalVisibleOutputByTab.get(tabId);
-  terminalVisibleOutputByTab.set(tabId, {
-    text: visibleText,
-    startLine: visibleStartLine,
-    styledLines,
-    isTranscriptCandidate,
-    tailRows
-  });
-
-  if (isTranscriptCandidate || previous?.isTranscriptCandidate) {
-    scheduleRender();
-  }
 }
 
 function ensureTerminal(tab: BrowserTab) {
@@ -880,38 +815,7 @@ function ensureTerminal(tab: BrowserTab) {
       fontFamily: settings.fontFamily,
       lineHeight: settings.lineHeight,
       terminalTheme: getTheme(settings.themeId).terminalTheme,
-      onOutput: (
-        data,
-        visibleText,
-        visibleStartLine,
-        styledLines,
-        isTranscriptCandidate,
-        tailRows
-      ) =>
-        handleTerminalOutput(
-          tab.id,
-          data,
-          visibleText,
-          visibleStartLine,
-          styledLines,
-          isTranscriptCandidate,
-          tailRows
-        ),
-      onSnapshot: (
-        visibleText,
-        visibleStartLine,
-        styledLines,
-        isTranscriptCandidate,
-        tailRows
-      ) =>
-        handleTerminalSnapshot(
-          tab.id,
-          visibleText,
-          visibleStartLine,
-          styledLines,
-          isTranscriptCandidate,
-          tailRows
-        ),
+      onOutput: (data, visibleText) => handleTerminalOutput(tab.id, data, visibleText),
       onPaneClick: (event) => selectPaneAtTerminalPoint(tab.sessionName, event),
       getPaneSummaries: () =>
         store.getState().sessions.find((session) => session.name === tab.sessionName)?.panes ?? [],
@@ -1054,97 +958,6 @@ function syncTerminalStatusBars() {
   });
 }
 
-function syncTerminalStructuredOutputs() {
-  const timelineEvents = store.getState().timelineEvents ?? [];
-
-  tabState.getTabs().forEach((tab) => {
-    const mounted = mountedTerminals.get(tab.id);
-
-    if (!mounted) {
-      return;
-    }
-
-    const frame = mounted.panel.querySelector<HTMLElement>(".terminal-frame");
-
-    if (!frame) {
-      return;
-    }
-
-    const visibleOutput = terminalVisibleOutputByTab.get(tab.id);
-    const structuredHistory = visibleOutput
-      ? splitTerminalSnapshotForStructuredHistory(
-          visibleOutput.text,
-          visibleOutput.startLine,
-          visibleOutput.styledLines,
-          visibleOutput.tailRows
-        ).history
-      : null;
-    const output = deriveTerminalOutputPresentation(
-      tab.sessionName,
-      timelineEvents,
-      structuredHistory?.text,
-      structuredHistory?.startLine,
-      structuredHistory?.styledLines,
-      visibleOutput
-        ? deriveTerminalAgentTranscriptForStructuredHistory(
-            visibleOutput.text,
-            visibleOutput.startLine,
-            visibleOutput.styledLines,
-            visibleOutput.tailRows
-          )
-        : undefined
-    );
-    if (!shouldRenderTerminalOutputPresentation(
-      output,
-      frame.classList.contains("has-agent-output")
-    )) {
-      return;
-    }
-    const outputIds = [
-      ...output.items.map((item) => item.id),
-      ...(output.transcript?.blocks.map((block) => block.id) ?? [])
-    ];
-    const transcriptActivityIds = output.transcript?.blocks
-      .filter((block) => block.kind === "activity")
-      .map((block) => block.id) ?? [];
-    const hasOutput = outputIds.length > 0;
-    terminalStructuredOutputState.reconcile(
-      tab.id,
-      outputIds
-    );
-    const view = visibleOutput?.tailRows === 0
-      ? "raw-terminal"
-      : terminalStructuredOutputState.getView(tab.id, hasOutput);
-    frame.classList.toggle(
-      "is-agent-output-hidden",
-      view === "agent-output" && hasOutput
-    );
-    renderTerminalStructuredOutput(frame, {
-      items: output.items,
-      transcript: output.transcript,
-      view,
-      agentOutputAvailable: visibleOutput?.tailRows !== 0,
-      expandedIds: terminalStructuredOutputState.getExpandedIds(tab.id),
-      onViewChange: (nextView) => {
-        terminalStructuredOutputState.setView(tab.id, nextView);
-        scheduleRender();
-      },
-      onToggleExpanded: (id) => {
-        if (transcriptActivityIds.includes(id)) {
-          terminalStructuredOutputState.toggleTranscriptExpanded(
-            tab.id,
-            id,
-            transcriptActivityIds
-          );
-        } else {
-          terminalStructuredOutputState.toggleExpanded(tab.id, id);
-        }
-        scheduleRender();
-      }
-    });
-  });
-}
-
 function syncPanels() {
   const tabs = tabState.getTabs();
   const activeTabId = tabState.getActiveTabId();
@@ -1175,7 +988,6 @@ function syncPanels() {
     detachTerminal
   );
   syncTerminalStatusBars();
-  syncTerminalStructuredOutputs();
 }
 
 function setActiveTheme(themeId: string) {
@@ -2240,9 +2052,6 @@ function createSessionStatusActions(tab: BrowserTab, mounted: MountedTerminal) {
     },
     onClear: () => {
       mounted.clear();
-      terminalVisibleOutputByTab.delete(tab.id);
-      terminalStructuredOutputState.reconcile(tab.id, []);
-      scheduleRender();
     },
     onRedraw: () => {
       mounted.redraw();
