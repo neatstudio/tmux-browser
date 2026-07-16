@@ -97,6 +97,50 @@ export function summarizeMutations(samples) {
   };
 }
 
+export function summarizeTerminalChromeProbe(probe) {
+  const countFields = [
+    "records",
+    "added",
+    "removed",
+    "replacements",
+    "attributes",
+    "characterData"
+  ];
+  if (
+    !Number.isInteger(probe?.cycles) ||
+    probe.cycles < 1 ||
+    typeof probe?.elapsedMs !== "number" ||
+    !Number.isFinite(probe.elapsedMs) ||
+    probe.elapsedMs < 0 ||
+    countFields.some(
+      (field) =>
+        !Number.isInteger(probe?.counts?.[field]) || probe.counts[field] < 0
+    ) ||
+    !Array.isArray(probe?.rootIdentityStable) ||
+    probe.rootIdentityStable.some((value) => typeof value !== "boolean") ||
+    !Array.isArray(probe?.childIdentityStable) ||
+    probe.childIdentityStable.some((value) => typeof value !== "boolean")
+  ) {
+    throw new Error("terminal chrome probe must contain complete non-negative evidence");
+  }
+  const allRootIdentitiesStable = probe.rootIdentityStable.every(Boolean);
+  const allChildIdentitiesStable = probe.childIdentityStable.every(Boolean);
+  return {
+    cycles: probe.cycles,
+    elapsedMs: probe.elapsedMs,
+    counts: Object.fromEntries(countFields.map((field) => [field, probe.counts[field]])),
+    allRootIdentitiesStable,
+    allChildIdentitiesStable,
+    passed:
+      probe.counts.added === 0 &&
+      probe.counts.removed === 0 &&
+      probe.counts.replacements === 0 &&
+      allRootIdentitiesStable &&
+      allChildIdentitiesStable &&
+      probe.elapsedMs <= 420
+  };
+}
+
 function integerOption(flag, value, { allowZero = false } = {}) {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < (allowZero ? 0 : 1)) {
@@ -357,6 +401,81 @@ async function collectNoOpResizeMutations(page) {
   });
 }
 
+async function collectTerminalChromeNoOpResizeMutations(page, cycles = 10) {
+  const probe = await page.evaluate(async (resizeCycles) => {
+    const selectors = [
+      ".terminal-status-bar",
+      ".terminal-session-rail",
+      ".session-floating-menu"
+    ];
+    const panel = document.querySelector(".terminal-panel.is-active");
+    if (!panel) throw new Error("No active terminal panel");
+    const rootsBefore = selectors.map((selector) => panel.querySelector(selector));
+    const childrenBefore = rootsBefore.map((root) => root ? [...root.childNodes] : []);
+    const counts = {
+      records: 0,
+      added: 0,
+      removed: 0,
+      replacements: 0,
+      attributes: 0,
+      characterData: 0
+    };
+    const chromeSelector = selectors.join(",");
+    const findChromeRoot = (node) => {
+      if (node instanceof Element) {
+        return node.matches(chromeSelector) ? node : node.closest(chromeSelector);
+      }
+      return node.parentElement?.closest(chromeSelector) ?? null;
+    };
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        const targetRoot = findChromeRoot(record.target);
+        const added = [...record.addedNodes].filter((node) => findChromeRoot(node));
+        const removed = [...record.removedNodes].filter((node) =>
+          targetRoot ||
+          (node instanceof Element && node.matches(chromeSelector))
+        );
+        if (!targetRoot && added.length === 0 && removed.length === 0) continue;
+        counts.records += 1;
+        counts.added += added.length;
+        counts.removed += removed.length;
+        counts.replacements += Math.min(added.length, removed.length);
+        if (record.type === "attributes") counts.attributes += 1;
+        if (record.type === "characterData") counts.characterData += 1;
+      }
+    });
+    observer.observe(panel, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      characterData: true
+    });
+    const startedAt = performance.now();
+    for (let cycle = 0; cycle < resizeCycles; cycle += 1) {
+      window.dispatchEvent(new Event("resize"));
+      await new Promise((resolveWait) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolveWait))
+      );
+    }
+    await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+    const elapsedMs = performance.now() - startedAt;
+    observer.disconnect();
+    const rootsAfter = selectors.map((selector) => panel.querySelector(selector));
+    const childrenAfter = rootsAfter.map((root) => root ? [...root.childNodes] : []);
+    return {
+      cycles: resizeCycles,
+      elapsedMs,
+      counts,
+      rootIdentityStable: rootsBefore.map((root, index) => root === rootsAfter[index]),
+      childIdentityStable: childrenBefore.map((children, index) =>
+        children.length === childrenAfter[index].length &&
+        children.every((child, childIndex) => child === childrenAfter[index][childIndex])
+      )
+    };
+  }, cycles);
+  return summarizeTerminalChromeProbe(probe);
+}
+
 function summarizeResources(runs) {
   const flattened = runs.flatMap((run) => run.resources);
   return {
@@ -450,7 +569,13 @@ async function collectBrowserMetrics(baseUrl, runs, timeoutMs) {
             state: "visible",
             timeout: 10_000
           });
-          terminalOpen = { supported: true, durationMs: performance.now() - terminalStartedAt };
+          const durationMs = performance.now() - terminalStartedAt;
+          await page.waitForTimeout(500);
+          terminalOpen = {
+            supported: true,
+            durationMs,
+            terminalChrome: await collectTerminalChromeNoOpResizeMutations(page)
+          };
         } catch (error) {
           terminalOpen = {
             supported: false,

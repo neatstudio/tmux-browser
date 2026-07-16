@@ -9,6 +9,7 @@ import {
   normalizeKanbanProjects,
   parseCliOptions,
   resolveBenchmarkCommits,
+  summarizeTerminalChromeProbe,
   summarizeMutations,
   summarizeSamples,
   summarizeFetches,
@@ -84,6 +85,53 @@ describe("runtime hotpath benchmark helpers", () => {
 
     it("rejects missing mutation samples", () => {
       expect(() => summarizeMutations([])).toThrow("at least one");
+    });
+  });
+
+  describe("summarizeTerminalChromeProbe", () => {
+    it("reports selector-scoped replacement and identity evidence", () => {
+      expect(
+        summarizeTerminalChromeProbe({
+          cycles: 10,
+          elapsedMs: 376.6,
+          counts: {
+            records: 0,
+            added: 0,
+            removed: 0,
+            replacements: 0,
+            attributes: 0,
+            characterData: 0
+          },
+          rootIdentityStable: [true, true, true],
+          childIdentityStable: [true, true, true]
+        })
+      ).toEqual({
+        cycles: 10,
+        elapsedMs: 376.6,
+        counts: {
+          records: 0,
+          added: 0,
+          removed: 0,
+          replacements: 0,
+          attributes: 0,
+          characterData: 0
+        },
+        allRootIdentitiesStable: true,
+        allChildIdentitiesStable: true,
+        passed: true
+      });
+    });
+
+    it("rejects incomplete terminal chrome mutation evidence", () => {
+      expect(() =>
+        summarizeTerminalChromeProbe({
+          cycles: 10,
+          elapsedMs: 100,
+          counts: { records: 0 },
+          rootIdentityStable: [true],
+          childIdentityStable: [true]
+        })
+      ).toThrow("terminal chrome probe");
     });
   });
 

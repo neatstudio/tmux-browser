@@ -18,7 +18,10 @@ import { renderGroupMessagePanel } from "./render/groupMessagePanel";
 import { renderSessionConfigModal } from "./render/sessionConfigModal";
 import { renderSessionFloatingMenu } from "./render/sessionFloatingMenu";
 import { renderSessionGroupRail } from "./render/sessionGroupRail";
-import { createTerminalChromeRenderCache } from "./render/terminalChromeRenderCache";
+import {
+  createTerminalChromeRenderCache,
+  getTerminalChromeSessionDisplay
+} from "./render/terminalChromeRenderCache";
 import {
   renderSessionStatusBar,
   type TerminalConnectionState
@@ -968,13 +971,7 @@ function renderTerminalChrome(tab: BrowserTab, mounted: MountedTerminal) {
   const floatingMenu = createSessionMenuState(tab, mounted);
   const project = floatingMenu.kanbanProject;
   const boards = floatingMenu.boards ?? [];
-  const sessionDisplay = dashboardState.sessions.map((candidate) => ({
-    name: candidate.name,
-    status: candidate.status,
-    currentCommand: candidate.currentCommand,
-    runtimeKind: candidate.runtimeKind ?? null,
-    currentPath: candidate.currentPath
-  }));
+  const sessionDisplay = getTerminalChromeSessionDisplay(dashboardState.sessions);
 
   terminalChromeRenderCache.render({
     tabId: tab.id,
@@ -984,8 +981,9 @@ function renderTerminalChrome(tab: BrowserTab, mounted: MountedTerminal) {
         ? {
             name: session.name,
             status: session.status,
+            windows: session.windows,
+            paneCount: session.paneCount,
             currentCommand: session.currentCommand,
-            runtimeKind: session.runtimeKind ?? null,
             currentPath: session.currentPath
           }
         : null,

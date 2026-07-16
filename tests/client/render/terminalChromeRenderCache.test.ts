@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  createTerminalChromeRenderCache
+  createTerminalChromeRenderCache,
+  getTerminalChromeSessionDisplay
 } from "../../../src/client/render/terminalChromeRenderCache";
 
 type Actions = {
@@ -17,6 +18,38 @@ function createRenderers() {
 }
 
 describe("terminalChromeRenderCache", () => {
+  it("projects every session summary field displayed by terminal chrome", () => {
+    expect(
+      getTerminalChromeSessionDisplay([
+        {
+          name: "build",
+          windows: 3,
+          status: "attached",
+          lastActivityAt: 123,
+          paneCount: 5,
+          activeWindowName: "server",
+          currentCommand: "npm",
+          currentPath: "/tmp/project",
+          gitBranch: "main",
+          gitDirty: true,
+          paneDead: false,
+          paneDeadStatus: null,
+          preview: "ignored",
+          inputPrompt: null
+        }
+      ])
+    ).toEqual([
+      {
+        name: "build",
+        status: "attached",
+        windows: 3,
+        paneCount: 5,
+        currentCommand: "npm",
+        currentPath: "/tmp/project"
+      }
+    ]);
+  });
+
   it("returns stable actions and skips all renderers for an equal signature", () => {
     const cache = createTerminalChromeRenderCache<Actions>();
     const mountedTerminal = {};
@@ -74,6 +107,38 @@ describe("terminalChromeRenderCache", () => {
     expect(renderers.renderStatusBar).toHaveBeenCalledTimes(2);
     expect(renderers.renderGroupRail).toHaveBeenCalledTimes(2);
     expect(renderers.renderFloatingMenu).toHaveBeenCalledTimes(2);
+  });
+
+  it("skips rendering for structurally equal signatures with reordered keys", () => {
+    const cache = createTerminalChromeRenderCache<Actions>();
+    const mountedTerminal = {};
+    const renderers = createRenderers();
+    const base = {
+      tabId: "tab-build",
+      mountedTerminal,
+      actions: { onOpenSession: vi.fn() },
+      ...renderers
+    };
+
+    cache.render({
+      ...base,
+      signature: {
+        session: { name: "build", status: "attached" },
+        localUi: { menuOpen: false, menuDraft: "" }
+      }
+    });
+    const result = cache.render({
+      ...base,
+      signature: {
+        localUi: { menuDraft: "", menuOpen: false },
+        session: { status: "attached", name: "build" }
+      }
+    });
+
+    expect(result.rendered).toBe(false);
+    expect(renderers.renderStatusBar).toHaveBeenCalledOnce();
+    expect(renderers.renderGroupRail).toHaveBeenCalledOnce();
+    expect(renderers.renderFloatingMenu).toHaveBeenCalledOnce();
   });
 
   it("routes stable actions to the latest callback implementation", () => {

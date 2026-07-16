@@ -1,3 +1,5 @@
+import type { SessionSummary } from "../api/sessionApi";
+
 export type TerminalChromeSignature =
   | null
   | boolean
@@ -27,6 +29,36 @@ type CacheEntry<TActions extends object> = {
   currentActions: TActions;
   stableActions: TActions;
 };
+
+export function getTerminalChromeSessionDisplay(sessions: SessionSummary[]) {
+  return sessions.map((session) => ({
+    name: session.name,
+    status: session.status,
+    windows: session.windows,
+    paneCount: session.paneCount,
+    currentCommand: session.currentCommand,
+    currentPath: session.currentPath
+  }));
+}
+
+function canonicalizeSignature(value: TerminalChromeSignature | undefined): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => canonicalizeSignature(item));
+  }
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .filter((key) => value[key] !== undefined)
+        .map((key) => [key, canonicalizeSignature(value[key])])
+    );
+  }
+  return value;
+}
+
+function serializeSignature(signature: TerminalChromeSignature) {
+  return JSON.stringify(canonicalizeSignature(signature));
+}
 
 function createStableObjectProxy<TActions extends object>(
   resolveCurrent: () => TActions
@@ -77,7 +109,7 @@ export function createTerminalChromeRenderCache<TActions extends object>() {
     render(
       request: RenderTerminalChromeRequest<TActions>
     ): TerminalChromeRenderResult<TActions> {
-      const signature = JSON.stringify(request.signature);
+      const signature = serializeSignature(request.signature);
       let entry = entries.get(request.tabId);
 
       if (!entry || entry.mountedTerminal !== request.mountedTerminal) {
