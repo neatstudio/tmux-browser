@@ -30,6 +30,7 @@ describe("runtime hotpath benchmark helpers", () => {
       preflight: { firstSessionName: "cc1-remote" },
       browser: {
         viewport: { width: 1440, height: 900 },
+        requestedRuns: 1,
         raw: [
           {
             terminalOpen: {
@@ -38,7 +39,16 @@ describe("runtime hotpath benchmark helpers", () => {
                 cycles: 10,
                 animationFramesPerCycle: 2,
                 elapsedMs: 500,
-                counts: { added: 0, removed: 0, replacements: 0 },
+                counts: {
+                  records: 0,
+                  added: 0,
+                  removed: 0,
+                  replacements: 0,
+                  attributes: 0,
+                  characterData: 0
+                },
+                allExpectedRootsPresent: true,
+                allChildCollectionsPresent: true,
                 allRootIdentitiesStable: true,
                 allChildIdentitiesStable: true,
                 zeroReplacementPassed: true,
@@ -139,6 +149,8 @@ describe("runtime hotpath benchmark helpers", () => {
             attributes: 0,
             characterData: 0
           },
+          rootPresence: [true, true, true],
+          childCollectionsPresent: [true, true, true],
           rootIdentityStable: [true, true, true],
           childIdentityStable: [true, true, true]
         })
@@ -154,6 +166,8 @@ describe("runtime hotpath benchmark helpers", () => {
           attributes: 0,
           characterData: 0
         },
+        allExpectedRootsPresent: true,
+        allChildCollectionsPresent: true,
         allRootIdentitiesStable: true,
         allChildIdentitiesStable: true,
         zeroReplacementPassed: true,
@@ -174,10 +188,59 @@ describe("runtime hotpath benchmark helpers", () => {
       ).toThrow("terminal chrome probe");
     });
 
+    it("rejects otherwise complete probes with missing cadence", () => {
+      expect(() =>
+        summarizeTerminalChromeProbe({
+          cycles: 10,
+          elapsedMs: 100,
+          counts: {
+            records: 0,
+            added: 0,
+            removed: 0,
+            replacements: 0,
+            attributes: 0,
+            characterData: 0
+          },
+          rootPresence: [true, true, true],
+          childCollectionsPresent: [true, true, true],
+          rootIdentityStable: [true, true, true],
+          childIdentityStable: [true, true, true]
+        })
+      ).toThrow("terminal chrome probe");
+    });
+
+    it("fails identity when any expected chrome root or child collection is absent", () => {
+      expect(
+        summarizeTerminalChromeProbe({
+          cycles: 10,
+          animationFramesPerCycle: 2,
+          elapsedMs: 100,
+          counts: {
+            records: 0,
+            added: 0,
+            removed: 0,
+            replacements: 0,
+            attributes: 0,
+            characterData: 0
+          },
+          rootPresence: [true, false, true],
+          childCollectionsPresent: [true, false, true],
+          rootIdentityStable: [true, true, true],
+          childIdentityStable: [true, true, true]
+        })
+      ).toMatchObject({
+        allExpectedRootsPresent: false,
+        allChildCollectionsPresent: false,
+        identityPassed: false,
+        passed: false
+      });
+    });
+
     it("pairs replacements across separate add and remove mutation records", () => {
       expect(
         summarizeTerminalChromeProbe({
           cycles: 10,
+          animationFramesPerCycle: 2,
           elapsedMs: 300,
           counts: {
             records: 8,
@@ -187,6 +250,8 @@ describe("runtime hotpath benchmark helpers", () => {
             attributes: 0,
             characterData: 0
           },
+          rootPresence: [true, true, true],
+          childCollectionsPresent: [true, true, true],
           rootIdentityStable: [true, false, false],
           childIdentityStable: [false, false, false]
         })
@@ -208,6 +273,8 @@ describe("runtime hotpath benchmark helpers", () => {
       expect(comparePairedTerminalChromeReports(baseline, candidate)).toEqual({
         comparable: true,
         comparabilityMismatches: [],
+        baselineRequestedRuns: 1,
+        candidateRequestedRuns: 1,
         baselineRuns: 1,
         candidateRuns: 1,
         zeroReplacementPassed: true,
@@ -229,14 +296,14 @@ describe("runtime hotpath benchmark helpers", () => {
 
       expect(comparePairedTerminalChromeReports(baseline, candidate)).toMatchObject({
         comparable: false,
-        comparabilityMismatches: [
+        comparabilityMismatches: expect.arrayContaining([
           "machineId",
           "runnerGitSha",
           "chromiumVersion",
           "viewport",
           "session",
           "cadence"
-        ],
+        ]),
         passed: false
       });
     });
@@ -262,7 +329,7 @@ describe("runtime hotpath benchmark helpers", () => {
 
       expect(comparePairedTerminalChromeReports(baseline, candidate)).toMatchObject({
         comparable: false,
-        comparabilityMismatches: ["cadence"],
+        comparabilityMismatches: expect.arrayContaining(["cadence"]),
         passed: false
       });
     });
@@ -277,7 +344,60 @@ describe("runtime hotpath benchmark helpers", () => {
 
       expect(comparePairedTerminalChromeReports(baseline, candidate)).toMatchObject({
         comparable: false,
-        comparabilityMismatches: ["cadence"],
+        comparabilityMismatches: expect.arrayContaining(["cadence"]),
+        passed: false
+      });
+    });
+
+    it("rejects partial or unsupported paired terminal evidence", () => {
+      const baseline = createTerminalChromeReport();
+      const candidate = createTerminalChromeReport();
+      baseline.options.runs = 2;
+      candidate.options.runs = 2;
+      baseline.browser.requestedRuns = 2;
+      candidate.browser.requestedRuns = 2;
+      baseline.browser.raw.push(structuredClone(baseline.browser.raw[0]));
+      candidate.browser.raw.push({
+        terminalOpen: { supported: false, error: "No terminal" }
+      } as (typeof candidate.browser.raw)[number]);
+
+      expect(comparePairedTerminalChromeReports(baseline, candidate)).toMatchObject({
+        comparable: false,
+        comparabilityMismatches: ["candidateEvidence"],
+        baselineRequestedRuns: 2,
+        candidateRequestedRuns: 2,
+        baselineRuns: 2,
+        candidateRuns: 1,
+        passed: false
+      });
+    });
+
+    it("rejects mismatched requested browser run counts", () => {
+      const baseline = createTerminalChromeReport();
+      const candidate = createTerminalChromeReport();
+      candidate.browser.requestedRuns = 2;
+      candidate.options.runs = 2;
+      candidate.browser.raw.push(structuredClone(candidate.browser.raw[0]));
+
+      expect(comparePairedTerminalChromeReports(baseline, candidate)).toMatchObject({
+        comparable: false,
+        comparabilityMismatches: ["requestedRunCount"],
+        baselineRequestedRuns: 1,
+        candidateRequestedRuns: 2,
+        passed: false
+      });
+    });
+
+    it("rejects reports whose declared run count differs from browser evidence", () => {
+      const baseline = createTerminalChromeReport();
+      const candidate = createTerminalChromeReport();
+      candidate.options.runs = 7;
+
+      expect(comparePairedTerminalChromeReports(baseline, candidate)).toMatchObject({
+        comparable: false,
+        comparabilityMismatches: ["candidateEvidence"],
+        candidateRequestedRuns: 1,
+        candidateRuns: 1,
         passed: false
       });
     });
@@ -374,13 +494,29 @@ describe("runtime hotpath benchmark helpers", () => {
   });
 
   it("invalidates reports when requested idle process evidence is unavailable", () => {
+    const browser = createTerminalChromeReport().browser;
+    Object.assign(browser.raw[0], { firstContentfulPaintMs: 10 });
     expect(
       collectReportIssues(
         {},
-        { raw: [{ firstContentfulPaintMs: 10 }] },
+        browser,
         { supported: false, error: "Expected one listening PID, found 0" }
       )
     ).toEqual(["idle-process: Expected one listening PID, found 0"]);
+  });
+
+  it("invalidates reports with missing or unsupported terminal chrome evidence", () => {
+    const browser = createTerminalChromeReport().browser;
+    browser.requestedRuns = 2;
+    Object.assign(browser.raw[0], { firstContentfulPaintMs: 10 });
+    browser.raw.push({
+      firstContentfulPaintMs: 11,
+      terminalOpen: { supported: false, error: "No terminal" }
+    } as (typeof browser.raw)[number]);
+
+    expect(collectReportIssues({}, browser, { supported: true })).toEqual([
+      "terminal-chrome: missing or incomplete for 1 of 2 runs"
+    ]);
   });
 
   it("normalizes the real kanban response wrapper and documented array form", () => {
@@ -400,21 +536,25 @@ describe("runtime hotpath benchmark helpers", () => {
   });
 
   it("invalidates missing or partial first-contentful-paint evidence", () => {
+    const browser = createTerminalChromeReport().browser;
+    browser.requestedRuns = 2;
+    Object.assign(browser.raw[0], { firstContentfulPaintMs: 12 });
+    const secondRun = structuredClone(browser.raw[0]);
+    Object.assign(secondRun, { firstContentfulPaintMs: null });
+    browser.raw.push(secondRun);
     expect(
       collectReportIssues(
         {},
-        {
-          raw: [
-            { firstContentfulPaintMs: 12 },
-            { firstContentfulPaintMs: null }
-          ]
-        },
+        browser,
         { supported: true }
       )
     ).toEqual(["browser-fcp: missing for 1 of 2 runs"]);
     expect(
       collectReportIssues({}, { raw: [] }, { supported: true })
-    ).toEqual(["browser-fcp: evidence is missing"]);
+    ).toEqual([
+      "browser-fcp: evidence is missing",
+      "terminal-chrome: evidence is missing"
+    ]);
   });
 
   it("requires API-returned project and session identities in the rendered dashboard", () => {

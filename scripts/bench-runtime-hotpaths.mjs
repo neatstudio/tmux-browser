@@ -112,6 +112,8 @@ export function summarizeTerminalChromeProbe(probe) {
   if (
     !Number.isInteger(probe?.cycles) ||
     probe.cycles < 1 ||
+    !Number.isInteger(probe?.animationFramesPerCycle) ||
+    probe.animationFramesPerCycle < 1 ||
     typeof probe?.elapsedMs !== "number" ||
     !Number.isFinite(probe.elapsedMs) ||
     probe.elapsedMs < 0 ||
@@ -119,13 +121,23 @@ export function summarizeTerminalChromeProbe(probe) {
       (field) =>
         !Number.isInteger(probe?.counts?.[field]) || probe.counts[field] < 0
     ) ||
+    !Array.isArray(probe?.rootPresence) ||
+    probe.rootPresence.length !== 3 ||
+    probe.rootPresence.some((value) => typeof value !== "boolean") ||
+    !Array.isArray(probe?.childCollectionsPresent) ||
+    probe.childCollectionsPresent.length !== 3 ||
+    probe.childCollectionsPresent.some((value) => typeof value !== "boolean") ||
     !Array.isArray(probe?.rootIdentityStable) ||
+    probe.rootIdentityStable.length !== 3 ||
     probe.rootIdentityStable.some((value) => typeof value !== "boolean") ||
     !Array.isArray(probe?.childIdentityStable) ||
+    probe.childIdentityStable.length !== 3 ||
     probe.childIdentityStable.some((value) => typeof value !== "boolean")
   ) {
     throw new Error("terminal chrome probe must contain complete non-negative evidence");
   }
+  const allExpectedRootsPresent = probe.rootPresence.every(Boolean);
+  const allChildCollectionsPresent = probe.childCollectionsPresent.every(Boolean);
   const allRootIdentitiesStable = probe.rootIdentityStable.every(Boolean);
   const allChildIdentitiesStable = probe.childIdentityStable.every(Boolean);
   const counts = Object.fromEntries(
@@ -134,13 +146,18 @@ export function summarizeTerminalChromeProbe(probe) {
   counts.replacements = Math.min(counts.added, counts.removed);
   const zeroReplacementPassed =
     counts.added === 0 && counts.removed === 0 && counts.replacements === 0;
-  const identityPassed = allRootIdentitiesStable && allChildIdentitiesStable;
+  const identityPassed =
+    allExpectedRootsPresent &&
+    allChildCollectionsPresent &&
+    allRootIdentitiesStable &&
+    allChildIdentitiesStable;
   return {
     cycles: probe.cycles,
-    animationFramesPerCycle:
-      probe.animationFramesPerCycle ?? TERMINAL_CHROME_ANIMATION_FRAMES_PER_CYCLE,
+    animationFramesPerCycle: probe.animationFramesPerCycle,
     elapsedMs: probe.elapsedMs,
     counts,
+    allExpectedRootsPresent,
+    allChildCollectionsPresent,
     allRootIdentitiesStable,
     allChildIdentitiesStable,
     zeroReplacementPassed,
@@ -149,11 +166,52 @@ export function summarizeTerminalChromeProbe(probe) {
   };
 }
 
-function getTerminalChromeProbes(report) {
-  return (report?.browser?.raw ?? [])
-    .filter((run) => run?.terminalOpen?.supported === true)
-    .map((run) => run.terminalOpen.terminalChrome)
+function isCompleteTerminalChromeProbe(probe) {
+  const countFields = [
+    "records",
+    "added",
+    "removed",
+    "replacements",
+    "attributes",
+    "characterData"
+  ];
+  const booleanFields = [
+    "allExpectedRootsPresent",
+    "allChildCollectionsPresent",
+    "allRootIdentitiesStable",
+    "allChildIdentitiesStable",
+    "zeroReplacementPassed",
+    "identityPassed",
+    "passed"
+  ];
+  return (
+    probe?.cycles === 10 &&
+    probe?.animationFramesPerCycle === 2 &&
+    typeof probe?.elapsedMs === "number" &&
+    Number.isFinite(probe.elapsedMs) &&
+    countFields.every(
+      (field) => Number.isInteger(probe?.counts?.[field]) && probe.counts[field] >= 0
+    ) &&
+    booleanFields.every((field) => typeof probe?.[field] === "boolean")
+  );
+}
+
+function getTerminalChromeEvidence(report) {
+  const raw = Array.isArray(report?.browser?.raw) ? report.browser.raw : [];
+  const requestedRuns = report?.browser?.requestedRuns;
+  const rawProbes = raw
+    .map((run) =>
+      run?.terminalOpen?.supported === true ? run.terminalOpen.terminalChrome : null
+    )
     .filter(Boolean);
+  const probes = rawProbes.filter((probe) => isCompleteTerminalChromeProbe(probe));
+  return {
+    declaredRuns: report?.options?.runs,
+    requestedRuns,
+    actualRuns: raw.length,
+    rawProbes,
+    probes
+  };
 }
 
 function average(values) {
@@ -161,8 +219,10 @@ function average(values) {
 }
 
 export function comparePairedTerminalChromeReports(baseline, candidate) {
-  const baselineProbes = getTerminalChromeProbes(baseline);
-  const candidateProbes = getTerminalChromeProbes(candidate);
+  const baselineEvidence = getTerminalChromeEvidence(baseline);
+  const candidateEvidence = getTerminalChromeEvidence(candidate);
+  const baselineProbes = baselineEvidence.probes;
+  const candidateProbes = candidateEvidence.probes;
   const comparabilityMismatches = [];
   const compareField = (name, baselineValue, candidateValue) => {
     if (
@@ -198,29 +258,44 @@ export function comparePairedTerminalChromeReports(baseline, candidate) {
     baseline?.preflight?.firstSessionName,
     candidate?.preflight?.firstSessionName
   );
-  const baselineCadence = baselineProbes.map((probe) => [
+  if (
+    !Number.isInteger(baselineEvidence.requestedRuns) ||
+    baselineEvidence.requestedRuns < 1 ||
+    !Number.isInteger(candidateEvidence.requestedRuns) ||
+    candidateEvidence.requestedRuns < 1 ||
+    baselineEvidence.requestedRuns !== candidateEvidence.requestedRuns
+  ) {
+    comparabilityMismatches.push("requestedRunCount");
+  }
+  if (
+    baselineEvidence.declaredRuns !== baselineEvidence.requestedRuns ||
+    baselineEvidence.actualRuns !== baselineEvidence.requestedRuns ||
+    baselineProbes.length !== baselineEvidence.requestedRuns
+  ) {
+    comparabilityMismatches.push("baselineEvidence");
+  }
+  if (
+    candidateEvidence.declaredRuns !== candidateEvidence.requestedRuns ||
+    candidateEvidence.actualRuns !== candidateEvidence.requestedRuns ||
+    candidateProbes.length !== candidateEvidence.requestedRuns
+  ) {
+    comparabilityMismatches.push("candidateEvidence");
+  }
+  const baselineCadence = baselineEvidence.rawProbes.map((probe) => [
     probe.cycles,
     probe.animationFramesPerCycle
   ]);
-  const candidateCadence = candidateProbes.map((probe) => [
+  const candidateCadence = candidateEvidence.rawProbes.map((probe) => [
     probe.cycles,
     probe.animationFramesPerCycle
   ]);
   if (
-    JSON.stringify(baselineCadence) !== JSON.stringify(candidateCadence) ||
     [...baselineCadence, ...candidateCadence].some(
       ([cycles, animationFramesPerCycle]) =>
         cycles !== 10 || animationFramesPerCycle !== 2
     )
   ) {
     comparabilityMismatches.push("cadence");
-  }
-  if (
-    baselineProbes.length === 0 ||
-    candidateProbes.length === 0 ||
-    baselineProbes.length !== candidateProbes.length
-  ) {
-    comparabilityMismatches.push("runCount");
   }
   const zeroReplacementPassed =
     candidateProbes.length > 0 &&
@@ -251,6 +326,8 @@ export function comparePairedTerminalChromeReports(baseline, candidate) {
   return {
     comparable,
     comparabilityMismatches,
+    baselineRequestedRuns: baselineEvidence.requestedRuns,
+    candidateRequestedRuns: candidateEvidence.requestedRuns,
     baselineRuns: baselineProbes.length,
     candidateRuns: candidateProbes.length,
     zeroReplacementPassed,
@@ -527,7 +604,10 @@ async function collectNoOpResizeMutations(page) {
 }
 
 async function collectTerminalChromeNoOpResizeMutations(page, cycles = 10) {
-  const probe = await page.evaluate(async (resizeCycles) => {
+  const probe = await page.evaluate(async ({
+    resizeCycles,
+    animationFramesPerCycle
+  }) => {
     const selectors = [
       ".terminal-status-bar",
       ".terminal-session-rail",
@@ -536,7 +616,7 @@ async function collectTerminalChromeNoOpResizeMutations(page, cycles = 10) {
     const panel = document.querySelector(".terminal-panel.is-active");
     if (!panel) throw new Error("No active terminal panel");
     const rootsBefore = selectors.map((selector) => panel.querySelector(selector));
-    const childrenBefore = rootsBefore.map((root) => root ? [...root.childNodes] : []);
+    const childrenBefore = rootsBefore.map((root) => root ? [...root.childNodes] : null);
     const counts = {
       records: 0,
       added: 0,
@@ -586,18 +666,33 @@ async function collectTerminalChromeNoOpResizeMutations(page, cycles = 10) {
     await new Promise((resolveWait) => setTimeout(resolveWait, 100));
     observer.disconnect();
     const rootsAfter = selectors.map((selector) => panel.querySelector(selector));
-    const childrenAfter = rootsAfter.map((root) => root ? [...root.childNodes] : []);
+    const childrenAfter = rootsAfter.map((root) => root ? [...root.childNodes] : null);
     return {
       cycles: resizeCycles,
+      animationFramesPerCycle,
       elapsedMs,
       counts,
-      rootIdentityStable: rootsBefore.map((root, index) => root === rootsAfter[index]),
+      rootPresence: rootsBefore.map(
+        (root, index) => root !== null && rootsAfter[index] !== null
+      ),
+      childCollectionsPresent: childrenBefore.map(
+        (children, index) =>
+          Array.isArray(children) && Array.isArray(childrenAfter[index])
+      ),
+      rootIdentityStable: rootsBefore.map(
+        (root, index) => root !== null && root === rootsAfter[index]
+      ),
       childIdentityStable: childrenBefore.map((children, index) =>
+        Array.isArray(children) &&
+        Array.isArray(childrenAfter[index]) &&
         children.length === childrenAfter[index].length &&
         children.every((child, childIndex) => child === childrenAfter[index][childIndex])
       )
     };
-  }, cycles);
+  }, {
+    resizeCycles: cycles,
+    animationFramesPerCycle: TERMINAL_CHROME_ANIMATION_FRAMES_PER_CYCLE
+  });
   return summarizeTerminalChromeProbe(probe);
 }
 
@@ -777,6 +872,27 @@ export function collectReportIssues(api, browser, idleProcess) {
     if (missingRuns > 0) {
       issues.push(`browser-fcp: missing for ${missingRuns} of ${requestedRuns} runs`);
     }
+  }
+  const terminalEvidence = getTerminalChromeEvidence({ browser });
+  if (
+    !Number.isInteger(terminalEvidence.requestedRuns) ||
+    terminalEvidence.requestedRuns < 1
+  ) {
+    issues.push("terminal-chrome: evidence is missing");
+  } else if (
+    terminalEvidence.actualRuns !== terminalEvidence.requestedRuns ||
+    terminalEvidence.probes.length !== terminalEvidence.requestedRuns
+  ) {
+    const incompleteRuns = Math.max(
+      Math.abs(terminalEvidence.actualRuns - terminalEvidence.requestedRuns),
+      terminalEvidence.actualRuns - terminalEvidence.probes.length,
+      terminalEvidence.requestedRuns - terminalEvidence.probes.length
+    );
+    issues.push(
+      `terminal-chrome: missing or incomplete for ${incompleteRuns} of ${
+        terminalEvidence.requestedRuns
+      } runs`
+    );
   }
   return issues;
 }
