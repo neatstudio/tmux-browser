@@ -198,11 +198,23 @@ export function comparePairedTerminalChromeReports(baseline, candidate) {
     baseline?.preflight?.firstSessionName,
     candidate?.preflight?.firstSessionName
   );
-  compareField(
-    "cadence",
-    baselineProbes.map((probe) => [probe.cycles, probe.animationFramesPerCycle]),
-    candidateProbes.map((probe) => [probe.cycles, probe.animationFramesPerCycle])
-  );
+  const baselineCadence = baselineProbes.map((probe) => [
+    probe.cycles,
+    probe.animationFramesPerCycle
+  ]);
+  const candidateCadence = candidateProbes.map((probe) => [
+    probe.cycles,
+    probe.animationFramesPerCycle
+  ]);
+  if (
+    JSON.stringify(baselineCadence) !== JSON.stringify(candidateCadence) ||
+    [...baselineCadence, ...candidateCadence].some(
+      ([cycles, animationFramesPerCycle]) =>
+        cycles !== 10 || animationFramesPerCycle !== 2
+    )
+  ) {
+    comparabilityMismatches.push("cadence");
+  }
   if (
     baselineProbes.length === 0 ||
     candidateProbes.length === 0 ||

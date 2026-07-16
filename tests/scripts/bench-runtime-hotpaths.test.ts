@@ -253,6 +253,34 @@ describe("runtime hotpath benchmark helpers", () => {
         passed: false
       });
     });
+
+    it("rejects paired reports when both omit animation-frame cadence", () => {
+      const baseline = createTerminalChromeReport();
+      const candidate = createTerminalChromeReport();
+      delete baseline.browser.raw[0].terminalOpen.terminalChrome.animationFramesPerCycle;
+      delete candidate.browser.raw[0].terminalOpen.terminalChrome.animationFramesPerCycle;
+
+      expect(comparePairedTerminalChromeReports(baseline, candidate)).toMatchObject({
+        comparable: false,
+        comparabilityMismatches: ["cadence"],
+        passed: false
+      });
+    });
+
+    it("rejects paired reports when both use the same wrong cadence", () => {
+      const baseline = createTerminalChromeReport();
+      const candidate = createTerminalChromeReport();
+      baseline.browser.raw[0].terminalOpen.terminalChrome.cycles = 8;
+      candidate.browser.raw[0].terminalOpen.terminalChrome.cycles = 8;
+      baseline.browser.raw[0].terminalOpen.terminalChrome.animationFramesPerCycle = 1;
+      candidate.browser.raw[0].terminalOpen.terminalChrome.animationFramesPerCycle = 1;
+
+      expect(comparePairedTerminalChromeReports(baseline, candidate)).toMatchObject({
+        comparable: false,
+        comparabilityMismatches: ["cadence"],
+        passed: false
+      });
+    });
   });
 
   describe("parseCliOptions", () => {
