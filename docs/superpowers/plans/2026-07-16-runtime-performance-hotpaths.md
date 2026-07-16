@@ -33,7 +33,7 @@ Commands:
 
 The script records SHA, health commit, Node/Chromium versions, URL, run count, sequential and 30-concurrent API raw samples/p50/p95, browser samples, mutations, resource bytes, and 30 one-second process CPU/RSS samples in JSON. It discovers the server PID from the listening port and rejects missing/mismatched process evidence. Absolute budgets above gate the work; a metric exceeding 20% relative regression also fails.
 
-Captured artifact: `.gstack/benchmark-reports/runtime-hotpaths/baseline-6a5f503.json` from harness commit `81136af`. Dashboard ready p50/p95: 540.7/629.2ms; network idle: 1135.7/3543.1ms; terminal open: 135.2/179.7ms; no-op resize: 6 mutation records per run; transfer p50/p95: 252,518/252,519 bytes; idle CPU p50/p95: 0/1.1%; RSS p50/p95: 87,375,872 bytes. The artifact is intentionally `valid:false`: 18/30 concurrent `kanban-projects` requests returned HTTP 500, while successful concurrent samples were p50/p95 2940.1/2943.1ms. Candidate verification must eliminate this error or explicitly revise the gate through review.
+Captured artifact: `.gstack/benchmark-reports/runtime-hotpaths/baseline-6a5f503.json` from hardened harness commit `2e44b67`. Dashboard data-ready p50/p95: 644.2/3454.9ms; FCP: 560/564ms; network idle: 1135.8/3948.4ms; terminal open: 133.9/153.5ms; idle CPU p50/p95: 0/0.4%; RSS p50/p95: 96,567,296 bytes. The artifact is intentionally `valid:false`: `sessions-all` concurrent timed out 30/30, `sessions-panes` sequential timed out 11 times, and `kanban-projects` concurrent returned 20 HTTP failures under the explicit 10-second request deadline. Candidate verification must eliminate these failures or explicitly revise the gate through review.
 
 ---
 
