@@ -13,7 +13,8 @@ const DEFAULTS = {
   runs: 7,
   apiRuns: 30,
   apiConcurrency: 30,
-  idleSeconds: 30
+  idleSeconds: 30,
+  timeoutMs: 10_000
 };
 
 const API_TARGETS = [
@@ -123,6 +124,7 @@ export function parseCliOptions(args) {
     "api-runs",
     "api-concurrency",
     "idle-seconds",
+    "timeout-ms",
     "output"
   ]);
   for (let index = 0; index < rest.length; index += 2) {
@@ -156,6 +158,7 @@ export function parseCliOptions(args) {
       values.get("idle-seconds") ?? DEFAULTS.idleSeconds,
       { allowZero: true }
     ),
+    timeoutMs: integerOption("--timeout-ms", values.get("timeout-ms") ?? DEFAULTS.timeoutMs),
     output: values.get("output") ?? null
   };
 }
@@ -168,20 +171,47 @@ function targetUrl(baseUrl, path) {
   return url.href;
 }
 
-export async function timedFetch(baseUrl, target, { requireOk = true } = {}) {
+export async function timedFetch(
+  baseUrl,
+  target,
+  { requireOk = true, timeoutMs = DEFAULTS.timeoutMs } = {}
+) {
   const startedAt = performance.now();
-  const response = await fetch(targetUrl(baseUrl, target));
-  const body = await response.text();
-  const result = {
-    durationMs: performance.now() - startedAt,
-    status: response.status,
-    ok: response.ok,
-    bytes: Buffer.byteLength(body)
-  };
-  if (requireOk && !response.ok) {
-    throw new Error(`GET ${target} returned ${response.status}: ${body.slice(0, 200)}`);
+  try {
+    const response = await fetch(targetUrl(baseUrl, target), {
+      signal: AbortSignal.timeout(timeoutMs)
+    });
+    const body = await response.text();
+    const result = {
+      durationMs: performance.now() - startedAt,
+      status: response.status,
+      ok: response.ok,
+      timedOut: false,
+      bytes: Buffer.byteLength(body)
+    };
+    if (requireOk && !response.ok) {
+      throw new Error(`GET ${target} returned ${response.status}: ${body.slice(0, 200)}`);
+    }
+    return { ...result, body };
+  } catch (error) {
+    if (requireOk) {
+      throw new Error(
+        `GET ${target} failed within ${timeoutMs}ms: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        { cause: error }
+      );
+    }
+    return {
+      durationMs: performance.now() - startedAt,
+      status: null,
+      ok: false,
+      timedOut: error?.name === "TimeoutError",
+      bytes: 0,
+      error: error instanceof Error ? error.message : String(error),
+      body: ""
+    };
   }
-  return { ...result, body };
 }
 
 export function summarizeFetches(samples) {
@@ -200,7 +230,13 @@ export function summarizeFetches(samples) {
   };
 }
 
-async function collectApiMetrics(baseUrl, firstSessionName, apiRuns, apiConcurrency) {
+async function collectApiMetrics(
+  baseUrl,
+  firstSessionName,
+  apiRuns,
+  apiConcurrency,
+  timeoutMs
+) {
   const targets = [...API_TARGETS];
   if (firstSessionName) {
     targets.push({
@@ -213,14 +249,16 @@ async function collectApiMetrics(baseUrl, firstSessionName, apiRuns, apiConcurre
     const sequential = [];
     for (let index = 0; index < apiRuns; index += 1) {
       const { body: _body, ...sample } = await timedFetch(baseUrl, target.path, {
-        requireOk: false
+        requireOk: false,
+        timeoutMs
       });
       sequential.push(sample);
     }
     const concurrent = await Promise.all(
       Array.from({ length: apiConcurrency }, async () => {
         const { body: _body, ...sample } = await timedFetch(baseUrl, target.path, {
-          requireOk: false
+          requireOk: false,
+          timeoutMs
         });
         return sample;
       })
@@ -242,6 +280,43 @@ async function collectApiMetrics(baseUrl, firstSessionName, apiRuns, apiConcurre
     };
   }
   return metrics;
+}
+
+export function isDashboardDataReady(rendered, expected) {
+  const renderedProjects = new Set(rendered.projectNames);
+  const renderedSessions = new Set(rendered.sessionNames);
+  return (
+    expected.projectNames.every((name) => renderedProjects.has(name)) &&
+    expected.sessionNames.every((name) => renderedSessions.has(name))
+  );
+}
+
+async function waitForDashboardData(page, expected, timeoutMs) {
+  const startedAt = performance.now();
+  while (performance.now() - startedAt < timeoutMs) {
+    const rendered = await page.evaluate(() => {
+      const root = document.querySelector(".kanban-root");
+      if (!root) return null;
+      return {
+        projectNames: [...root.querySelectorAll(".kanban-project-card")]
+          .map((node) => node.dataset.projectName)
+          .filter((name) => typeof name === "string"),
+        sessionNames: [
+          ...root.querySelectorAll(".kanban-ungrouped-card[data-session-name]")
+        ]
+          .map((node) => node.dataset.sessionName)
+          .filter((name) => typeof name === "string")
+          .concat(
+            [...root.querySelectorAll(".kanban-agent-card code")]
+              .map((node) => node.textContent?.trim())
+              .filter((name) => typeof name === "string" && name.length > 0)
+          )
+      };
+    });
+    if (rendered && isDashboardDataReady(rendered, expected)) return;
+    await page.waitForTimeout(25);
+  }
+  throw new Error(`Dashboard data did not render within ${timeoutMs}ms`);
 }
 
 async function collectNoOpResizeMutations(page) {
@@ -294,17 +369,45 @@ function summarizeResources(runs) {
   };
 }
 
-async function collectBrowserMetrics(baseUrl, runs) {
+async function collectBrowserMetrics(baseUrl, runs, timeoutMs) {
   const browser = await chromium.launch({ headless: true });
   const raw = [];
   try {
     for (let index = 0; index < runs; index += 1) {
       const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
       const page = await context.newPage();
+      page.setDefaultTimeout(timeoutMs);
+      page.setDefaultNavigationTimeout(timeoutMs);
+      const sessionsResponsePromise = page.waitForResponse((response) =>
+        new URL(response.url()).pathname === "/api/sessions-panes"
+      );
+      const projectsResponsePromise = page.waitForResponse((response) =>
+        new URL(response.url()).pathname === "/api/kanban/projects"
+      );
       const startedAt = performance.now();
       await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
-      await page.waitForFunction(
-        () => (document.querySelector(".dashboard-root")?.childElementCount ?? 0) > 0
+      const [sessionsResponse, projectsResponse] = await Promise.all([
+        sessionsResponsePromise,
+        projectsResponsePromise
+      ]);
+      if (!sessionsResponse.ok() || !projectsResponse.ok()) {
+        throw new Error(
+          `Dashboard data request failed: sessions=${sessionsResponse.status()} projects=${projectsResponse.status()}`
+        );
+      }
+      const sessions = await sessionsResponse.json();
+      const projects = await projectsResponse.json();
+      await waitForDashboardData(
+        page,
+        {
+          projectNames: Array.isArray(projects)
+            ? projects.map((project) => project.name).filter((name) => typeof name === "string")
+            : [],
+          sessionNames: Array.isArray(sessions)
+            ? sessions.map((session) => session.name).filter((name) => typeof name === "string")
+            : []
+        },
+        timeoutMs
       );
       const dashboardReadyMs = performance.now() - startedAt;
       await page.waitForLoadState("networkidle");
@@ -313,6 +416,9 @@ async function collectBrowserMetrics(baseUrl, runs) {
         const entry = performance.getEntriesByType("navigation")[0];
         return entry ? entry.toJSON() : null;
       });
+      const firstContentfulPaintMs = await page.evaluate(
+        () => performance.getEntriesByName("first-contentful-paint")[0]?.startTime ?? null
+      );
       const resources = await page.evaluate(() =>
         performance.getEntriesByType("resource").map((entry) => {
           const resource = entry;
@@ -346,7 +452,15 @@ async function collectBrowserMetrics(baseUrl, runs) {
       } else {
         terminalOpen = { supported: false, error: "No tmux session was available to open" };
       }
-      raw.push({ dashboardReadyMs, networkIdleMs, navigation, resources, mutations, terminalOpen });
+      raw.push({
+        dashboardReadyMs,
+        networkIdleMs,
+        firstContentfulPaintMs,
+        navigation,
+        resources,
+        mutations,
+        terminalOpen
+      });
       await context.close();
     }
     return {
@@ -355,6 +469,13 @@ async function collectBrowserMetrics(baseUrl, runs) {
       summary: {
         dashboardReadyMs: summarizeSamples(raw.map((run) => run.dashboardReadyMs)),
         networkIdleMs: summarizeSamples(raw.map((run) => run.networkIdleMs)),
+        firstContentfulPaintMs: raw.some((run) => run.firstContentfulPaintMs !== null)
+          ? summarizeSamples(
+              raw
+                .map((run) => run.firstContentfulPaintMs)
+                .filter((value) => value !== null)
+            )
+          : { supported: false, error: "Chromium did not expose first-contentful-paint" },
         terminalOpenMs: raw.some((run) => run.terminalOpen.supported)
           ? summarizeSamples(
               raw.filter((run) => run.terminalOpen.supported).map((run) => run.terminalOpen.durationMs)
@@ -367,6 +488,21 @@ async function collectBrowserMetrics(baseUrl, runs) {
   } finally {
     await browser.close();
   }
+}
+
+export function collectReportIssues(api, _browser, idleProcess) {
+  const issues = Object.entries(api).flatMap(([target, result]) => {
+    if (result.supported === false) return [`${target}: ${result.error}`];
+    return ["sequential", "concurrent"].flatMap((mode) =>
+      result[mode].summary.allOk
+        ? []
+        : [`${target} ${mode}: ${result[mode].summary.failureCount} HTTP failures`]
+    );
+  });
+  if (idleProcess?.supported !== true) {
+    issues.push(`idle-process: ${idleProcess?.error ?? "evidence is missing"}`);
+  }
+  return issues;
 }
 
 function listeningPid(port) {
@@ -430,11 +566,18 @@ async function collectIdleProcessMetrics(baseUrl, idleSeconds) {
   }
 }
 
-function gitSha() {
-  return execFileSync("git", ["rev-parse", "HEAD"], {
+function gitSha(revision = "HEAD") {
+  return execFileSync("git", ["rev-parse", revision], {
     cwd: root,
     encoding: "utf8"
   }).trim();
+}
+
+export function resolveBenchmarkCommits(expectCommit, resolveSha = gitSha) {
+  return {
+    gitSha: resolveSha(expectCommit),
+    runnerGitSha: resolveSha("HEAD")
+  };
 }
 
 function commitsMatch(actual, expected) {
@@ -451,42 +594,40 @@ function defaultOutputPath(commit) {
 }
 
 export async function runBenchmark(options) {
-  const healthResponse = await timedFetch(options.url, "/api/health");
+  const healthResponse = await timedFetch(options.url, "/api/health", {
+    timeoutMs: options.timeoutMs
+  });
   const health = JSON.parse(healthResponse.body);
   if (!commitsMatch(health.commit, options.expectCommit)) {
     throw new Error(
       `Health commit mismatch: expected ${options.expectCommit}, received ${health.commit ?? "null"}`
     );
   }
-  const sessionsResponse = await timedFetch(options.url, "/api/sessions");
+  const sessionsResponse = await timedFetch(options.url, "/api/sessions", {
+    timeoutMs: options.timeoutMs
+  });
   const sessions = JSON.parse(sessionsResponse.body);
   const firstSessionName = Array.isArray(sessions) && typeof sessions[0]?.name === "string"
     ? sessions[0].name
     : null;
-  const commit = gitSha();
+  const commits = resolveBenchmarkCommits(options.expectCommit);
   const api = await collectApiMetrics(
     options.url,
     firstSessionName,
     options.apiRuns,
-    options.apiConcurrency
+    options.apiConcurrency,
+    options.timeoutMs
   );
-  const browser = await collectBrowserMetrics(options.url, options.runs);
+  const browser = await collectBrowserMetrics(options.url, options.runs, options.timeoutMs);
   const idleProcess = await collectIdleProcessMetrics(options.url, options.idleSeconds);
-  const issues = Object.entries(api).flatMap(([target, result]) => {
-    if (result.supported === false) return [`${target}: ${result.error}`];
-    return ["sequential", "concurrent"].flatMap((mode) =>
-      result[mode].summary.allOk
-        ? []
-        : [`${target} ${mode}: ${result[mode].summary.failureCount} HTTP failures`]
-    );
-  });
+  const issues = collectReportIssues(api, browser, idleProcess);
   return {
     schemaVersion: 1,
     valid: issues.length === 0,
     issues,
     capturedAt: new Date().toISOString(),
     environment: {
-      gitSha: commit,
+      ...commits,
       healthCommit: health.commit,
       nodeVersion: process.version,
       chromiumVersion: browser.chromiumVersion,
@@ -498,7 +639,8 @@ export async function runBenchmark(options) {
       runs: options.runs,
       apiRuns: options.apiRuns,
       apiConcurrency: options.apiConcurrency,
-      idleSeconds: options.idleSeconds
+      idleSeconds: options.idleSeconds,
+      timeoutMs: options.timeoutMs
     },
     preflight: {
       health,

@@ -3,7 +3,10 @@ import { createServer } from "node:http";
 
 import {
   compareRelativeBudget,
+  collectReportIssues,
+  isDashboardDataReady,
   parseCliOptions,
+  resolveBenchmarkCommits,
   summarizeMutations,
   summarizeSamples,
   summarizeFetches,
@@ -97,6 +100,7 @@ describe("runtime hotpath benchmark helpers", () => {
         apiRuns: 30,
         apiConcurrency: 30,
         idleSeconds: 30,
+        timeoutMs: 10_000,
         output: null
       });
     });
@@ -115,6 +119,8 @@ describe("runtime hotpath benchmark helpers", () => {
           "8",
           "--idle-seconds",
           "0",
+          "--timeout-ms",
+          "2500",
           "--output",
           "tmp/report.json"
         ])
@@ -125,6 +131,7 @@ describe("runtime hotpath benchmark helpers", () => {
         apiRuns: 5,
         apiConcurrency: 8,
         idleSeconds: 0,
+        timeoutMs: 2500,
         output: "tmp/report.json"
       });
     });
@@ -164,6 +171,40 @@ describe("runtime hotpath benchmark helpers", () => {
     });
   });
 
+  it("invalidates reports when requested idle process evidence is unavailable", () => {
+    expect(
+      collectReportIssues(
+        {},
+        { summary: {} },
+        { supported: false, error: "Expected one listening PID, found 0" }
+      )
+    ).toEqual(["idle-process: Expected one listening PID, found 0"]);
+  });
+
+  it("requires API-returned project and session identities in the rendered dashboard", () => {
+    const expected = { projectNames: ["alpha"], sessionNames: ["worker"] };
+    expect(
+      isDashboardDataReady({ projectNames: [], sessionNames: [] }, expected)
+    ).toBe(false);
+    expect(
+      isDashboardDataReady(
+        { projectNames: ["alpha"], sessionNames: ["worker", "extra"] },
+        expected
+      )
+    ).toBe(true);
+  });
+
+  it("records target and runner revisions without conflating them", () => {
+    expect(
+      resolveBenchmarkCommits("6a5f503", (revision: string) =>
+        revision === "HEAD" ? "runner-full-sha" : "target-full-sha"
+      )
+    ).toEqual({
+      gitSha: "target-full-sha",
+      runnerGitSha: "runner-full-sha"
+    });
+  });
+
   it("keeps failed HTTP durations out of successful latency summaries", () => {
     expect(
       summarizeFetches([
@@ -198,6 +239,40 @@ describe("runtime hotpath benchmark helpers", () => {
         body: "failed"
       });
     } finally {
+      await new Promise<void>((resolveClose, rejectClose) =>
+        server.close((error) => (error ? rejectClose(error) : resolveClose()))
+      );
+    }
+  });
+
+  it("bounds a hanging request and releases the test server", async () => {
+    const sockets = new Set<import("node:net").Socket>();
+    const server = createServer(() => {});
+    server.on("connection", (socket) => {
+      sockets.add(socket);
+      socket.on("close", () => sockets.delete(socket));
+    });
+    await new Promise<void>((resolveListen) => server.listen(0, "127.0.0.1", resolveListen));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("test server did not bind");
+    try {
+      await expect(
+        Promise.race([
+          timedFetch(`http://127.0.0.1:${address.port}`, "/hang", {
+            requireOk: false,
+            timeoutMs: 25
+          }),
+          new Promise((_, rejectGuard) =>
+            setTimeout(() => rejectGuard(new Error("timeout guard expired")), 250)
+          )
+        ])
+      ).resolves.toMatchObject({
+        ok: false,
+        status: null,
+        timedOut: true
+      });
+    } finally {
+      for (const socket of sockets) socket.destroy();
       await new Promise<void>((resolveClose, rejectClose) =>
         server.close((error) => (error ? rejectClose(error) : resolveClose()))
       );
