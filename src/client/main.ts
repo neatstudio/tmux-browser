@@ -18,6 +18,7 @@ import { renderGroupMessagePanel } from "./render/groupMessagePanel";
 import { renderSessionConfigModal } from "./render/sessionConfigModal";
 import { renderSessionFloatingMenu } from "./render/sessionFloatingMenu";
 import { renderSessionGroupRail } from "./render/sessionGroupRail";
+import { createTerminalChromeRenderCache } from "./render/terminalChromeRenderCache";
 import {
   renderSessionStatusBar,
   type TerminalConnectionState
@@ -221,6 +222,11 @@ let cachedKanbanStatusProjects = kanbanStatusProjectsCache.read();
 let hasResolvedKanbanStatusProjectsCache = cachedKanbanStatusProjects.length > 0;
 let lastKanbanStatusProjectsCacheSignature = "";
 const mountedTerminals = new Map<string, MountedTerminal>();
+const terminalChromeRenderCache = createTerminalChromeRenderCache<{
+  statusBar: ReturnType<typeof createSessionStatusActions>;
+  groupRail: ReturnType<typeof createSessionTopRailActions>;
+  floatingMenu: ReturnType<typeof createSessionMenuState>;
+}>();
 const pendingTerminalMounts = new Set<string>();
 const inactiveTerminalPruner = createInactiveTerminalPruner({
   delayMs: 5000
@@ -608,6 +614,7 @@ function closeTab(tabId: string, options: { force?: boolean } = {}) {
   mountedTerminals.get(tabId)?.destroy();
   mountedTerminals.get(tabId)?.panel.remove();
   mountedTerminals.delete(tabId);
+  terminalChromeRenderCache.delete(tabId);
 
   if (options.force) {
     tabState.forceCloseTab(tabId);
@@ -637,6 +644,7 @@ function detachTerminal(tabId: string) {
   mounted.destroy();
   mounted.panel.remove();
   mountedTerminals.delete(tabId);
+  terminalChromeRenderCache.delete(tabId);
 
   if (visibleTerminalPanelId === tabId) {
     visibleTerminalPanelId = null;
@@ -779,13 +787,7 @@ function ensureTerminal(tab: BrowserTab) {
     connectionState: "connecting"
   };
   mountedTerminals.set(tab.id, loadingTerminal);
-  renderSessionStatusBar(
-    panel,
-    store.getState().sessions.find((session) => session.name === tab.sessionName),
-    createSessionStatusActions(tab, loadingTerminal)
-  );
-  renderSessionTopRail(panel, tab);
-  renderSessionMenu(panel, tab, loadingTerminal);
+  renderTerminalChrome(tab, loadingTerminal);
   panel.style.background = getTheme(
     sessionSettings.get(tab.sessionName).themeId
   ).terminalTheme.background;
@@ -840,41 +842,27 @@ function ensureTerminal(tab: BrowserTab) {
       mountedTerminal.redraw();
     }
 
-    renderSessionStatusBar(
-      panel,
-      store
-        .getState()
-        .sessions.find((session) => session.name === tab.sessionName),
-      createSessionStatusActions(tab, mountedTerminal)
-    );
-    renderSessionTopRail(panel, tab);
-    renderSessionMenu(panel, tab, mountedTerminal);
+    renderTerminalChrome(tab, mountedTerminal);
   });
 }
 
-function renderSessionTopRail(panel: HTMLElement, tab: BrowserTab) {
-  renderSessionGroupRail(
-    panel,
-    tab.sessionName,
-    getDisplayKanbanStatusProject(tab.sessionName),
-    {
-      uiTier: getResponsiveUiTier(window.innerWidth),
-      onOpenSession: (sessionName) => {
-        getOrOpenTab(sessionName);
-        scheduleRender();
-      },
-      onOpenGroupTask: () => openGroupMessagePanel(tab.sessionName)
-    }
-  );
+function createSessionTopRailActions(tab: BrowserTab) {
+  return {
+    uiTier: getResponsiveUiTier(window.innerWidth),
+    onOpenSession: (sessionName: string) => {
+      getOrOpenTab(sessionName);
+      scheduleRender();
+    },
+    onOpenGroupTask: () => openGroupMessagePanel(tab.sessionName)
+  };
 }
 
-function renderSessionMenu(
-  panel: HTMLElement,
+function createSessionMenuState(
   tab: BrowserTab,
   mountedTerminal: MountedTerminal
 ) {
   const dashboardState = store.getState();
-  renderSessionFloatingMenu(panel, {
+  return {
     currentSessionName: tab.sessionName,
     sessions: getSessionNames(),
     sessionSummaries: dashboardState.sessions,
@@ -933,14 +921,111 @@ function renderSessionMenu(
         scheduleRender();
       });
     }
+  };
+}
+
+function getTerminalChromeLocalUiState(panel: HTMLElement) {
+  const menu = panel.querySelector<HTMLElement>(".session-floating-menu");
+  const statusBar = panel.querySelector<HTMLElement>(".terminal-status-bar");
+  const activeElement = document.activeElement;
+  const focused =
+    activeElement instanceof HTMLElement && menu?.contains(activeElement)
+      ? {
+          tagName: activeElement.tagName,
+          name:
+            activeElement instanceof HTMLInputElement ||
+            activeElement instanceof HTMLSelectElement ||
+            activeElement instanceof HTMLTextAreaElement
+              ? activeElement.name
+              : "",
+          action: activeElement.dataset.action ?? "",
+          targetSession: activeElement.dataset.targetSession ?? "",
+          sessionName: activeElement.dataset.sessionName ?? "",
+          projectName: activeElement.dataset.projectName ?? ""
+        }
+      : null;
+
+  return {
+    menuOpen:
+      menu
+        ?.querySelector(".session-floating-menu-toggle")
+        ?.getAttribute("aria-expanded") === "true",
+    menuFocus: focused,
+    menuDraft:
+      menu?.querySelector<HTMLInputElement>("input[name='session-name']")?.value ?? "",
+    mobileActionsOpen: statusBar?.dataset.mobileActionsOpen === "true",
+    mobileShiftActive: statusBar?.dataset.mobileShiftActive === "true"
+  };
+}
+
+function renderTerminalChrome(tab: BrowserTab, mounted: MountedTerminal) {
+  const dashboardState = store.getState();
+  const session = dashboardState.sessions.find(
+    (candidate) => candidate.name === tab.sessionName
+  );
+  const statusBar = createSessionStatusActions(tab, mounted);
+  const groupRail = createSessionTopRailActions(tab);
+  const floatingMenu = createSessionMenuState(tab, mounted);
+  const project = floatingMenu.kanbanProject;
+  const boards = floatingMenu.boards ?? [];
+  const sessionDisplay = dashboardState.sessions.map((candidate) => ({
+    name: candidate.name,
+    status: candidate.status,
+    currentCommand: candidate.currentCommand,
+    runtimeKind: candidate.runtimeKind ?? null,
+    currentPath: candidate.currentPath
+  }));
+
+  terminalChromeRenderCache.render({
+    tabId: tab.id,
+    mountedTerminal: mounted,
+    signature: {
+      session: session
+        ? {
+            name: session.name,
+            status: session.status,
+            currentCommand: session.currentCommand,
+            runtimeKind: session.runtimeKind ?? null,
+            currentPath: session.currentPath
+          }
+        : null,
+      connectionState: mounted.connectionState,
+      uiTier: statusBar.uiTier,
+      browserScrollEnabled: statusBar.browserScrollEnabled,
+      homeDirectory: statusBar.homeDirectory,
+      actionCount: currentActionCount,
+      actionCenterOpen: isActionCenterOpen,
+      currentSessionName: tab.sessionName,
+      sessionDisplay,
+      project: project ?? null,
+      boards,
+      kanbanDraft: {
+        name: kanbanDraft.name,
+        path: kanbanDraft.path,
+        server: kanbanDraft.server,
+        selectedAgentNames: kanbanDraft.selectedAgentNames
+      },
+      localUi: getTerminalChromeLocalUiState(mounted.panel)
+    },
+    actions: { statusBar, groupRail, floatingMenu },
+    renderStatusBar: (actions) => {
+      renderSessionStatusBar(mounted.panel, session, actions.statusBar);
+    },
+    renderGroupRail: (actions) => {
+      renderSessionGroupRail(
+        mounted.panel,
+        tab.sessionName,
+        project,
+        actions.groupRail
+      );
+    },
+    renderFloatingMenu: (actions) => {
+      renderSessionFloatingMenu(mounted.panel, actions.floatingMenu);
+    }
   });
 }
 
 function syncTerminalStatusBars() {
-  const sessionsByName = new Map(
-    store.getState().sessions.map((session) => [session.name, session])
-  );
-
   tabState.getTabs().forEach((tab) => {
     const mounted = mountedTerminals.get(tab.id);
 
@@ -948,13 +1033,7 @@ function syncTerminalStatusBars() {
       return;
     }
 
-    renderSessionStatusBar(
-      mounted.panel,
-      sessionsByName.get(tab.sessionName),
-      createSessionStatusActions(tab, mounted)
-    );
-    renderSessionTopRail(mounted.panel, tab);
-    renderSessionMenu(mounted.panel, tab, mounted);
+    renderTerminalChrome(tab, mounted);
   });
 }
 
