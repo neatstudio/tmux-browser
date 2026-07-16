@@ -14,7 +14,7 @@ Baseline commit: `6a5f503`. Runner: local macOS Chromium headless against produc
 
 | Symptom | Baseline | Required evidence after change |
 |---|---:|---|
-| No-op terminal resize churn | 10 cycles: 251 subtree nodes added, 250 removed, 559.7ms | 0 terminal-chrome subtree replacements for unchanged inputs; elapsed no worse than 420ms for the same two-RAF harness |
+| No-op terminal resize churn | 10 cycles: 251 subtree nodes added, 250 removed, 559.7ms | Paired baseline/candidate runs on the same machine, Chromium, viewport, session, harness commit, and two-RAF cadence: 0 terminal-chrome added, removed, or replacement nodes; stable root and immediate-child identities; candidate elapsed no more than 20% slower |
 | Dashboard cold load | FCP p50 80ms, 9 requests, 252,529 bytes | FCP/request count no more than 20% worse |
 | Terminal open | p50 119ms, p95 135ms | Neither percentile more than 20% worse |
 | API | sequential p95 <=23.1ms; 30-concurrent p95 <=72.2ms | Neither threshold more than 20% worse |
@@ -26,12 +26,12 @@ Create untracked benchmark artifacts under `.gstack/benchmark-reports/runtime-ho
 Commands:
 
 - Baseline HTTP/browser: `node scripts/bench-runtime-hotpaths.mjs http://127.0.0.1:3100 --expect-commit 6a5f503 --runs 7 --api-runs 30 --api-concurrency 30 --idle-seconds 30`
-- Candidate HTTP/browser: `node scripts/bench-runtime-hotpaths.mjs http://127.0.0.1:3101 --expect-commit <candidate-sha> --runs 7 --api-runs 30 --api-concurrency 30 --idle-seconds 30`
+- Candidate HTTP/browser: `node scripts/bench-runtime-hotpaths.mjs http://127.0.0.1:3101 --expect-commit <candidate-sha> --runs 7 --api-runs 30 --api-concurrency 30 --idle-seconds 30 --paired-baseline <baseline-artifact>`
 - Asset headers: `curl -fsSI -H 'Accept-Encoding: br, gzip' <hashed-asset-url>`
 - Store microbench: `node scripts/bench-runtime-hotpaths.mjs --store-events 100,500 --rate 20`
 - WS policy tests: focused Vitest with fake `bufferedAmount` and fake timers.
 
-The script records SHA, health commit, Node/Chromium versions, URL, run count, sequential and 30-concurrent API raw samples/p50/p95, browser samples, mutations, resource bytes, and 30 one-second process CPU/RSS samples in JSON. It discovers the server PID from the listening port and rejects missing/mismatched process evidence. Absolute budgets above gate the work; a metric exceeding 20% relative regression also fails.
+The script records SHA, health commit, Node/Chromium versions, URL, run count, sequential and 30-concurrent API raw samples/p50/p95, browser samples, mutations, resource bytes, and 30 one-second process CPU/RSS samples in JSON. It discovers the server PID from the listening port and rejects missing/mismatched process evidence. The terminal resize gate uses paired evidence with validated provenance; other absolute budgets above still gate the work, and a metric exceeding 20% relative regression also fails.
 
 Captured artifact: `.gstack/benchmark-reports/runtime-hotpaths/baseline-6a5f503.json` from clean harness commit `7a763b9`; its exact full SHA is stored as `runnerGitSha`. Dashboard data-ready p50/p95: 655.9/3091.1ms; FCP: 556/576ms; network idle: 1149.9/3581.1ms; terminal open: 104.1/144.6ms; idle CPU p50/p95: 0/0.3%; RSS p50/p95: 108,888,064/108,986,368 bytes. All 7 browser runs contain FCP and all 30 idle samples are supported. The artifact is intentionally `valid:false` only because `kanban-projects` concurrent returned 21 HTTP 500 responses; all other API targets have zero failures/timeouts. Candidate verification must eliminate this failure or explicitly revise the gate through review.
 
@@ -67,7 +67,9 @@ The cache is keyed by tab id and mounted-terminal identity. A serializable signa
 - [x] Integrate the cache into `syncTerminalStatusBars` and initial terminal mount.
 - [x] Run focused component tests and the no-op resize mutation benchmark; require zero terminal-chrome replacements.
 
-Evidence: 65 focused chrome tests passed. A selector-scoped production Playwright probe ran 10 no-op resize cycles in 376.6ms with zero terminal-chrome mutation records, added nodes, removed nodes, or replacements; status bar, session rail, and floating menu root and child identities all remained stable.
+Evidence: 24 focused benchmark tests and 858 full-suite tests passed. Independent spec review approved replacing the invalid fixed 420ms wall-clock ceiling after paired diagnostics showed Chromium animation-frame scheduling dominated elapsed time; the corrected gate keeps zero-churn and identity requirements and allows at most 20% paired timing regression.
+
+Paired artifacts from runner `09f8ab42c9e82e95a4e17ae9bc5d857b3ae8ca12` are `.gstack/benchmark-reports/runtime-hotpaths/baseline-6a5f503-task1-paired-09f8ab4.json` and `.gstack/benchmark-reports/runtime-hotpaths/candidate-09f8ab4-task1-paired.json`. Both used machine `Mac`, Chromium `149.0.7827.55`, viewport `1440x900`, session `cc1-remote`, and 10 cycles with two animation frames per cycle. Baseline `6a5f503` took 625.1ms with 60 added, 60 removed, and 60 replacement nodes plus unstable identities. Candidate `09f8ab4` took 580.1ms with zero added, removed, or replacement nodes and stable root/immediate-child identities. The candidate was 7.20% faster (`ratio=0.928011518146`), within the `1.2` ceiling; the paired gate and report validity both passed.
 
 ### Task 2: Structural Store Equality And Request Single-Flight
 
