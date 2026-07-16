@@ -38,7 +38,9 @@ import {
 import { syncTerminalPanelVisibility } from "./terminal/panelVisibility";
 import {
   deriveTerminalOutputPresentation,
-  shouldRenderTerminalOutputPresentation
+  deriveTerminalAgentTranscriptForStructuredHistory,
+  shouldRenderTerminalOutputPresentation,
+  splitTerminalSnapshotForStructuredHistory
 } from "./terminal/structuredOutput";
 import type { TerminalStyledLine } from "./terminal/structuredOutput";
 import { createTerminalStructuredOutputState } from "./terminal/structuredOutputState";
@@ -244,6 +246,7 @@ const terminalVisibleOutputByTab = new Map<
     startLine: number;
     styledLines: TerminalStyledLine[];
     isTranscriptCandidate: boolean;
+    tailRows: number;
   }
 >();
 const terminalStructuredOutputState = createTerminalStructuredOutputState();
@@ -743,14 +746,16 @@ function handleTerminalOutput(
   visibleText: string,
   visibleStartLine: number,
   styledLines: TerminalStyledLine[],
-  isTranscriptCandidate: boolean
+  isTranscriptCandidate: boolean,
+  tailRows: number
 ) {
   handleTerminalSnapshot(
     tabId,
     visibleText,
     visibleStartLine,
     styledLines,
-    isTranscriptCandidate
+    isTranscriptCandidate,
+    tailRows
   );
 
   if (!isPageVisible()) {
@@ -785,14 +790,16 @@ function handleTerminalSnapshot(
   visibleText: string,
   visibleStartLine: number,
   styledLines: TerminalStyledLine[],
-  isTranscriptCandidate: boolean
+  isTranscriptCandidate: boolean,
+  tailRows: number
 ) {
   const previous = terminalVisibleOutputByTab.get(tabId);
   terminalVisibleOutputByTab.set(tabId, {
     text: visibleText,
     startLine: visibleStartLine,
     styledLines,
-    isTranscriptCandidate
+    isTranscriptCandidate,
+    tailRows
   });
 
   if (isTranscriptCandidate || previous?.isTranscriptCandidate) {
@@ -878,7 +885,8 @@ function ensureTerminal(tab: BrowserTab) {
         visibleText,
         visibleStartLine,
         styledLines,
-        isTranscriptCandidate
+        isTranscriptCandidate,
+        tailRows
       ) =>
         handleTerminalOutput(
           tab.id,
@@ -886,20 +894,23 @@ function ensureTerminal(tab: BrowserTab) {
           visibleText,
           visibleStartLine,
           styledLines,
-          isTranscriptCandidate
+          isTranscriptCandidate,
+          tailRows
         ),
       onSnapshot: (
         visibleText,
         visibleStartLine,
         styledLines,
-        isTranscriptCandidate
+        isTranscriptCandidate,
+        tailRows
       ) =>
         handleTerminalSnapshot(
           tab.id,
           visibleText,
           visibleStartLine,
           styledLines,
-          isTranscriptCandidate
+          isTranscriptCandidate,
+          tailRows
         ),
       onPaneClick: (event) => selectPaneAtTerminalPoint(tab.sessionName, event),
       getPaneSummaries: () =>
@@ -1060,12 +1071,28 @@ function syncTerminalStructuredOutputs() {
     }
 
     const visibleOutput = terminalVisibleOutputByTab.get(tab.id);
+    const structuredHistory = visibleOutput
+      ? splitTerminalSnapshotForStructuredHistory(
+          visibleOutput.text,
+          visibleOutput.startLine,
+          visibleOutput.styledLines,
+          visibleOutput.tailRows
+        ).history
+      : null;
     const output = deriveTerminalOutputPresentation(
       tab.sessionName,
       timelineEvents,
-      visibleOutput?.text,
-      visibleOutput?.startLine,
-      visibleOutput?.styledLines
+      structuredHistory?.text,
+      structuredHistory?.startLine,
+      structuredHistory?.styledLines,
+      visibleOutput
+        ? deriveTerminalAgentTranscriptForStructuredHistory(
+            visibleOutput.text,
+            visibleOutput.startLine,
+            visibleOutput.styledLines,
+            visibleOutput.tailRows
+          )
+        : undefined
     );
     if (!shouldRenderTerminalOutputPresentation(
       output,
@@ -1085,7 +1112,9 @@ function syncTerminalStructuredOutputs() {
       tab.id,
       outputIds
     );
-    const view = terminalStructuredOutputState.getView(tab.id, hasOutput);
+    const view = visibleOutput?.tailRows === 0
+      ? "raw-terminal"
+      : terminalStructuredOutputState.getView(tab.id, hasOutput);
     frame.classList.toggle(
       "is-agent-output-hidden",
       view === "agent-output" && hasOutput
@@ -1094,6 +1123,7 @@ function syncTerminalStructuredOutputs() {
       items: output.items,
       transcript: output.transcript,
       view,
+      agentOutputAvailable: visibleOutput?.tailRows !== 0,
       expandedIds: terminalStructuredOutputState.getExpandedIds(tab.id),
       onViewChange: (nextView) => {
         terminalStructuredOutputState.setView(tab.id, nextView);

@@ -55,13 +55,15 @@ type RenderedOutputListener = (
   visibleText: string,
   visibleStartLine: number,
   styledLines: TerminalStyledLine[],
-  isTranscriptCandidate: boolean
+  isTranscriptCandidate: boolean,
+  tailRows: number
 ) => void;
 type RenderedSnapshotListener = (
   visibleText: string,
   visibleStartLine: number,
   styledLines: TerminalStyledLine[],
-  isTranscriptCandidate: boolean
+  isTranscriptCandidate: boolean,
+  tailRows: number
 ) => void;
 type PaneClickListener = (event: {
   clientX: number;
@@ -558,6 +560,39 @@ function syncTerminalOutputTypography(container: HTMLElement, terminal: Terminal
   );
 }
 
+export function getTerminalLiveTailRows(rows: number) {
+  const tailRows = Math.min(8, Math.max(3, Math.floor(rows * 0.42)));
+  return rows <= tailRows ? 0 : tailRows;
+}
+
+function syncTerminalLiveTailRows(container: HTMLElement, terminal: Terminal) {
+  const tailRows = getTerminalLiveTailRows(terminal.rows);
+  const screenRect = container.querySelector<HTMLElement>(".xterm-screen")
+    ?.getBoundingClientRect();
+  const frameRect = container.getBoundingClientRect();
+  let rowHeight = Number(terminal.options.fontSize) * Number(terminal.options.lineHeight);
+  if (screenRect && screenRect.height > 0 && terminal.rows > 0) {
+    rowHeight = screenRect.height / terminal.rows;
+    container.style.setProperty(
+      "--terminal-row-height",
+      `${rowHeight}px`
+    );
+  }
+  container.style.setProperty("--terminal-live-tail-rows", String(tailRows));
+  container.style.setProperty(
+    "--terminal-live-tail-height",
+    `${rowHeight * tailRows}px`
+  );
+  const screenBottomOffset = screenRect
+    ? Math.max(0, frameRect.bottom - screenRect.bottom)
+    : 0;
+  container.style.setProperty(
+    "--terminal-live-tail-bottom",
+    `${rowHeight * tailRows + screenBottomOffset}px`
+  );
+  return tailRows;
+}
+
 export function createTerminalTab(deps: {
   container: HTMLElement;
   rendererStatusElement?: HTMLElement;
@@ -588,6 +623,7 @@ export function createTerminalTab(deps: {
   terminal.loadAddon(webLinksAddon);
   terminal.open(deps.container);
   syncTerminalOutputTypography(deps.container, terminal);
+  syncTerminalLiveTailRows(deps.container, terminal);
 
   const outputBuffer = createTerminalOutputBuffer((data) => {
     terminal.write(data, () => {
@@ -597,7 +633,8 @@ export function createTerminalTab(deps: {
         snapshot.text,
         snapshot.startLine,
         snapshot.styledLines,
-        snapshot.isTranscriptCandidate
+        snapshot.isTranscriptCandidate,
+        syncTerminalLiveTailRows(deps.container, terminal)
       );
     });
   });
@@ -642,7 +679,16 @@ export function createTerminalTab(deps: {
     }
 
     refreshTerminalRenderer(terminal);
+    const tailRows = syncTerminalLiveTailRows(deps.container, terminal);
     controller?.resize(terminal.cols, terminal.rows);
+    const snapshot = getRenderedTerminalSnapshot(terminal);
+    deps.onSnapshot?.(
+      snapshot.text,
+      snapshot.startLine,
+      snapshot.styledLines,
+      snapshot.isTranscriptCandidate,
+      tailRows
+    );
   }
 
   function scheduleFitAndResize() {
@@ -1343,7 +1389,7 @@ export function createTerminalTab(deps: {
   document.addEventListener("keydown", handleDocumentKeyDown, { capture: true });
 
   const handleWindowResize = () => {
-    safeFitAndResize();
+    scheduleFitAndResize();
   };
 
   window.addEventListener("resize", handleWindowResize);
@@ -1368,7 +1414,8 @@ export function createTerminalTab(deps: {
       snapshot.text,
       snapshot.startLine,
       snapshot.styledLines,
-      snapshot.isTranscriptCandidate
+      snapshot.isTranscriptCandidate,
+      syncTerminalLiveTailRows(deps.container, terminal)
     );
   });
 

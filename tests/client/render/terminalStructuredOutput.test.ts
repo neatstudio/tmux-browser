@@ -154,14 +154,16 @@ describe("renderTerminalStructuredOutput", () => {
       .toBe("First conclusion\n\n\nSecond conclusion");
   });
 
-  it("groups consecutive transcript activities while preserving blank terminal lines", () => {
+  it("compresses process-internal blank lines inside an activity group", () => {
     const root = document.createElement("div");
     const onToggleExpanded = vi.fn();
     const transcript: TerminalAgentTranscript = {
       blocks: [
         { id: "activity:ran", kind: "activity", groupId: "group:0", title: "Ran", text: "Ran npm test" },
         { id: "blank:0", kind: "narrative", text: "", blankLineCount: 2 },
-        { id: "activity:explored", kind: "activity", groupId: "group:0", title: "Explored", text: "Read output.ts" },
+        { id: "activity:ran-2", kind: "activity", groupId: "group:0", title: "Ran", text: "Ran lint" },
+        { id: "blank:1", kind: "narrative", text: "", blankLineCount: 1 },
+        { id: "activity:ran-3", kind: "activity", groupId: "group:0", title: "Ran", text: "Ran build" },
         { id: "narrative:0", kind: "narrative", text: "The next update is separate." },
         { id: "activity:edited", kind: "activity", groupId: "group:1", title: "Edited", text: "Updated styles.css" }
       ]
@@ -171,7 +173,7 @@ describe("renderTerminalStructuredOutput", () => {
       items: [],
       transcript,
       view: "agent-output",
-      expandedIds: new Set(["activity:ran"]),
+      expandedIds: new Set(),
       onViewChange: vi.fn(),
       onToggleExpanded
     });
@@ -182,34 +184,40 @@ describe("renderTerminalStructuredOutput", () => {
     const buttons = groups[0]?.querySelectorAll<HTMLButtonElement>(
       "[data-action='toggle-terminal-transcript']"
     );
-    const spacer = root.querySelector<HTMLElement>(".terminal-agent-transcript-blank");
 
     expect(groups).toHaveLength(2);
-    expect(buttons).toHaveLength(2);
-    expect([...groups[0]!.children].slice(0, 4).map((child) => child.tagName)).toEqual([
+    expect(buttons).toHaveLength(3);
+    expect([...groups[0]!.children].map((child) => child.tagName)).toEqual([
       "BUTTON",
-      "PRE",
-      "DIV",
+      "BUTTON",
       "BUTTON"
     ]);
-    expect(groups[0]?.children[2]?.classList.contains("terminal-agent-transcript-blank"))
-      .toBe(true);
+    expect(groups[0]?.querySelector(".terminal-agent-transcript-blank")).toBeNull();
     expect(buttons?.[0]?.textContent).toBe("Ran");
-    expect(buttons?.[0]?.getAttribute("aria-expanded")).toBe("true");
-    expect(buttons?.[1]?.textContent).toBe("Explored");
+    expect(buttons?.[0]?.getAttribute("aria-expanded")).toBe("false");
+    expect(buttons?.[1]?.textContent).toBe("Ran");
     expect(buttons?.[1]?.getAttribute("aria-expanded")).toBe("false");
-    expect(groups[0]?.querySelectorAll(".terminal-agent-transcript-detail")).toHaveLength(1);
+    expect(groups[0]?.querySelectorAll(".terminal-agent-transcript-detail")).toHaveLength(0);
     expect(groups[1]?.querySelectorAll(".terminal-agent-transcript-detail")).toHaveLength(0);
-    const detail = groups[0]?.querySelector<HTMLElement>(".terminal-agent-transcript-detail");
     const narrative = root.querySelector<HTMLElement>(".terminal-agent-transcript-narrative");
-    expect(buttons?.[0]?.getAttribute("aria-controls")).toBe(detail?.id);
+    expect(buttons?.[0]?.hasAttribute("aria-controls")).toBe(false);
     expect(buttons?.[1]?.hasAttribute("aria-controls")).toBe(false);
-    expect(spacer?.style.getPropertyValue("--terminal-agent-transcript-blank-lines")).toBe("2");
     expect(narrative?.textContent).toBe("The next update is separate.");
-    expect(detail?.tagName).toBe("PRE");
 
     buttons?.[0]?.click();
     expect(onToggleExpanded).toHaveBeenCalledWith("activity:ran");
+
+    renderTerminalStructuredOutput(root, {
+      items: [],
+      transcript,
+      view: "agent-output",
+      expandedIds: new Set(["activity:ran"]),
+      onViewChange: vi.fn(),
+      onToggleExpanded
+    });
+    const expandedGroup = root.querySelector(".terminal-agent-transcript-activity-group");
+    expect(expandedGroup?.querySelectorAll(".terminal-agent-transcript-blank")).toHaveLength(2);
+    expect(expandedGroup?.querySelectorAll(".terminal-agent-transcript-detail")).toHaveLength(1);
   });
 
   it("scopes transcript detail ids to their renderer root", () => {
@@ -306,6 +314,21 @@ describe("renderTerminalStructuredOutput", () => {
 
     root.querySelector<HTMLButtonElement>("[data-action='show-agent-output']")?.click();
     expect(onViewChange).toHaveBeenCalledWith("agent-output");
+  });
+
+  it("hides the Agent output restore control when the view is unavailable", () => {
+    const root = document.createElement("div");
+
+    renderTerminalStructuredOutput(root, {
+      items: [item()],
+      view: "raw-terminal",
+      agentOutputAvailable: false,
+      expandedIds: new Set(),
+      onViewChange: vi.fn(),
+      onToggleExpanded: vi.fn()
+    });
+
+    expect(root.querySelector("[data-action='show-agent-output']")).toBeNull();
   });
 
   it("removes the view when a session has no structured Agent output", () => {

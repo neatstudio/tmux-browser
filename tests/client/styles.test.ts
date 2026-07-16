@@ -90,10 +90,16 @@ describe("client layout styles", () => {
       /\.terminal-frame\.is-agent-output-hidden\s+\.xterm\s*\{[^}]*visibility:\s*hidden/s
     );
     expect(styles).toMatch(
-      /\.terminal-frame\.is-agent-output-hidden\s+\.terminal-structured-output\s*\{[^}]*bottom:\s*var\(--terminal-live-tail-height\);/s
+      /\.terminal-frame\.is-agent-output-hidden\s+\.terminal-structured-output\s*\{[^}]*bottom:\s*var\(--terminal-live-tail-bottom\);/s
     );
     expect(styles).toMatch(
-      /--terminal-live-tail-height:\s*clamp\([^;]+calc\(var\(--terminal-row-height\)\s*\*\s*8\)[^;]+\);/s
+      /--terminal-live-tail-height:\s*168px;/s
+    );
+    expect(styles).toMatch(
+      /\.terminal-frame\.is-agent-output-hidden::after\s*\{[^}]*content:\s*"LIVE TERMINAL";[^}]*pointer-events:\s*none;/s
+    );
+    expect(styles).not.toMatch(
+      /@media\s*\(max-width:\s*900px\)\s*\{\s*\.terminal-frame\s*\{[^}]*\n\s+padding:\s*0\.5rem;/s
     );
   });
 

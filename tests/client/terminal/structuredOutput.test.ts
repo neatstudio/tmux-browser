@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   deriveTerminalAgentTranscript,
+  deriveTerminalAgentTranscriptForStructuredHistory,
   deriveTerminalOutputPresentation,
   deriveTerminalStructuredOutput,
-  shouldRenderTerminalOutputPresentation
+  shouldRenderTerminalOutputPresentation,
+  splitTerminalSnapshotForStructuredHistory
 } from "../../../src/client/terminal/structuredOutput";
 import type { TimelineEvent } from "../../../src/shared/timeline";
 
@@ -31,6 +33,108 @@ function conversation(
 }
 
 describe("deriveTerminalStructuredOutput", () => {
+  it("splits the live tail from structured history on physical line boundaries", () => {
+    const lines = Array.from({ length: 14 }, (_, index) => `line ${index}`);
+    const styledLines = lines.map((text, index) => ({
+      absoluteLine: 100 + index,
+      wrapped: index === 6,
+      spans: [{ text, style: {} }]
+    }));
+
+    const split = splitTerminalSnapshotForStructuredHistory(
+      lines.join("\n"),
+      100,
+      styledLines,
+      8
+    );
+
+    expect(split.history).toEqual({
+      text: lines.slice(0, 5).join("\n"),
+      startLine: 100,
+      styledLines: styledLines.slice(0, 5)
+    });
+    expect(split.liveTail.text).toBe(lines.slice(5).join("\n"));
+    expect(split.liveTail.startLine).toBe(105);
+    expect(split.liveTail.styledLines).toEqual(styledLines.slice(5));
+  });
+
+  it("uses absolute physical lines when the viewport ends with blank rows", () => {
+    const styledLines = Array.from({ length: 16 }, (_, index) => ({
+      absoluteLine: 40 + index,
+      spans: index < 11 ? [{ text: `line ${index}`, style: {} }] : []
+    }));
+    const text = Array.from({ length: 11 }, (_, index) =>
+      index === 9 ? "LIVE PROMPT>" : `line ${index}`
+    ).join("\n");
+
+    const split = splitTerminalSnapshotForStructuredHistory(text, 40, styledLines, 8);
+
+    expect(split.history.styledLines.at(-1)?.absoluteLine).toBe(47);
+    expect(split.liveTail.startLine).toBe(48);
+    expect(split.liveTail.text).toContain("LIVE PROMPT>");
+    expect(split.liveTail.styledLines.slice(-5).every((line) => line.spans.length === 0))
+      .toBe(true);
+  });
+
+  it("moves a whole activity to the live tail when its detail crosses the boundary", () => {
+    const lines = [
+      "history",
+      "history 2",
+      "• Ran npm test",
+      "  detail one",
+      "  detail two",
+      "tail 1",
+      "tail 2",
+      "tail 3"
+    ];
+    const styledLines = lines.map((text, index) => ({
+      absoluteLine: 70 + index,
+      spans: [{ text, style: {} }]
+    }));
+
+    const split = splitTerminalSnapshotForStructuredHistory(
+      lines.join("\n"), 70, styledLines, 4
+    );
+
+    expect(split.history.text).toBe("history\nhistory 2");
+    expect(split.liveTail.text).toContain("• Ran npm test\n  detail one\n  detail two");
+    expect(split.liveTail.startLine).toBe(72);
+  });
+
+  it("leaves no structured history when the live tail consumes a short viewport", () => {
+    const styledLines = Array.from({ length: 3 }, (_, index) => ({
+      absoluteLine: 90 + index,
+      spans: [{ text: `line ${index}`, style: {} }]
+    }));
+    const split = splitTerminalSnapshotForStructuredHistory(
+      "line 0\nline 1\nline 2", 90, styledLines, 3
+    );
+
+    expect(split.history).toEqual({ text: "", startLine: 90, styledLines: [] });
+    expect(split.liveTail.startLine).toBe(90);
+  });
+
+  it("keeps full-viewport eligibility when only one activity remains in history", () => {
+    const lines = [
+      "• Ran history-command",
+      "  history detail",
+      "tail filler",
+      "• Ran live-command",
+      "  live detail"
+    ];
+    const styledLines = lines.map((text, index) => ({
+      absoluteLine: 120 + index,
+      spans: [{ text, style: {} }]
+    }));
+
+    const transcript = deriveTerminalAgentTranscriptForStructuredHistory(
+      lines.join("\n"), 120, styledLines, 2
+    );
+
+    expect(transcript?.blocks.filter((block) => block.kind === "activity"))
+      .toMatchObject([{ title: "Ran", text: "Ran history-command\nhistory detail" }]);
+    expect(JSON.stringify(transcript)).not.toContain("live-command");
+  });
   it("keeps ordinary terminal output in the raw terminal view", () => {
     const output = deriveTerminalOutputPresentation(
       "shell",

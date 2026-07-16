@@ -70,6 +70,10 @@ test("updates the live transcript from the real xterm viewport scroll", async ({
     { length: initial.terminalSize.rows + 8 },
     (_, index) => `raw filler ${index}`
   );
+  const liveTailRows = Math.min(
+    8,
+    Math.max(3, Math.floor(initial.terminalSize.rows * 0.42))
+  );
   const lines = [
     "OLD VIEW NARRATIVE",
     "• Ran old-run-marker",
@@ -81,7 +85,8 @@ test("updates the live transcript from the real xterm viewport scroll", async ({
     "• Ran current-run-marker",
     "  ✓ current run complete",
     "• Explored current-tree-marker",
-    "  └ Read current file"
+    "  └ Read current file",
+    ...Array.from({ length: liveTailRows }, (_, index) => `live tail ${index}`)
   ];
 
   await page.evaluate(() => window.__terminalTranscriptHarness.setLiveTranscript(true));
@@ -141,25 +146,63 @@ test("keeps a clickable live xterm tail below Agent output", async ({ page }, te
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
   const before = await getHarnessState(page);
-  await page.evaluate(() => window.__terminalTranscriptHarness.emitPty(
-    "\x1b[2J\x1b[H\x1b[999BLIVE PROMPT> "
-  ));
+  const tailRows = Math.min(8, Math.max(3, Math.floor(before.terminalSize.rows * 0.42)));
+  const historyRows = before.terminalSize.rows - tailRows;
+  const historyLines = [
+    "Agent history",
+    "• Ran first-command",
+    "",
+    "• Ran second-command",
+    "",
+    "• Ran third-command"
+  ];
+  while (historyLines.length < historyRows) historyLines.push("");
+  const tailLines = Array.from({ length: tailRows }, () => "");
+  tailLines[tailLines.length - 1] = "LIVE PROMPT> ";
+  await page.evaluate(() => window.__terminalTranscriptHarness.setLiveTranscript(true));
+  await page.evaluate((lines) => window.__terminalTranscriptHarness.emitPty(
+    `\x1b[2J\x1b[H${lines.join("\r\n")}`
+  ), [...historyLines, ...tailLines]);
 
   const xterm = page.locator(".xterm");
   const overlay = page.locator(".terminal-structured-output");
   await expect(xterm).toBeVisible();
   await expect(overlay).toBeVisible();
+  await expect(overlay).not.toContainText("LIVE PROMPT>");
+  const activityButtons = overlay.locator("[data-action='toggle-terminal-transcript']");
+  await expect(activityButtons).toHaveCount(3);
+  const activityTops = await activityButtons.evaluateAll((buttons) =>
+    buttons.map((button) => button.getBoundingClientRect().top)
+  );
+  expect(new Set(activityTops).size).toBe(1);
   const geometry = await page.evaluate(() => {
     const xtermRect = document.querySelector<HTMLElement>(".xterm")!.getBoundingClientRect();
+    const screenRect = document.querySelector<HTMLElement>(".xterm-screen")!.getBoundingClientRect();
     const overlayRect = document.querySelector<HTMLElement>(".terminal-structured-output")!
       .getBoundingClientRect();
     return {
-      xterm: { top: xtermRect.top, bottom: xtermRect.bottom, height: xtermRect.height },
-      overlay: { top: overlayRect.top, bottom: overlayRect.bottom, height: overlayRect.height }
+      xterm: {
+        top: xtermRect.top,
+        bottom: xtermRect.bottom,
+        screenBottom: screenRect.bottom,
+        height: xtermRect.height
+      },
+      overlay: { top: overlayRect.top, bottom: overlayRect.bottom, height: overlayRect.height },
+      expectedTailHeight: Number.parseFloat(
+        getComputedStyle(document.querySelector<HTMLElement>(".terminal-frame")!)
+          .getPropertyValue("--terminal-row-height")
+      ) * Number.parseInt(
+        getComputedStyle(document.querySelector<HTMLElement>(".terminal-frame")!)
+          .getPropertyValue("--terminal-live-tail-rows"),
+        10
+      )
     };
   });
   expect(geometry.overlay.height).toBeGreaterThan(0);
   expect(geometry.xterm.bottom - geometry.overlay.bottom).toBeGreaterThan(0);
+  expect(Math.abs(
+    geometry.xterm.screenBottom - geometry.overlay.bottom - geometry.expectedTailHeight
+  )).toBeLessThanOrEqual(1);
   await expect.poll(() => getHarnessState(page)).toMatchObject({
     visibleText: expect.stringContaining("LIVE PROMPT>")
   });
@@ -188,6 +231,7 @@ test("keeps a clickable live xterm tail below Agent output", async ({ page }, te
   await expect.poll(() => getHarnessState(page)).toMatchObject({
     visibleText: expect.stringContaining("hello")
   });
+  await expect(overlay).not.toContainText("hello");
   await page.keyboard.press("Control+c");
   await expect.poll(() => getHarnessState(page)).toMatchObject({
     sentMessages: expect.arrayContaining([{ type: "input", data: "\x03" }])
@@ -202,21 +246,18 @@ test("keeps a clickable live xterm tail below Agent output", async ({ page }, te
   await expect.poll(async () => (await getHarnessState(page)).terminalSize.rows)
     .toBeLessThan(before.terminalSize.rows);
   const shortViewportBaseline = (await getHarnessState(page)).terminalSize;
-  const shortGeometry = await page.evaluate(() => {
-    const xtermRect = document.querySelector<HTMLElement>(".xterm")!.getBoundingClientRect();
-    const overlayRect = document.querySelector<HTMLElement>(".terminal-structured-output")!
-      .getBoundingClientRect();
-    return {
-      overlayHeight: overlayRect.height,
-      tailHeight: xtermRect.bottom - overlayRect.bottom
-    };
-  });
-  expect(shortGeometry.overlayHeight).toBeGreaterThan(0);
-  expect(shortGeometry.tailHeight).toBeGreaterThan(0);
-  await page.getByRole("button", { name: "Raw terminal" }).click();
-  await page.getByRole("button", { name: "Agent output" }).click();
+  await expect(overlay).toHaveCount(0);
+  await expect(page.locator(".xterm")).toBeVisible();
+  await expect(page.locator(".terminal-frame")).not.toHaveClass(/is-agent-output-hidden/);
   expect((await getHarnessState(page)).terminalSize).toEqual(shortViewportBaseline);
   await attachScreenshot(page, testInfo, "short-viewport-live-tail");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(async () => (await getHarnessState(page)).terminalSize.rows)
+    .toBe(before.terminalSize.rows);
+  await expect(overlay).toBeVisible();
+  await expect(overlay).not.toContainText("LIVE PROMPT>");
+  await expect(overlay).not.toContainText("hello");
+  await expect(activityButtons).toHaveCount(3);
 });
 
 test("keeps alternate-screen content isolated while the overlay toggles", async ({ page }) => {

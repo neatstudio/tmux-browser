@@ -3,7 +3,7 @@ import { renderSessionFloatingMenu } from "../../src/client/render/sessionFloati
 import { renderTerminalStructuredOutput } from "../../src/client/render/terminalStructuredOutput";
 import { createTerminalTab } from "../../src/client/terminal/createTerminalTab";
 import {
-  deriveTerminalAgentTranscript,
+  deriveTerminalAgentTranscriptForStructuredHistory,
   type TerminalAgentTranscript,
   type TerminalStyledLine
 } from "../../src/client/terminal/structuredOutput";
@@ -32,6 +32,7 @@ let lastSnapshot: {
   startLine: number;
   styledLines: TerminalStyledLine[];
   isTranscriptCandidate: boolean;
+  tailRows: number;
 } | null = null;
 let liveTranscriptEnabled = false;
 
@@ -212,16 +213,19 @@ function applySnapshot(
   text: string,
   startLine: number,
   styledLines: TerminalStyledLine[],
-  isTranscriptCandidate: boolean
+  isTranscriptCandidate: boolean,
+  tailRows: number
 ) {
-  lastSnapshot = { text, startLine, styledLines, isTranscriptCandidate };
+  lastSnapshot = { text, startLine, styledLines, isTranscriptCandidate, tailRows };
 
   if (!liveTranscriptEnabled) {
     return;
   }
 
   currentTranscript = isTranscriptCandidate
-    ? deriveTerminalAgentTranscript(text, startLine, styledLines)
+    ? deriveTerminalAgentTranscriptForStructuredHistory(
+        text, startLine, styledLines, tailRows
+      )
     : null;
   render();
 }
@@ -246,11 +250,11 @@ const mounted = createTerminalTab({
     cyan: "#7fd7d7"
   },
   onClosed: () => {},
-  onOutput: (_data, text, startLine, styledLines, isTranscriptCandidate) => {
-    applySnapshot(text, startLine, styledLines, isTranscriptCandidate);
+  onOutput: (_data, text, startLine, styledLines, isTranscriptCandidate, tailRows) => {
+    applySnapshot(text, startLine, styledLines, isTranscriptCandidate, tailRows);
   },
-  onSnapshot: (text, startLine, styledLines, isTranscriptCandidate) => {
-    applySnapshot(text, startLine, styledLines, isTranscriptCandidate);
+  onSnapshot: (text, startLine, styledLines, isTranscriptCandidate, tailRows) => {
+    applySnapshot(text, startLine, styledLines, isTranscriptCandidate, tailRows);
   },
   getPaneSummaries,
   onPaneClick: (event) => {
@@ -342,10 +346,11 @@ window.__terminalTranscriptHarness = {
   setLiveTranscript(enabled) {
     liveTranscriptEnabled = enabled;
     currentTranscript = enabled && lastSnapshot
-      ? deriveTerminalAgentTranscript(
+      ? deriveTerminalAgentTranscriptForStructuredHistory(
           lastSnapshot.text,
           lastSnapshot.startLine,
-          lastSnapshot.styledLines
+          lastSnapshot.styledLines,
+          lastSnapshot.tailRows
         )
       : enabled
         ? null

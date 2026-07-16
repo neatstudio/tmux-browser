@@ -218,7 +218,8 @@ import {
   createTerminalTab,
   createTerminalOutputBuffer,
   createTerminalTabController,
-  stripTerminalDeviceAttributeResponses
+  stripTerminalDeviceAttributeResponses,
+  getTerminalLiveTailRows
 } from "../../../src/client/terminal/createTerminalTab";
 import { deriveTerminalAgentTranscript } from "../../../src/client/terminal/structuredOutput";
 import { createTabState } from "../../../src/client/state/tabState";
@@ -500,6 +501,14 @@ describe("createTerminalOutputBuffer", () => {
 });
 
 describe("createTerminalTab", () => {
+  it("derives one live-tail row contract from the fitted terminal height", () => {
+    expect(getTerminalLiveTailRows(36)).toBe(8);
+    expect(getTerminalLiveTailRows(13)).toBe(5);
+    expect(getTerminalLiveTailRows(4)).toBe(3);
+    expect(getTerminalLiveTailRows(3)).toBe(0);
+    expect(getTerminalLiveTailRows(2)).toBe(0);
+    expect(getTerminalLiveTailRows(1)).toBe(0);
+  });
   beforeEach(() => {
     terminalTestState.terminals.length = 0;
     terminalTestState.fitAddons.length = 0;
@@ -645,7 +654,8 @@ describe("createTerminalTab", () => {
       "• Ran npm test\n  ✓ focused tests passed\n• Explored\n  └ Read terminal output",
       42,
       expect.any(Array),
-      true
+      true,
+      3
     );
     expect(onOutput.mock.calls[0]?.[3]?.[1]).toMatchObject({
       absoluteLine: 43,
@@ -746,7 +756,8 @@ describe("createTerminalTab", () => {
       lines.join("\n"),
       20,
       expect.any(Array),
-      true
+      true,
+      3
     );
     const [, visibleText, startLine, styledLines] = onOutput.mock.calls[0]!;
     expect(styledLines).toHaveLength(lines.length);
@@ -824,7 +835,8 @@ describe("createTerminalTab", () => {
       lines.join("\n"),
       0,
       [],
-      false
+      false,
+      0
     );
 
     mounted.destroy();
@@ -873,7 +885,8 @@ describe("createTerminalTab", () => {
       "viewport line three\nviewport line four",
       3,
       [],
-      false
+      false,
+      0
     );
     expect(onOutput).not.toHaveBeenCalled();
 
@@ -999,6 +1012,9 @@ describe("createTerminalTab", () => {
     expect(container.style.getPropertyValue("--terminal-output-font-size")).toBe("17px");
     expect(container.style.getPropertyValue("--terminal-output-line-height")).toBe("1.2");
     expect(container.style.getPropertyValue("--terminal-row-height")).toBe("20.4px");
+    expect(container.style.getPropertyValue("--terminal-live-tail-rows")).toBe("8");
+    expect(container.style.getPropertyValue("--terminal-live-tail-height")).toBe("163.2px");
+    expect(container.style.getPropertyValue("--terminal-live-tail-bottom")).toBe("163.2px");
 
     mounted.setFontFamily("Fira Code");
     mounted.setFontSize(19);
@@ -1011,6 +1027,8 @@ describe("createTerminalTab", () => {
     expect(container.style.getPropertyValue("--terminal-output-font-size")).toBe("19px");
     expect(container.style.getPropertyValue("--terminal-output-line-height")).toBe("1.55");
     expect(container.style.getPropertyValue("--terminal-row-height")).toBe("29.45px");
+    expect(container.style.getPropertyValue("--terminal-live-tail-height")).toBe("235.6px");
+    expect(container.style.getPropertyValue("--terminal-live-tail-bottom")).toBe("235.6px");
 
     mounted.destroy();
   });

@@ -45,6 +45,57 @@ export type TerminalAgentTranscript = {
   blocks: TerminalAgentTranscriptBlock[];
 };
 
+export function splitTerminalSnapshotForStructuredHistory(
+  text: string,
+  startLine: number,
+  styledLines: TerminalStyledLine[],
+  tailRows: number
+) {
+  const physicalLines = text.replace(/\r\n?/g, "\n").split("\n");
+  const styledByLine = new Map(styledLines.map((line) => [line.absoluteLine, line]));
+  const physicalLineCount = Math.max(
+    physicalLines.length,
+    ...styledLines.map((line) => line.absoluteLine - startLine + 1)
+  );
+  while (physicalLines.length < physicalLineCount) {
+    physicalLines.push("");
+  }
+  let splitIndex = Math.max(0, physicalLines.length - Math.max(0, tailRows));
+
+  while (splitIndex > 0 && styledByLine.get(startLine + splitIndex)?.wrapped) {
+    splitIndex -= 1;
+  }
+
+  if (splitIndex < physicalLines.length && isTranscriptContinuation(physicalLines[splitIndex]!)) {
+    for (let index = splitIndex - 1; index >= 0; index -= 1) {
+      if (getProcessRecordTitle(physicalLines[index]!)) {
+        splitIndex = index;
+        break;
+      }
+      if (physicalLines[index]!.trim() && !isTranscriptContinuation(physicalLines[index]!)) {
+        break;
+      }
+    }
+  }
+
+  const historyEndLine = startLine + splitIndex;
+  const historyStyledLines = styledLines.filter((line) => line.absoluteLine < historyEndLine);
+  const liveTailStyledLines = styledLines.filter((line) => line.absoluteLine >= historyEndLine);
+
+  return {
+    history: {
+      text: physicalLines.slice(0, splitIndex).join("\n"),
+      startLine,
+      styledLines: historyStyledLines
+    },
+    liveTail: {
+      text: physicalLines.slice(splitIndex).join("\n"),
+      startLine: historyEndLine,
+      styledLines: liveTailStyledLines
+    }
+  };
+}
+
 const PROCESS_RECORDS = [
   "Viewed Image",
   "Waiting for agents",
@@ -126,7 +177,8 @@ function getStableTranscriptId(
 export function deriveTerminalAgentTranscript(
   visibleText: string,
   visibleStartLine = 0,
-  styledLines: TerminalStyledLine[] = []
+  styledLines: TerminalStyledLine[] = [],
+  minimumActivityCount = 2
 ): TerminalAgentTranscript | null {
   const blocks: TerminalAgentTranscriptBlock[] = [];
   const narrativeLines: string[] = [];
@@ -260,9 +312,26 @@ export function deriveTerminalAgentTranscript(
   flushActivity();
   flushNarrative();
 
-  return blocks.filter((block) => block.kind === "activity").length >= 2
+  return blocks.filter((block) => block.kind === "activity").length >= minimumActivityCount
     ? { blocks }
     : null;
+}
+
+export function deriveTerminalAgentTranscriptForStructuredHistory(
+  visibleText: string,
+  visibleStartLine: number,
+  styledLines: TerminalStyledLine[],
+  tailRows: number
+) {
+  if (!deriveTerminalAgentTranscript(visibleText, visibleStartLine, styledLines)) {
+    return null;
+  }
+  const history = splitTerminalSnapshotForStructuredHistory(
+    visibleText, visibleStartLine, styledLines, tailRows
+  ).history;
+  return deriveTerminalAgentTranscript(
+    history.text, history.startLine, history.styledLines, 1
+  );
 }
 
 function isVisibleConversation(
@@ -307,7 +376,8 @@ export function deriveTerminalOutputPresentation(
   timelineEvents: TimelineEvent[],
   visibleText = "",
   visibleStartLine = 0,
-  styledLines: TerminalStyledLine[] = []
+  styledLines: TerminalStyledLine[] = [],
+  transcriptOverride?: TerminalAgentTranscript | null
 ) {
   const items = deriveTerminalStructuredOutput(sessionName, timelineEvents);
 
@@ -315,7 +385,9 @@ export function deriveTerminalOutputPresentation(
     items,
     transcript: items.length > 0
       ? null
-      : deriveTerminalAgentTranscript(visibleText, visibleStartLine, styledLines)
+      : transcriptOverride === undefined
+        ? deriveTerminalAgentTranscript(visibleText, visibleStartLine, styledLines)
+        : transcriptOverride
   };
 }
 

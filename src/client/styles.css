@@ -2337,17 +2337,16 @@ select {
 }
 
 .terminal-frame {
+  --terminal-frame-padding: 0.75rem;
   --terminal-row-height: 21px;
-  --terminal-live-tail-height: clamp(
-    4rem,
-    calc(var(--terminal-row-height) * 8),
-    min(42%, 12rem)
-  );
+  --terminal-live-tail-rows: 8;
+  --terminal-live-tail-height: 168px;
+  --terminal-live-tail-bottom: calc(168px + var(--terminal-frame-padding));
   position: relative;
   width: 100%;
   min-width: 0;
   min-height: 0;
-  padding: 0.75rem;
+  padding: var(--terminal-frame-padding);
   background: inherit;
   touch-action: none;
 }
@@ -2366,7 +2365,23 @@ select {
 }
 
 .terminal-frame.is-agent-output-hidden .terminal-structured-output {
-  bottom: var(--terminal-live-tail-height);
+  bottom: var(--terminal-live-tail-bottom);
+}
+
+.terminal-frame.is-agent-output-hidden::after {
+  content: "LIVE TERMINAL";
+  position: absolute;
+  right: 0;
+  bottom: var(--terminal-live-tail-bottom);
+  left: 0;
+  z-index: 5;
+  border-top: 1px solid rgba(143, 217, 255, 0.34);
+  color: rgba(191, 238, 255, 0.72);
+  font-size: 0.58rem;
+  line-height: 1;
+  text-align: right;
+  padding: 0.2rem 0.75rem 0;
+  pointer-events: none;
 }
 
 .terminal-structured-output[hidden] {
@@ -3520,7 +3535,7 @@ select {
 
 @media (max-width: 900px) {
   .terminal-frame {
-    padding: 0.5rem;
+    --terminal-frame-padding: 0.5rem;
   }
 }
 
@@ -3908,7 +3923,7 @@ select {
   }
 
   .terminal-frame {
-    padding: 0.25rem;
+    --terminal-frame-padding: 0.25rem;
   }
 
   .terminal-session-rail {
@@ -4273,7 +4288,7 @@ select {
 
 @media (max-width: 430px) {
   .terminal-frame {
-    padding: 0.18rem;
+    --terminal-frame-padding: 0.18rem;
   }
 
   .terminal-session-rail {

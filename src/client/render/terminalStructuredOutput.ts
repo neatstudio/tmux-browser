@@ -195,7 +195,9 @@ function renderTranscriptActivityGroup(
 
   entries.forEach((entry) => {
     if (entry.kind === "narrative") {
-      appendTranscriptNarrative(group, entry);
+      if (expandedActivity) {
+        appendTranscriptNarrative(group, entry);
+      }
       return;
     }
 
@@ -268,6 +270,7 @@ export function renderTerminalStructuredOutput(
     items: TerminalStructuredOutputItem[];
     transcript?: TerminalAgentTranscript | null;
     view: TerminalOutputView;
+    agentOutputAvailable?: boolean;
     expandedIds: Set<string>;
     onViewChange: (view: TerminalOutputView) => void;
     onToggleExpanded: (id: string) => void;
@@ -315,7 +318,7 @@ export function renderTerminalStructuredOutput(
 
   root.prepend(stream);
 
-  if (options.view === "raw-terminal") {
+  if (options.view === "raw-terminal" && options.agentOutputAvailable !== false) {
     const restore = document.createElement("button");
     restore.type = "button";
     restore.className = "terminal-structured-output-restore";
