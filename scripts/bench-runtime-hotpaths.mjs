@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { hostname } from "node:os";
 import { dirname, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -16,6 +17,8 @@ const DEFAULTS = {
   idleSeconds: 30,
   timeoutMs: 10_000
 };
+const BROWSER_VIEWPORT = { width: 1440, height: 900 };
+const TERMINAL_CHROME_ANIMATION_FRAMES_PER_CYCLE = 2;
 
 const API_TARGETS = [
   { name: "health", path: "/api/health" },
@@ -132,17 +135,120 @@ export function summarizeTerminalChromeProbe(probe) {
   const zeroReplacementPassed =
     counts.added === 0 && counts.removed === 0 && counts.replacements === 0;
   const identityPassed = allRootIdentitiesStable && allChildIdentitiesStable;
-  const elapsedWithinBudget = probe.elapsedMs <= 420;
   return {
     cycles: probe.cycles,
+    animationFramesPerCycle:
+      probe.animationFramesPerCycle ?? TERMINAL_CHROME_ANIMATION_FRAMES_PER_CYCLE,
     elapsedMs: probe.elapsedMs,
     counts,
     allRootIdentitiesStable,
     allChildIdentitiesStable,
     zeroReplacementPassed,
     identityPassed,
-    elapsedWithinBudget,
-    passed: zeroReplacementPassed && identityPassed && elapsedWithinBudget
+    passed: zeroReplacementPassed && identityPassed
+  };
+}
+
+function getTerminalChromeProbes(report) {
+  return (report?.browser?.raw ?? [])
+    .filter((run) => run?.terminalOpen?.supported === true)
+    .map((run) => run.terminalOpen.terminalChrome)
+    .filter(Boolean);
+}
+
+function average(values) {
+  return values.reduce((total, value) => total + value, 0) / values.length;
+}
+
+export function comparePairedTerminalChromeReports(baseline, candidate) {
+  const baselineProbes = getTerminalChromeProbes(baseline);
+  const candidateProbes = getTerminalChromeProbes(candidate);
+  const comparabilityMismatches = [];
+  const compareField = (name, baselineValue, candidateValue) => {
+    if (
+      baselineValue === undefined ||
+      baselineValue === null ||
+      baselineValue === "" ||
+      candidateValue === undefined ||
+      candidateValue === null ||
+      candidateValue === "" ||
+      JSON.stringify(baselineValue) !== JSON.stringify(candidateValue)
+    ) {
+      comparabilityMismatches.push(name);
+    }
+  };
+  compareField(
+    "machineId",
+    baseline?.environment?.machineId,
+    candidate?.environment?.machineId
+  );
+  compareField(
+    "runnerGitSha",
+    baseline?.environment?.runnerGitSha,
+    candidate?.environment?.runnerGitSha
+  );
+  compareField(
+    "chromiumVersion",
+    baseline?.environment?.chromiumVersion,
+    candidate?.environment?.chromiumVersion
+  );
+  compareField("viewport", baseline?.browser?.viewport, candidate?.browser?.viewport);
+  compareField(
+    "session",
+    baseline?.preflight?.firstSessionName,
+    candidate?.preflight?.firstSessionName
+  );
+  compareField(
+    "cadence",
+    baselineProbes.map((probe) => [probe.cycles, probe.animationFramesPerCycle]),
+    candidateProbes.map((probe) => [probe.cycles, probe.animationFramesPerCycle])
+  );
+  if (
+    baselineProbes.length === 0 ||
+    candidateProbes.length === 0 ||
+    baselineProbes.length !== candidateProbes.length
+  ) {
+    comparabilityMismatches.push("runCount");
+  }
+  const zeroReplacementPassed =
+    candidateProbes.length > 0 &&
+    candidateProbes.every(
+      (probe) =>
+        probe.counts.added === 0 &&
+        probe.counts.removed === 0 &&
+        probe.counts.replacements === 0 &&
+        probe.zeroReplacementPassed === true
+    );
+  const identityPassed =
+    candidateProbes.length > 0 &&
+    candidateProbes.every(
+      (probe) =>
+        probe.allRootIdentitiesStable === true &&
+        probe.allChildIdentitiesStable === true &&
+        probe.identityPassed === true
+    );
+  const timing =
+    baselineProbes.length > 0 && candidateProbes.length > 0
+      ? compareRelativeBudget(
+          average(baselineProbes.map((probe) => probe.elapsedMs)),
+          average(candidateProbes.map((probe) => probe.elapsedMs)),
+          1.2
+        )
+      : null;
+  const comparable = comparabilityMismatches.length === 0;
+  return {
+    comparable,
+    comparabilityMismatches,
+    baselineRuns: baselineProbes.length,
+    candidateRuns: candidateProbes.length,
+    zeroReplacementPassed,
+    identityPassed,
+    timing,
+    passed:
+      comparable &&
+      zeroReplacementPassed &&
+      identityPassed &&
+      timing?.withinBudget === true
   };
 }
 
@@ -174,6 +280,7 @@ export function parseCliOptions(args) {
     "api-concurrency",
     "idle-seconds",
     "timeout-ms",
+    "paired-baseline",
     "output"
   ]);
   for (let index = 0; index < rest.length; index += 2) {
@@ -208,6 +315,7 @@ export function parseCliOptions(args) {
       { allowZero: true }
     ),
     timeoutMs: integerOption("--timeout-ms", values.get("timeout-ms") ?? DEFAULTS.timeoutMs),
+    pairedBaseline: values.get("paired-baseline") ?? null,
     output: values.get("output") ?? null
   };
 }
@@ -506,7 +614,7 @@ async function collectBrowserMetrics(baseUrl, runs, timeoutMs) {
   const raw = [];
   try {
     for (let index = 0; index < runs; index += 1) {
-      const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+      const context = await browser.newContext({ viewport: BROWSER_VIEWPORT });
       const page = await context.newPage();
       page.setDefaultTimeout(timeoutMs);
       page.setDefaultNavigationTimeout(timeoutMs);
@@ -603,6 +711,7 @@ async function collectBrowserMetrics(baseUrl, runs, timeoutMs) {
     }
     return {
       chromiumVersion: browser.version(),
+      viewport: BROWSER_VIEWPORT,
       requestedRuns: runs,
       raw,
       summary: {
@@ -790,9 +899,9 @@ export async function runBenchmark(options) {
   const browser = await collectBrowserMetrics(options.url, options.runs, options.timeoutMs);
   const idleProcess = await collectIdleProcessMetrics(options.url, options.idleSeconds);
   const issues = collectReportIssues(api, browser, idleProcess);
-  return {
+  const report = {
     schemaVersion: 1,
-    valid: issues.length === 0,
+    valid: false,
     issues,
     capturedAt: new Date().toISOString(),
     environment: {
@@ -800,6 +909,7 @@ export async function runBenchmark(options) {
       healthCommit: health.commit,
       nodeVersion: process.version,
       chromiumVersion: browser.chromiumVersion,
+      machineId: hostname(),
       platform: `${process.platform}-${process.arch}`,
       url: options.url
     },
@@ -809,7 +919,8 @@ export async function runBenchmark(options) {
       apiRuns: options.apiRuns,
       apiConcurrency: options.apiConcurrency,
       idleSeconds: options.idleSeconds,
-      timeoutMs: options.timeoutMs
+      timeoutMs: options.timeoutMs,
+      pairedBaseline: options.pairedBaseline
     },
     preflight: {
       health,
@@ -820,6 +931,23 @@ export async function runBenchmark(options) {
     browser,
     idleProcess
   };
+  if (options.pairedBaseline) {
+    const baselinePath = resolve(options.pairedBaseline);
+    const baseline = JSON.parse(readFileSync(baselinePath, "utf8"));
+    const comparison = comparePairedTerminalChromeReports(baseline, report);
+    report.pairedTerminalChrome = { baselinePath, ...comparison };
+    if (!comparison.passed) {
+      issues.push(
+        `paired-terminal-chrome: ${
+          comparison.comparable
+            ? "candidate failed churn, identity, or relative timing gate"
+            : `incomparable (${comparison.comparabilityMismatches.join(", ")})`
+        }`
+      );
+    }
+  }
+  report.valid = issues.length === 0;
+  return report;
 }
 
 async function main() {

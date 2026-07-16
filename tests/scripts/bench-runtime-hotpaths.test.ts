@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 
 import {
   assertCleanWorktree,
+  comparePairedTerminalChromeReports,
   compareRelativeBudget,
   collectReportIssues,
   isDashboardDataReady,
@@ -17,6 +18,41 @@ import {
 } from "../../scripts/bench-runtime-hotpaths.mjs";
 
 describe("runtime hotpath benchmark helpers", () => {
+  function createTerminalChromeReport(overrides: Record<string, unknown> = {}) {
+    const report = {
+      environment: {
+        machineId: "build-mac",
+        runnerGitSha: "runner-sha",
+        chromiumVersion: "149.0.7827.55",
+        platform: "darwin-arm64"
+      },
+      options: { runs: 1 },
+      preflight: { firstSessionName: "cc1-remote" },
+      browser: {
+        viewport: { width: 1440, height: 900 },
+        raw: [
+          {
+            terminalOpen: {
+              supported: true,
+              terminalChrome: {
+                cycles: 10,
+                animationFramesPerCycle: 2,
+                elapsedMs: 500,
+                counts: { added: 0, removed: 0, replacements: 0 },
+                allRootIdentitiesStable: true,
+                allChildIdentitiesStable: true,
+                zeroReplacementPassed: true,
+                identityPassed: true,
+                passed: true
+              }
+            }
+          }
+        ]
+      }
+    };
+    return Object.assign(report, overrides);
+  }
+
   describe("summarizeSamples", () => {
     it("reports nearest-rank percentiles and arithmetic summary values", () => {
       expect(summarizeSamples([100, 1, 4, 2, 3])).toEqual({
@@ -93,6 +129,7 @@ describe("runtime hotpath benchmark helpers", () => {
       expect(
         summarizeTerminalChromeProbe({
           cycles: 10,
+          animationFramesPerCycle: 2,
           elapsedMs: 376.6,
           counts: {
             records: 0,
@@ -107,6 +144,7 @@ describe("runtime hotpath benchmark helpers", () => {
         })
       ).toEqual({
         cycles: 10,
+        animationFramesPerCycle: 2,
         elapsedMs: 376.6,
         counts: {
           records: 0,
@@ -120,7 +158,6 @@ describe("runtime hotpath benchmark helpers", () => {
         allChildIdentitiesStable: true,
         zeroReplacementPassed: true,
         identityPassed: true,
-        elapsedWithinBudget: true,
         passed: true
       });
     });
@@ -161,6 +198,63 @@ describe("runtime hotpath benchmark helpers", () => {
     });
   });
 
+  describe("comparePairedTerminalChromeReports", () => {
+    it("passes zero-churn candidates within 20 percent of a comparable baseline", () => {
+      const baseline = createTerminalChromeReport();
+      baseline.browser.raw[0].terminalOpen.terminalChrome.elapsedMs = 885.6;
+      const candidate = createTerminalChromeReport();
+      candidate.browser.raw[0].terminalOpen.terminalChrome.elapsedMs = 563.4;
+
+      expect(comparePairedTerminalChromeReports(baseline, candidate)).toEqual({
+        comparable: true,
+        comparabilityMismatches: [],
+        baselineRuns: 1,
+        candidateRuns: 1,
+        zeroReplacementPassed: true,
+        identityPassed: true,
+        timing: compareRelativeBudget(885.6, 563.4, 1.2),
+        passed: true
+      });
+    });
+
+    it("rejects mismatched machine, viewport, session, runner, Chromium, or cadence", () => {
+      const baseline = createTerminalChromeReport();
+      const candidate = createTerminalChromeReport();
+      candidate.environment.machineId = "other-mac";
+      candidate.environment.runnerGitSha = "other-runner";
+      candidate.environment.chromiumVersion = "150.0.0.0";
+      candidate.preflight.firstSessionName = "other-session";
+      candidate.browser.viewport.width = 1280;
+      candidate.browser.raw[0].terminalOpen.terminalChrome.animationFramesPerCycle = 1;
+
+      expect(comparePairedTerminalChromeReports(baseline, candidate)).toMatchObject({
+        comparable: false,
+        comparabilityMismatches: [
+          "machineId",
+          "runnerGitSha",
+          "chromiumVersion",
+          "viewport",
+          "session",
+          "cadence"
+        ],
+        passed: false
+      });
+    });
+
+    it("rejects paired reports when required comparability metadata is missing", () => {
+      const baseline = createTerminalChromeReport();
+      const candidate = createTerminalChromeReport();
+      delete baseline.environment.machineId;
+      delete candidate.environment.machineId;
+
+      expect(comparePairedTerminalChromeReports(baseline, candidate)).toMatchObject({
+        comparable: false,
+        comparabilityMismatches: ["machineId"],
+        passed: false
+      });
+    });
+  });
+
   describe("parseCliOptions", () => {
     it("parses the positional URL and benchmark defaults", () => {
       expect(
@@ -177,6 +271,7 @@ describe("runtime hotpath benchmark helpers", () => {
         apiConcurrency: 30,
         idleSeconds: 30,
         timeoutMs: 10_000,
+        pairedBaseline: null,
         output: null
       });
     });
@@ -197,6 +292,8 @@ describe("runtime hotpath benchmark helpers", () => {
           "0",
           "--timeout-ms",
           "2500",
+          "--paired-baseline",
+          ".gstack/baseline.json",
           "--output",
           "tmp/report.json"
         ])
@@ -208,6 +305,7 @@ describe("runtime hotpath benchmark helpers", () => {
         apiConcurrency: 8,
         idleSeconds: 0,
         timeoutMs: 2500,
+        pairedBaseline: ".gstack/baseline.json",
         output: "tmp/report.json"
       });
     });
