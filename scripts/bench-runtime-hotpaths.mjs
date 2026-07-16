@@ -125,16 +125,18 @@ export function summarizeTerminalChromeProbe(probe) {
   }
   const allRootIdentitiesStable = probe.rootIdentityStable.every(Boolean);
   const allChildIdentitiesStable = probe.childIdentityStable.every(Boolean);
+  const counts = Object.fromEntries(
+    countFields.map((field) => [field, probe.counts[field]])
+  );
+  counts.replacements = Math.min(counts.added, counts.removed);
   const zeroReplacementPassed =
-    probe.counts.added === 0 &&
-    probe.counts.removed === 0 &&
-    probe.counts.replacements === 0;
+    counts.added === 0 && counts.removed === 0 && counts.replacements === 0;
   const identityPassed = allRootIdentitiesStable && allChildIdentitiesStable;
   const elapsedWithinBudget = probe.elapsedMs <= 420;
   return {
     cycles: probe.cycles,
     elapsedMs: probe.elapsedMs,
-    counts: Object.fromEntries(countFields.map((field) => [field, probe.counts[field]])),
+    counts,
     allRootIdentitiesStable,
     allChildIdentitiesStable,
     zeroReplacementPassed,

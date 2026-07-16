@@ -136,6 +136,29 @@ describe("runtime hotpath benchmark helpers", () => {
         })
       ).toThrow("terminal chrome probe");
     });
+
+    it("pairs replacements across separate add and remove mutation records", () => {
+      expect(
+        summarizeTerminalChromeProbe({
+          cycles: 10,
+          elapsedMs: 300,
+          counts: {
+            records: 8,
+            added: 6,
+            removed: 6,
+            replacements: 0,
+            attributes: 0,
+            characterData: 0
+          },
+          rootIdentityStable: [true, false, false],
+          childIdentityStable: [false, false, false]
+        })
+      ).toMatchObject({
+        counts: { replacements: 6 },
+        zeroReplacementPassed: false,
+        passed: false
+      });
+    });
   });
 
   describe("parseCliOptions", () => {
