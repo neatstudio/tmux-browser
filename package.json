@@ -8,6 +8,7 @@
     "dev:client": "vite",
     "build": "tsc -p tsconfig.server.json && vite build",
     "bench:api": "node scripts/bench-api.mjs",
+    "benchmark:runtime": "node scripts/bench-runtime-hotpaths.mjs",
     "benchmark:activity": "tsx scripts/benchmark-structured-activity.mjs",
     "check:structured-events-compat": "node scripts/check-structured-events-compat.mjs",
     "pack:run": "node scripts/pack-run.mjs",
