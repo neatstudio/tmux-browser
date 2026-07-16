@@ -61,11 +61,13 @@ Captured artifact: `.gstack/benchmark-reports/runtime-hotpaths/baseline-6a5f503.
 
 The cache is keyed by tab id and mounted-terminal identity. A serializable signature includes session summary display fields, connection state, responsive tier, action count, project/board/session names and statuses, menu open/focus/draft state, keyboard mode, and relevant local UI flags. Callback identity is excluded. Each cache entry owns one stable actions object whose closures resolve current global/store state at call time; remount, tab close, or terminal identity change invalidates it.
 
-- [ ] Write tests proving equal signatures return the same stable actions and skip all three render callbacks.
-- [ ] Write tests proving changed display data rerenders, changed callbacks are observed through the stable indirection, and tab close/remount clears the entry.
-- [ ] Confirm failures against the missing cache.
-- [ ] Integrate the cache into `syncTerminalStatusBars` and initial terminal mount.
-- [ ] Run focused component tests and the no-op resize mutation benchmark; require zero terminal-chrome replacements.
+- [x] Write tests proving equal signatures return the same stable actions and skip all three render callbacks.
+- [x] Write tests proving changed display data rerenders, changed callbacks are observed through the stable indirection, and tab close/remount clears the entry.
+- [x] Confirm failures against the missing cache.
+- [x] Integrate the cache into `syncTerminalStatusBars` and initial terminal mount.
+- [x] Run focused component tests and the no-op resize mutation benchmark; require zero terminal-chrome replacements.
+
+Evidence: 65 focused chrome tests passed. A selector-scoped production Playwright probe ran 10 no-op resize cycles in 376.6ms with zero terminal-chrome mutation records, added nodes, removed nodes, or replacements; status bar, session rail, and floating menu root and child identities all remained stable.
 
 ### Task 2: Structural Store Equality And Request Single-Flight
 
