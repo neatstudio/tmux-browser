@@ -2337,6 +2337,12 @@ select {
 }
 
 .terminal-frame {
+  --terminal-row-height: 21px;
+  --terminal-live-tail-height: clamp(
+    4rem,
+    calc(var(--terminal-row-height) * 8),
+    min(42%, 12rem)
+  );
   position: relative;
   width: 100%;
   min-width: 0;
@@ -2344,11 +2350,6 @@ select {
   padding: 0.75rem;
   background: inherit;
   touch-action: none;
-}
-
-.terminal-frame.is-agent-output-hidden .xterm {
-  visibility: hidden;
-  pointer-events: none;
 }
 
 .terminal-structured-output {
@@ -2362,6 +2363,10 @@ select {
   padding: 0.75rem;
   background: var(--terminal-bg);
   color: rgba(239, 246, 252, 0.9);
+}
+
+.terminal-frame.is-agent-output-hidden .terminal-structured-output {
+  bottom: var(--terminal-live-tail-height);
 }
 
 .terminal-structured-output[hidden] {

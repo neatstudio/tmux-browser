@@ -85,6 +85,18 @@ describe("client layout styles", () => {
     );
   });
 
+  it("leaves a responsive live xterm tail below Agent output", () => {
+    expect(styles).not.toMatch(
+      /\.terminal-frame\.is-agent-output-hidden\s+\.xterm\s*\{[^}]*visibility:\s*hidden/s
+    );
+    expect(styles).toMatch(
+      /\.terminal-frame\.is-agent-output-hidden\s+\.terminal-structured-output\s*\{[^}]*bottom:\s*var\(--terminal-live-tail-height\);/s
+    );
+    expect(styles).toMatch(
+      /--terminal-live-tail-height:\s*clamp\([^;]+calc\(var\(--terminal-row-height\)\s*\*\s*8\)[^;]+\);/s
+    );
+  });
+
   it("keeps the xterm cursor visibly blinking", () => {
     expect(styles).toContain("@keyframes tmux-ui-terminal-cursor-blink");
     expect(styles).toMatch(

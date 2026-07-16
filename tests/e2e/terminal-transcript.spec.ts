@@ -137,6 +137,88 @@ test("keeps pane routing and dimensions stable across overlay switches", async (
   expect(after.terminalSize).toEqual(before.terminalSize);
 });
 
+test("keeps a clickable live xterm tail below Agent output", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+  const before = await getHarnessState(page);
+  await page.evaluate(() => window.__terminalTranscriptHarness.emitPty(
+    "\x1b[2J\x1b[H\x1b[999BLIVE PROMPT> "
+  ));
+
+  const xterm = page.locator(".xterm");
+  const overlay = page.locator(".terminal-structured-output");
+  await expect(xterm).toBeVisible();
+  await expect(overlay).toBeVisible();
+  const geometry = await page.evaluate(() => {
+    const xtermRect = document.querySelector<HTMLElement>(".xterm")!.getBoundingClientRect();
+    const overlayRect = document.querySelector<HTMLElement>(".terminal-structured-output")!
+      .getBoundingClientRect();
+    return {
+      xterm: { top: xtermRect.top, bottom: xtermRect.bottom, height: xtermRect.height },
+      overlay: { top: overlayRect.top, bottom: overlayRect.bottom, height: overlayRect.height }
+    };
+  });
+  expect(geometry.overlay.height).toBeGreaterThan(0);
+  expect(geometry.xterm.bottom - geometry.overlay.bottom).toBeGreaterThan(0);
+  await expect.poll(() => getHarnessState(page)).toMatchObject({
+    visibleText: expect.stringContaining("LIVE PROMPT>")
+  });
+
+  const paneClicksBeforeUpperClick = (await getHarnessState(page)).paneClicks.length;
+  await page.mouse.click(
+    (await overlay.boundingBox())!.x + 12,
+    (await overlay.boundingBox())!.y + (await overlay.boundingBox())!.height / 2
+  );
+  expect((await getHarnessState(page)).paneClicks).toHaveLength(paneClicksBeforeUpperClick);
+
+  const xtermBox = await xterm.boundingBox();
+  expect(xtermBox).not.toBeNull();
+  await page.mouse.click(xtermBox!.x + 20, xtermBox!.y + xtermBox!.height - 12);
+  const sentBeforeTyping = (await getHarnessState(page)).sentMessages.length;
+  await page.keyboard.type("hello");
+  await page.keyboard.press("Enter");
+  await expect.poll(async () => (await getHarnessState(page)).sentMessages
+    .slice(sentBeforeTyping)
+    .filter((message) => message.type === "input")
+    .map((message) => message.data ?? "")
+    .join(""))
+    .toContain("hello\r");
+
+  await page.evaluate(() => window.__terminalTranscriptHarness.emitPty("hello\r\nLIVE PROMPT> "));
+  await expect.poll(() => getHarnessState(page)).toMatchObject({
+    visibleText: expect.stringContaining("hello")
+  });
+  await page.keyboard.press("Control+c");
+  await expect.poll(() => getHarnessState(page)).toMatchObject({
+    sentMessages: expect.arrayContaining([{ type: "input", data: "\x03" }])
+  });
+
+  await page.getByRole("button", { name: "Raw terminal" }).click();
+  await page.getByRole("button", { name: "Agent output" }).click();
+  expect((await getHarnessState(page)).terminalSize).toEqual(before.terminalSize);
+  await attachScreenshot(page, testInfo, "phone-live-tail");
+
+  await page.setViewportSize({ width: 390, height: 320 });
+  await expect.poll(async () => (await getHarnessState(page)).terminalSize.rows)
+    .toBeLessThan(before.terminalSize.rows);
+  const shortViewportBaseline = (await getHarnessState(page)).terminalSize;
+  const shortGeometry = await page.evaluate(() => {
+    const xtermRect = document.querySelector<HTMLElement>(".xterm")!.getBoundingClientRect();
+    const overlayRect = document.querySelector<HTMLElement>(".terminal-structured-output")!
+      .getBoundingClientRect();
+    return {
+      overlayHeight: overlayRect.height,
+      tailHeight: xtermRect.bottom - overlayRect.bottom
+    };
+  });
+  expect(shortGeometry.overlayHeight).toBeGreaterThan(0);
+  expect(shortGeometry.tailHeight).toBeGreaterThan(0);
+  await page.getByRole("button", { name: "Raw terminal" }).click();
+  await page.getByRole("button", { name: "Agent output" }).click();
+  expect((await getHarnessState(page)).terminalSize).toEqual(shortViewportBaseline);
+  await attachScreenshot(page, testInfo, "short-viewport-live-tail");
+});
+
 test("keeps alternate-screen content isolated while the overlay toggles", async ({ page }) => {
   await page.evaluate(() => window.__terminalTranscriptHarness.emitPty(
     "\x1b[2J\x1b[HPRIMARY BUFFER CONTENT"
@@ -147,8 +229,9 @@ test("keeps alternate-screen content isolated while the overlay toggles", async 
   const before = await getHarnessState(page);
 
   await page.evaluate(() => window.__terminalTranscriptHarness.emitPty(
-    "\x1b[?1049h\x1b[2J\x1b[HALTERNATE SCREEN CONTENT"
+    "\x1b[?1049h\x1b[2J\x1b[H\x1b[999BALTERNATE SCREEN CONTENT - Ctrl+C to exit"
   ));
+  await expect(page.locator(".xterm")).toBeVisible();
   await page.getByRole("button", { name: "Raw terminal" }).click();
   await expect.poll(() => getHarnessState(page)).toMatchObject({
     visibleText: expect.stringContaining("ALTERNATE SCREEN CONTENT")

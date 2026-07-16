@@ -998,6 +998,7 @@ describe("createTerminalTab", () => {
     );
     expect(container.style.getPropertyValue("--terminal-output-font-size")).toBe("17px");
     expect(container.style.getPropertyValue("--terminal-output-line-height")).toBe("1.2");
+    expect(container.style.getPropertyValue("--terminal-row-height")).toBe("20.4px");
 
     mounted.setFontFamily("Fira Code");
     mounted.setFontSize(19);
@@ -1009,6 +1010,7 @@ describe("createTerminalTab", () => {
     expect(container.style.getPropertyValue("--terminal-output-font-family")).toBe("Fira Code");
     expect(container.style.getPropertyValue("--terminal-output-font-size")).toBe("19px");
     expect(container.style.getPropertyValue("--terminal-output-line-height")).toBe("1.55");
+    expect(container.style.getPropertyValue("--terminal-row-height")).toBe("29.45px");
 
     mounted.destroy();
   });

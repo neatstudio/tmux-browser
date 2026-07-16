@@ -538,6 +538,8 @@ function getRenderedTerminalText(terminal: Terminal) {
 }
 
 function syncTerminalOutputTypography(container: HTMLElement, terminal: Terminal) {
+  const fontSize = Number(terminal.options.fontSize);
+  const lineHeight = Number(terminal.options.lineHeight);
   container.style.setProperty(
     "--terminal-output-font-family",
     String(terminal.options.fontFamily)
@@ -549,6 +551,10 @@ function syncTerminalOutputTypography(container: HTMLElement, terminal: Terminal
   container.style.setProperty(
     "--terminal-output-line-height",
     String(terminal.options.lineHeight)
+  );
+  container.style.setProperty(
+    "--terminal-row-height",
+    `${fontSize * lineHeight}px`
   );
 }
 
@@ -1088,6 +1094,13 @@ export function createTerminalTab(deps: {
     paneTextSelection?.moved === true || terminal.hasSelection();
 
   const handleMouseDown = (event: MouseEvent) => {
+    const target = event.target as Element | null;
+    if (target?.closest(".terminal-structured-output")) {
+      clearPendingMouseFocus();
+      paneTextSelection = null;
+      return;
+    }
+
     if (browserScrollEnabled || event.button !== 0) {
       clearPendingMouseFocus();
       paneTextSelection = null;
