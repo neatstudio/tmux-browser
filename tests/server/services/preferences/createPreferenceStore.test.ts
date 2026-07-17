@@ -346,4 +346,53 @@ describe("createPreferenceStore", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("handles concurrent kanban synchronization without temp-file races", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "tmux-ui-preferences-"));
+    const filePath = join(dir, "preferences.json");
+
+    try {
+      const store = createPreferenceStore({ filePath });
+      await store.upsertKanbanProject({
+        name: "xxvisa",
+        path: "/srv/xxvisa",
+        server: null,
+        agents: [{ kind: "pm", name: "pm", command: null }]
+      });
+
+      await expect(
+        Promise.all(
+          Array.from({ length: 30 }, () =>
+            store.syncKanbanSessions(["xxvisa-pm"])
+          )
+        )
+      ).resolves.toHaveLength(30);
+      expect(JSON.parse(readFileSync(filePath, "utf8")).kanbanProjects)
+        .toEqual(store.getPreferences().kanbanProjects);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("serializes concurrent preference writes and keeps the last snapshot", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "tmux-ui-preferences-"));
+    const filePath = join(dir, "preferences.json");
+
+    try {
+      const store = createPreferenceStore({ filePath });
+      const sessionNames = Array.from({ length: 30 }, (_, index) => `session-${index}`);
+
+      await Promise.all(
+        sessionNames.map((sessionName) =>
+          store.setPinnedSession(sessionName, true)
+        )
+      );
+
+      expect(JSON.parse(readFileSync(filePath, "utf8")).pinnedSessionNames)
+        .toEqual(store.getPreferences().pinnedSessionNames);
+      expect(store.getPreferences().pinnedSessionNames).toHaveLength(30);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

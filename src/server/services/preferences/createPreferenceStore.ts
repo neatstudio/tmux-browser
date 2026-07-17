@@ -133,6 +133,25 @@ function normalizeKanbanProjects(projects: unknown): KanbanProject[] {
     .sort((left, right) => left.name.localeCompare(right.name));
 }
 
+function kanbanProjectsEqual(left: KanbanProject[], right: KanbanProject[]) {
+  return left.length === right.length && left.every((project, projectIndex) => {
+    const candidate = right[projectIndex];
+    return candidate !== undefined &&
+      project.name === candidate.name &&
+      project.path === candidate.path &&
+      project.server === candidate.server &&
+      project.agents.length === candidate.agents.length &&
+      project.agents.every((agent, agentIndex) => {
+        const candidateAgent = candidate.agents[agentIndex];
+        return candidateAgent !== undefined &&
+          agent.kind === candidateAgent.kind &&
+          agent.name === candidateAgent.name &&
+          agent.command === candidateAgent.command &&
+          agent.sessionName === candidateAgent.sessionName;
+      });
+  });
+}
+
 function normalizeSessionNamePart(value: string) {
   return value
     .trim()
@@ -194,13 +213,18 @@ export function createPreferenceStore(
 ): PreferenceStore {
   const filePath = options.filePath ?? getDefaultPreferenceFilePath();
   let preferences = readPreferences(filePath);
+  let persistQueue = Promise.resolve();
 
-  async function persist() {
-    const temporaryFilePath = `${filePath}.tmp`;
-
-    await mkdir(dirname(filePath), { recursive: true });
-    await writeFile(temporaryFilePath, `${JSON.stringify(preferences, null, 2)}\n`);
-    await rename(temporaryFilePath, filePath);
+  function persist() {
+    const serializedPreferences = `${JSON.stringify(preferences, null, 2)}\n`;
+    const operation = persistQueue.then(async () => {
+      const temporaryFilePath = `${filePath}.tmp`;
+      await mkdir(dirname(filePath), { recursive: true });
+      await writeFile(temporaryFilePath, serializedPreferences);
+      await rename(temporaryFilePath, filePath);
+    });
+    persistQueue = operation.catch(() => undefined);
+    return operation;
   }
 
   return {
@@ -372,8 +396,7 @@ export function createPreferenceStore(
     },
     async syncKanbanSessions(sessionNames) {
       const liveSessionNames = new Set(normalizeSessionNames(sessionNames));
-
-      preferences = normalizePreferences({
+      const nextPreferences = normalizePreferences({
         ...preferences,
         kanbanProjects: preferences.kanbanProjects.map((project) => ({
           ...project,
@@ -382,6 +405,15 @@ export function createPreferenceStore(
           )
         }))
       });
+      if (
+        kanbanProjectsEqual(
+          preferences.kanbanProjects,
+          nextPreferences.kanbanProjects
+        )
+      ) {
+        return this.getPreferences();
+      }
+      preferences = nextPreferences;
       await persist();
 
       return this.getPreferences();
