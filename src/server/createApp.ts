@@ -693,7 +693,12 @@ export function createApp(options: {
     app.set("trust proxy", options.trustedProxy);
   }
 
-  app.use(compression());
+  app.use(
+    compression({
+      filter: (req, res) =>
+        req.path.startsWith("/assets/") && compression.filter(req, res)
+    })
+  );
   app.use(express.json());
 
   app.get("/api/health", (_req, res) => {
