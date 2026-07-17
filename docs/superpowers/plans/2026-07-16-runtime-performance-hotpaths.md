@@ -100,10 +100,12 @@ Evidence: `node scripts/bench-runtime-hotpaths.mjs --store-events 100,500 --rate
 
 PTY bytes continue to enter `terminal.write` on every animation-frame output flush. Prompt snapshots are separate: inspect only the last 8 visible rows, at most once every 150ms. A pending snapshot runs after the latest `terminal.write` callback. Idle/final output flushes the snapshot; destroy and reconnect cancel it; close/exit performs one final snapshot only after the final write callback. Visibility changes do not discard pending work.
 
-- [ ] Write failing burst, tail-row, write-order, idle, exit, reconnect, and destroy tests.
-- [ ] Add regressions for printable input, Enter, raw `\x03`, CSI-u `\x1b[99;5u`, and ordinary xterm input.
-- [ ] Implement the scheduler and tail extraction.
-- [ ] Run terminal tests and a 60fps spinner/bulk-log benchmark; require <=7 snapshots/second and unchanged PTY byte delivery.
+- [x] Write failing burst, tail-row, write-order, idle, exit, reconnect, and destroy tests.
+- [x] Add regressions for printable input, Enter, raw `\x03`, CSI-u `\x1b[99;5u`, and ordinary xterm input.
+- [x] Implement the scheduler and tail extraction.
+- [x] Run terminal tests and a 60fps spinner/bulk-log benchmark; require <=7 snapshots/second and unchanged PTY byte delivery.
+
+Evidence: 69 focused terminal tests passed. The deterministic 60fps bulk-log simulation delivered all 60 1KiB PTY chunks while producing no more than 7 prompt snapshots in the first second; the final flush accounted for every raw byte. Snapshot extraction reads only the last 8 visible rows, session exit waits for the final xterm write callback, reconnect/destroy cancel stale work, and CSI-u Ctrl-C (`\x1b[99;5u`) is normalized to raw `\x03`. The full suite passed 898/898 and the production build succeeded.
 
 ### Task 4: Bounded WebSocket Delivery And Bridge Factory
 

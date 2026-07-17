@@ -576,11 +576,20 @@ describe("createTerminalTab", () => {
       onOutput
     });
     const terminal = terminalTestState.terminals[0]?.instance;
-    terminal!.rows = 3;
+    terminal!.rows = 10;
     terminal!.buffer.active.baseY = 0;
+    terminal!.buffer.active.viewportY = 0;
+    terminal!.buffer.active.length = 10;
     terminal!.visibleLines = [
-      "Old stale prompt: continue? [y/a/n]",
-      "Status line",
+      "stale 1",
+      "stale 2",
+      "line 3",
+      "line 4",
+      "line 5",
+      "line 6",
+      "line 7",
+      "line 8",
+      "line 9",
       "Do you want to continue? [y/a/n]"
     ];
 
@@ -600,9 +609,59 @@ describe("createTerminalTab", () => {
 
     expect(onOutput).toHaveBeenCalledWith(
       "\x1b[2Jraw tui repaint",
-      "Old stale prompt: continue? [y/a/n]\nStatus line\nDo you want to continue? [y/a/n]"
+      "line 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nDo you want to continue? [y/a/n]"
     );
 
+    mounted.destroy();
+  });
+
+  it("flushes the final prompt snapshot after the final terminal write", () => {
+    let scheduledCallback: FrameRequestCallback | null = null;
+    const socketListeners = new Map<string, (event?: MessageEvent<string>) => void>();
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      addEventListener: vi.fn(
+        (type: string, listener: (event?: MessageEvent<string>) => void) => {
+          socketListeners.set(type, listener);
+        }
+      ),
+      removeEventListener: vi.fn()
+    };
+    const calls: string[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      scheduledCallback = callback;
+      return 1;
+    });
+    vi.stubGlobal(WebSocket.name, class {
+      constructor() {
+        return socket;
+      }
+    });
+
+    const mounted = createTerminalTab({
+      container: document.createElement("div"),
+      tabId: "tab-final",
+      sessionName: "build",
+      onClosed: () => calls.push("closed"),
+      onOutput: () => calls.push("snapshot")
+    });
+    socketListeners.get("message")?.({
+      data: JSON.stringify({ type: "output", data: "final output" })
+    } as MessageEvent<string>);
+    socketListeners.get("message")?.({
+      data: JSON.stringify({ type: "session-exit" })
+    } as MessageEvent<string>);
+
+    expect(calls).toEqual([]);
+    scheduledCallback?.(performance.now());
+    expect(calls).toEqual([]);
+    const writeCallback = terminalTestState.terminals[0]?.instance.write.mock.calls[0]?.[1] as
+      | (() => void)
+      | undefined;
+    writeCallback?.();
+
+    expect(calls).toEqual(["snapshot", "closed"]);
     mounted.destroy();
   });
 
@@ -891,10 +950,14 @@ describe("createTerminalTab", () => {
     handleData?.("\x1b[?1;2c");
     handleData?.("\x1b[>0;276;0c");
     handleData?.("typed\x1b[?1;2c\r");
+    handleData?.("\x1b[99;5u");
 
-    expect(socket.send).toHaveBeenCalledTimes(1);
+    expect(socket.send).toHaveBeenCalledTimes(2);
     expect(socket.send).toHaveBeenCalledWith(
       JSON.stringify({ type: "input", data: "typed\r" })
+    );
+    expect(socket.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: "input", data: "\x03" })
     );
 
     mounted.destroy();

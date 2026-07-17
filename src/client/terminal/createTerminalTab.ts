@@ -27,6 +27,7 @@ import {
   isSelectionWithinOnePane
 } from "./paneSelection";
 import { SHIFT_ENTER_SEQUENCE } from "./keySequences";
+import { createPromptSnapshotScheduler } from "./promptSnapshotScheduler";
 
 const TERMINAL_SCROLLBACK = 5000;
 const PIXELS_PER_SCROLL_LINE = 40;
@@ -35,6 +36,7 @@ const MOUSE_CLICK_MOVE_TOLERANCE_PX = 5;
 const TERMINAL_RECONNECT_DELAY_MS = 2_000;
 const DEVICE_ATTRIBUTE_RESPONSE_PATTERN =
   /\x1b\[(?:\?[0-9;]*|>[0-9;]*|[0-9;]*)c/g;
+const CTRL_C_CSI_U_PATTERN = /\x1b\[99;5u/g;
 
 type FrameDeps = {
   requestFrame?: (callback: FrameRequestCallback) => number;
@@ -69,6 +71,13 @@ type PaneTextSelection = {
 
 export function stripTerminalDeviceAttributeResponses(data: string) {
   return data.replace(DEVICE_ATTRIBUTE_RESPONSE_PATTERN, "");
+}
+
+export function normalizeTerminalInput(data: string) {
+  return stripTerminalDeviceAttributeResponses(data).replace(
+    CTRL_C_CSI_U_PATTERN,
+    "\x03"
+  );
 }
 
 type BrowserSocket = {
@@ -230,6 +239,7 @@ export function createTerminalOutputBuffer(
 
       pendingFrame = requestFrame(flush);
     },
+    flush,
     destroy() {
       if (pendingFrame !== null) {
         cancelFrame(pendingFrame);
@@ -400,8 +410,9 @@ function refreshTerminalRenderer(terminal: Terminal) {
 
 function getRenderedTerminalText(terminal: Terminal) {
   const buffer = terminal.buffer.active;
-  const startLine = Math.max(0, buffer.baseY);
-  const endLine = Math.min(buffer.length, startLine + terminal.rows);
+  const visibleStartLine = Math.max(0, buffer.viewportY);
+  const endLine = Math.min(buffer.length, visibleStartLine + terminal.rows);
+  const startLine = Math.max(visibleStartLine, endLine - 8);
   const lines: string[] = [];
 
   for (let lineIndex = startLine; lineIndex < endLine; lineIndex += 1) {
@@ -446,16 +457,21 @@ export function createTerminalTab(deps: {
   terminal.loadAddon(webLinksAddon);
   terminal.open(deps.container);
 
+  let destroyed = false;
+  const promptSnapshotScheduler = createPromptSnapshotScheduler({
+    readSnapshot: () => getRenderedTerminalText(terminal),
+    onSnapshot: (rawData, snapshot) => deps.onOutput?.(rawData, snapshot)
+  });
   const outputBuffer = createTerminalOutputBuffer((data) => {
-    terminal.write(data, () => {
-      deps.onOutput?.(data, getRenderedTerminalText(terminal));
-    });
+    terminal.write(
+      data,
+      destroyed ? undefined : promptSnapshotScheduler.trackWrite(data)
+    );
   });
   let socket: WebSocket | null = null;
   let controller: ReturnType<typeof createTerminalTabController> | null = null;
   let reconnectTimer: number | null = null;
   let connectionState: TerminalConnectionState | null = null;
-  let destroyed = false;
   let browserScrollEnabled = false;
   let touchScrollY: number | null = null;
   let touchFocusY: number | null = null;
@@ -768,6 +784,10 @@ export function createTerminalTab(deps: {
   function connect(options: { announce?: boolean } = {}) {
     clearReconnectTimer();
     setConnectionState(options.announce ? "reconnecting" : "connecting");
+    if (controller) {
+      outputBuffer.flush();
+      promptSnapshotScheduler.cancel();
+    }
     controller?.destroy();
     socket = createTerminalSocket();
     controller = createTerminalTabController({
@@ -775,7 +795,10 @@ export function createTerminalTab(deps: {
       onOutput: (data) => {
         outputBuffer.write(data);
       },
-      onClosed: deps.onClosed,
+      onClosed: () => {
+        outputBuffer.flush();
+        promptSnapshotScheduler.finalize(deps.onClosed);
+      },
       onConnect: () => setConnectionState("connected"),
       onDisconnect: scheduleReconnect
     });
@@ -1159,7 +1182,7 @@ export function createTerminalTab(deps: {
   resizeObserver?.observe(deps.container);
 
   terminal.onData((data) => {
-    const userInput = stripTerminalDeviceAttributeResponses(data);
+    const userInput = normalizeTerminalInput(data);
 
     if (userInput) {
       controller?.sendInput(userInput);
@@ -1222,6 +1245,7 @@ export function createTerminalTab(deps: {
     },
     destroy() {
       destroyed = true;
+      promptSnapshotScheduler.cancel();
       clearReconnectTimer();
       if (pendingResizeFrame !== null) {
         window.cancelAnimationFrame(pendingResizeFrame);
