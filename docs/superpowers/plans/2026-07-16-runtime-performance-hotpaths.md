@@ -140,11 +140,13 @@ Evidence: 25 focused WS/bridge tests passed. Synthetic sockets pause above 512Ki
 
 Use the maintained `compression` package version selected from its current npm/Express documentation, pinned by the lockfile. Hashed assets match `/assets/.+-[A-Za-z0-9_-]{8,}\.(js|css|woff2?|png|svg)$` and receive `Cache-Control: public,max-age=31536000,immutable`. Unhashed assets and source maps use `public,max-age=0,must-revalidate`. `index.html` and SPA fallback use `no-cache`. Compression negotiates br/gzip/identity, sets `Vary: Accept-Encoding`, and leaves unsupported encodings on identity/406 behavior defined by the middleware.
 
-- [ ] Write failing integration tests for br, gzip, identity, Vary, hashed/unhashed/source-map caching, index, and SPA fallback.
-- [ ] Verify the dependency's official capability before installation.
-- [ ] Add middleware and exact static `setHeaders` policy.
-- [ ] Test against fixture files and the actual production build.
-- [ ] Require terminal JS compressed transfer <=135,000 bytes.
+- [x] Write failing integration tests for br, gzip, identity, Vary, hashed/unhashed/source-map caching, index, and SPA fallback.
+- [x] Verify the dependency's official capability before installation.
+- [x] Add middleware and exact static `setHeaders` policy.
+- [x] Test against fixture files and the actual production build.
+- [x] Require terminal JS compressed transfer <=135,000 bytes.
+
+Evidence: npm registry metadata and the package README confirmed `compression@1.8.1` supports gzip and Brotli; `@types/compression@1.8.1` supplies server types. Fixture integration tests cover br/gzip/identity, middleware-defined unsupported-encoding identity fallback, `Vary`, hashed immutable caching, unhashed/source-map revalidation, index, and SPA fallback. A live production build on port 3101 served the 480,767-byte terminal chunk as a 113,955-byte Brotli transfer with `public,max-age=31536000,immutable`; deep SPA paths returned 200 with `no-cache`. The full suite passed 909/909, the production build succeeded, and the production dependency audit found 0 vulnerabilities.
 
 ### Task 6: Final Verification, Merge, And Release
 

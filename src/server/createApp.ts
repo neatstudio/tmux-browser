@@ -1,4 +1,5 @@
 import express from "express";
+import compression from "compression";
 import { createReadStream, existsSync } from "node:fs";
 import { lstat, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -65,6 +66,22 @@ const IMAGE_MIME_TYPES = new Map([
   [".svg", "image/svg+xml"],
   [".webp", "image/webp"]
 ]);
+const HASHED_STATIC_ASSET_PATTERN =
+  /\/assets\/.+-[A-Za-z0-9_-]{8,}\.(?:js|css|woff2?|png|svg)$/;
+
+function setStaticCacheHeaders(res: express.Response, filePath: string) {
+  const normalizedPath = filePath.replace(/\\/g, "/");
+  if (normalizedPath.endsWith("/index.html")) {
+    res.setHeader("Cache-Control", "no-cache");
+    return;
+  }
+  res.setHeader(
+    "Cache-Control",
+    HASHED_STATIC_ASSET_PATTERN.test(normalizedPath)
+      ? "public,max-age=31536000,immutable"
+      : "public,max-age=0,must-revalidate"
+  );
+}
 
 class HttpError extends Error {
   constructor(
@@ -637,6 +654,7 @@ export function createApp(options: {
   preferences?: PreferenceStore;
   hookToken?: string;
   trustedProxy?: boolean | number | string | string[];
+  clientDistDir?: string;
 } = {}) {
   const tmuxService = options.tmuxService ?? createTmuxService();
   const readServerStatus = options.getServerStatus ?? getServerStatus;
@@ -653,12 +671,13 @@ export function createApp(options: {
   const fetchRemoteImageBody = options.fetchRemoteImage ?? fetchRemoteImage;
   const hookToken = options.hookToken ?? process.env.TMUX_UI_HOOK_TOKEN ?? "";
   const app = express();
-  const clientDistDir = resolve(process.cwd(), "dist/client");
+  const clientDistDir = options.clientDistDir ?? resolve(process.cwd(), "dist/client");
 
   if (options.trustedProxy !== undefined) {
     app.set("trust proxy", options.trustedProxy);
   }
 
+  app.use(compression());
   app.use(express.json());
 
   app.get("/api/health", (_req, res) => {
@@ -1270,15 +1289,21 @@ export function createApp(options: {
   );
 
   if (existsSync(clientDistDir)) {
-    app.use(express.static(clientDistDir));
+    app.use(
+      express.static(clientDistDir, {
+        setHeaders: setStaticCacheHeaders
+      })
+    );
 
-    app.get("/{*path}", (_req, res, next) => {
+    app.get(/^(?!\/(?:api|ws)(?:\/|$)).*$/, (_req, res, next) => {
       if (_req.path.startsWith("/api/") || _req.path.startsWith("/ws/")) {
         next();
         return;
       }
 
-      res.sendFile(resolve(clientDistDir, "index.html"));
+      res
+        .set("Cache-Control", "no-cache")
+        .sendFile("index.html", { root: clientDistDir });
     });
   }
 

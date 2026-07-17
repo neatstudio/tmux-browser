@@ -1,6 +1,7 @@
 import request from "supertest";
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   realpathSync,
@@ -23,6 +24,60 @@ import { createTimelineStore } from "../../src/server/services/timeline/createTi
 import { fetchRemoteImage } from "../../src/server/services/uploads/remoteImageUploadService";
 
 describe("createApp", () => {
+  it("compresses static assets and applies content-addressed cache policy", async () => {
+    const clientDistDir = mkdtempSync(join(tmpdir(), "tmux-ui-static-"));
+    mkdirSync(join(clientDistDir, "assets"), { recursive: true });
+    writeFileSync(join(clientDistDir, "index.html"), "<!doctype html><div id='app'></div>");
+    const javascript = `const payload = ${JSON.stringify("x".repeat(8_000))};`;
+    writeFileSync(join(clientDistDir, "assets/app-AbCd1234.js"), javascript);
+    writeFileSync(join(clientDistDir, "assets/app.js"), javascript);
+    writeFileSync(
+      join(clientDistDir, "assets/app.js.map"),
+      JSON.stringify({ version: 3, sources: ["app.ts"], mappings: "" })
+    );
+    const app = createApp({ clientDistDir });
+
+    try {
+      const brotli = await request(app)
+        .get("/assets/app-AbCd1234.js")
+        .set("Accept-Encoding", "br");
+      const gzip = await request(app)
+        .get("/assets/app-AbCd1234.js")
+        .set("Accept-Encoding", "gzip");
+      const identity = await request(app)
+        .get("/assets/app-AbCd1234.js")
+        .set("Accept-Encoding", "identity");
+      const unsupported = await request(app)
+        .get("/assets/app-AbCd1234.js")
+        .set("Accept-Encoding", "compress, identity;q=0");
+      const unhashed = await request(app).get("/assets/app.js");
+      const sourceMap = await request(app).get("/assets/app.js.map");
+      const index = await request(app).get("/");
+      const fallback = await request(app).get("/terminal/build");
+
+      expect(brotli.headers["content-encoding"]).toBe("br");
+      expect(gzip.headers["content-encoding"]).toBe("gzip");
+      expect(identity.headers["content-encoding"]).toBeUndefined();
+      expect(unsupported.status).toBe(200);
+      expect(unsupported.headers["content-encoding"]).toBeUndefined();
+      expect(brotli.headers.vary).toContain("Accept-Encoding");
+      expect(brotli.headers["cache-control"]).toBe(
+        "public,max-age=31536000,immutable"
+      );
+      expect(unhashed.headers["cache-control"]).toBe(
+        "public,max-age=0,must-revalidate"
+      );
+      expect(sourceMap.headers["cache-control"]).toBe(
+        "public,max-age=0,must-revalidate"
+      );
+      expect(index.headers["cache-control"]).toBe("no-cache");
+      expect(fallback.headers["cache-control"]).toBe("no-cache");
+      expect(fallback.text).toContain("id='app'");
+    } finally {
+      rmSync(clientDistDir, { recursive: true, force: true });
+    }
+  });
+
   it("serves health with version and build metadata", async () => {
     const app = createApp({
       tmuxService: {
@@ -74,7 +129,7 @@ describe("createApp", () => {
     expect(response.status).toBe(200);
     expect(response.headers["content-type"]).toContain("image/svg+xml");
     expect(response.headers["cache-control"]).toContain("max-age=86400");
-    expect(Number(response.headers["content-length"])).toBeGreaterThan(0);
+    expect(response.body.byteLength).toBeGreaterThan(0);
     expect(response.body.toString("utf8")).toContain("<svg");
     expect(response.body.toString("utf8")).toContain("<path");
   });
