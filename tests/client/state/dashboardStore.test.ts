@@ -512,7 +512,7 @@ describe("createDashboardStore", () => {
         message: "received between refresh starts",
         createdAt: "2026-07-14T02:00:00.000Z"
       });
-      const refreshB = store.refreshTimeline();
+      const refreshB = store.refreshTimeline({ historyExpired: true });
 
       if (resolutionOrder === "newer-first") {
         resolveB([conversation(3)]);
@@ -918,6 +918,109 @@ describe("createDashboardStore", () => {
     await store.refresh();
 
     expect(listener).not.toHaveBeenCalled();
+  });
+
+  it("reuses a field-equal refreshed state and does not notify", async () => {
+    const session = {
+      name: "build",
+      windows: 1,
+      status: "detached" as const,
+      lastActivityAt: 1,
+      paneCount: 1,
+      activeWindowName: "main",
+      currentCommand: "codex",
+      runtimeKind: "codex" as const,
+      currentPath: "/repo",
+      gitBranch: "main",
+      gitDirty: false,
+      paneDead: false,
+      paneDeadStatus: null,
+      preview: "ready",
+      inputPrompt: { snippet: "Continue?", actions: [{ label: "y", input: "y\r" }] },
+      panes: [{
+        sessionName: "build", paneId: "%1", windowIndex: 0, windowName: "main",
+        windowActive: true, paneIndex: 0, paneActive: true, currentCommand: "codex",
+        runtimeKind: "codex" as const, currentPath: "/repo", paneDead: false,
+        paneDeadStatus: null, panePid: 1, paneLeft: 0, paneTop: 0, paneWidth: 80, paneHeight: 24
+      }]
+    };
+    const api = {
+      getServerStatus: vi.fn().mockResolvedValue(SERVER_STATUS),
+      listDashboardSessions: vi.fn()
+        .mockResolvedValueOnce(structuredClone([session]))
+        .mockResolvedValueOnce(structuredClone([session]))
+    };
+    const store = createDashboardStore({ api, pollMs: 3000 });
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    await store.refresh();
+    const firstState = store.getState();
+    listener.mockClear();
+    await store.refresh();
+
+    expect(listener).not.toHaveBeenCalled();
+    expect(store.getState()).toBe(firstState);
+    expect(store.getState().sessions[0]).toBe(firstState.sessions[0]);
+    expect(store.getState().sessions[0]?.inputPrompt).toBe(firstState.sessions[0]?.inputPrompt);
+    expect(store.getState().sessions[0]?.panes?.[0]).toBe(firstState.sessions[0]?.panes?.[0]);
+  });
+
+  it("coalesces identical session refreshes while distinct option keys run independently", async () => {
+    let resolveDashboard!: (sessions: never[]) => void;
+    const dashboard = new Promise<never[]>((resolve) => { resolveDashboard = resolve; });
+    const api = {
+      getServerStatus: vi.fn().mockResolvedValue(SERVER_STATUS),
+      listDashboardSessions: vi.fn().mockReturnValue(dashboard),
+      listSessions: vi.fn().mockResolvedValue([])
+    };
+    const store = createDashboardStore({ api, pollMs: 3000 });
+
+    const first = store.refresh({ includePreview: true, includePanes: false, includeServerStatus: false });
+    const duplicate = store.refresh({ includePreview: true, includePanes: false, includeServerStatus: false });
+    const distinct = store.refresh({ includePreview: false, includePanes: false, includeServerStatus: false });
+    resolveDashboard([]);
+    await Promise.all([first, duplicate, distinct]);
+
+    expect(api.listDashboardSessions).toHaveBeenCalledOnce();
+    expect(api.listSessions).toHaveBeenCalledOnce();
+  });
+
+  it("retains a websocket event received during a coalesced timeline refresh", async () => {
+    let resolveTimeline!: (page: { events: never[]; nextCursor: null }) => void;
+    const timeline = new Promise<{ events: never[]; nextCursor: null }>((resolve) => { resolveTimeline = resolve; });
+    const api = { listTimelineEvents: vi.fn().mockReturnValue(timeline) };
+    const store = createDashboardStore({ api, pollMs: 3000 });
+
+    const first = store.refreshTimeline();
+    const duplicate = store.refreshTimeline();
+    store.mergeTimelineEvent({
+      id: "ws", type: "session-created", sessionName: "build",
+      message: "created", createdAt: "2026-07-16T02:00:00.000Z"
+    });
+    resolveTimeline({ events: [], nextCursor: null });
+    await Promise.all([first, duplicate]);
+
+    expect(api.listTimelineEvents).toHaveBeenCalledOnce();
+    expect(store.getState().timelineEvents?.map(({ id }) => id)).toEqual(["ws"]);
+  });
+
+  it("does not allow an older distinct session response to overwrite the latest generation", async () => {
+    let resolveOlder!: (sessions: Array<{ name: string; windows: number; status: "detached" }>) => void;
+    const older = new Promise<Array<{ name: string; windows: number; status: "detached" }>>((resolve) => { resolveOlder = resolve; });
+    const api = {
+      getServerStatus: vi.fn().mockResolvedValue(SERVER_STATUS),
+      listDashboardSessions: vi.fn().mockReturnValue(older),
+      listSessions: vi.fn().mockResolvedValue([{ name: "latest", windows: 1, status: "detached" }])
+    };
+    const store = createDashboardStore({ api, pollMs: 3000 });
+
+    const staleRefresh = store.refresh({ includePreview: true, includeServerStatus: false });
+    await store.refresh({ includePreview: false, includePanes: false, includeServerStatus: false });
+    resolveOlder([{ name: "stale", windows: 1, status: "detached" }]);
+    await staleRefresh;
+
+    expect(store.getState().sessions.map(({ name }) => name)).toEqual(["latest"]);
   });
 
   it("notifies subscribers when a session attached status changes", async () => {

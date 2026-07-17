@@ -10,6 +10,18 @@ import { SessionApiError, type TimelinePage } from "../api/sessionApi";
 import type { TimelineEvent } from "../../shared/timeline";
 import type { BrowserTab } from "./tabState";
 import type { SessionListCache } from "./sessionListCache";
+import {
+  reconcileDashboardState,
+  type DashboardState
+} from "./dashboardStateReconciler";
+import {
+  createSingleFlight,
+  sessionStatusRequestKey,
+  sessionsRequestKey,
+  timelineRequestKey
+} from "./singleFlight";
+
+export type { DashboardState } from "./dashboardStateReconciler";
 
 const TIMELINE_LIMIT = 8;
 const TIMELINE_MAX_EVENTS = 1000;
@@ -41,17 +53,6 @@ function compareTimelineEventsDescending(left: TimelineEvent, right: TimelineEve
 
   return compareTimelineIdsDescending(left.id, right.id);
 }
-
-export type DashboardState = {
-  sessions: SessionSummary[];
-  serverStatus: ServerStatus | null;
-  kanbanProjects: KanbanProject[];
-  timelineEvents?: TimelineEvent[];
-  timelineNextCursor?: string | null;
-  timelineHistoryExpired?: boolean;
-  loading: boolean;
-  error: string | null;
-};
 
 type DashboardStoreDeps = {
   api: Pick<
@@ -119,6 +120,9 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
   let timelineRefreshGeneration = 0;
   let hasLoadedOlderTimeline = false;
   const activeTimelineRefreshBaselines = new Map<number, number>();
+  const singleFlight = createSingleFlight();
+  let sessionRefreshGeneration = 0;
+  let kanbanRefreshGeneration = 0;
 
   function normalizeTimelinePage(
     response: TimelinePage | TimelineEvent[]
@@ -137,55 +141,14 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
     }
   }
 
-  function sessionsEqual(previous: SessionSummary[], next: SessionSummary[]) {
-    if (previous.length !== next.length) {
-      return false;
-    }
-
-    return previous.every((session, index) => {
-      const nextSession = next[index];
-
-      return (
-        nextSession !== undefined &&
-        session.name === nextSession.name &&
-        session.windows === nextSession.windows &&
-        session.status === nextSession.status &&
-        session.lastActivityAt === nextSession.lastActivityAt &&
-        session.paneCount === nextSession.paneCount &&
-        session.activeWindowName === nextSession.activeWindowName &&
-        session.currentCommand === nextSession.currentCommand &&
-        session.currentPath === nextSession.currentPath &&
-        session.gitBranch === nextSession.gitBranch &&
-        session.gitDirty === nextSession.gitDirty &&
-        session.paneDead === nextSession.paneDead &&
-        session.paneDeadStatus === nextSession.paneDeadStatus &&
-        session.preview === nextSession.preview &&
-        JSON.stringify(session.inputPrompt ?? null) ===
-          JSON.stringify(nextSession.inputPrompt ?? null) &&
-        JSON.stringify(session.panes ?? null) ===
-          JSON.stringify(nextSession.panes ?? null)
-      );
-    });
-  }
-
   function commit(
     nextState: DashboardState,
     notification: "immediate" | "streaming" = "immediate"
   ) {
-    const changed =
-      state.loading !== nextState.loading ||
-      state.error !== nextState.error ||
-      JSON.stringify(state.serverStatus) !==
-        JSON.stringify(nextState.serverStatus) ||
-      JSON.stringify(state.kanbanProjects) !==
-        JSON.stringify(nextState.kanbanProjects) ||
-      JSON.stringify(state.timelineEvents ?? []) !==
-        JSON.stringify(nextState.timelineEvents ?? []) ||
-      !sessionsEqual(state.sessions, nextState.sessions);
+    const previousState = state;
+    state = reconcileDashboardState(previousState, nextState);
 
-    state = nextState;
-
-    if (!changed) return;
+    if (state === previousState) return;
 
     if (notification === "streaming") {
       if (streamingNotifyTimer === null) {
@@ -236,7 +199,9 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
 
   async function refreshServerStatus() {
     try {
-      const serverStatus = await deps.api.getServerStatus();
+      const serverStatus = await singleFlight.run("server-status", () =>
+        deps.api.getServerStatus()
+      );
 
       commit({
         ...state,
@@ -270,7 +235,14 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
 
     try {
       const page = normalizeTimelinePage(
-        await deps.api.listTimelineEvents(TIMELINE_LIMIT)
+        await singleFlight.run(
+          timelineRequestKey({
+            cursor: null,
+            limit: TIMELINE_LIMIT,
+            historyExpired: options.historyExpired ?? false
+          }),
+          () => deps.api.listTimelineEvents!(TIMELINE_LIMIT)
+        )
       );
       const timelineEvents = page.events;
       if (refreshGeneration !== timelineRefreshGeneration) {
@@ -349,7 +321,14 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
     }
     try {
       const page = normalizeTimelinePage(
-        await deps.api.listTimelineEvents(TIMELINE_LIMIT, state.timelineNextCursor)
+        await singleFlight.run(
+          timelineRequestKey({
+            cursor: state.timelineNextCursor,
+            limit: TIMELINE_LIMIT,
+            historyExpired: false
+          }),
+          () => deps.api.listTimelineEvents!(TIMELINE_LIMIT, state.timelineNextCursor!)
+        )
       );
       const byId = new Map(page.events.map((event) => [event.id, event]));
       for (const current of state.timelineEvents ?? []) {
@@ -461,9 +440,20 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
   }
 
   async function refreshSessionList() {
+    const refreshGeneration = (sessionRefreshGeneration += 1);
     try {
       const loadSessions = deps.api.listSessions ?? deps.api.listDashboardSessions;
-      const sessions = mergeLightweightSessionList(await loadSessions());
+      const loadedSessions = await singleFlight.run(
+        sessionsRequestKey({
+          includePreview: false,
+          includePanes: false,
+          includeServerStatus: false,
+          mutedSessionNames: []
+        }),
+        loadSessions
+      );
+      if (refreshGeneration !== sessionRefreshGeneration) return;
+      const sessions = mergeLightweightSessionList(loadedSessions);
       deps.pruneTabs?.(sessions.map((session) => session.name));
       persistSessionList(sessions);
 
@@ -483,6 +473,7 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
   }
 
   async function refresh(options: RefreshOptions = {}) {
+    const refreshGeneration = (sessionRefreshGeneration += 1);
     try {
       const shouldPreferActiveSessionStatus =
         options.preferActiveSessionStatus ?? deps.preferActiveSessionStatus ?? true;
@@ -495,36 +486,55 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
           : null;
 
       if (activeSessionName) {
-        mergeSessionStatus(await deps.api.getSessionStatus(activeSessionName));
+        const session = await singleFlight.run(
+          sessionStatusRequestKey(activeSessionName),
+          () => deps.api.getSessionStatus(activeSessionName)
+        );
+        if (refreshGeneration !== sessionRefreshGeneration) return;
+        mergeSessionStatus(session);
         return;
       }
 
-      const loadSessions =
+      const includePreview = options.includePreview !== false;
+      const includePanes = options.includePanes ?? false;
+      const includeServerStatus = options.includeServerStatus !== false;
+      const mutedSessionNames =
+        !includePreview && includePanes ? deps.getMutedSessionNames?.() ?? [] : [];
+      const loadSessions = () =>
         options.includePreview === false
           ? options.includePanes
             ? deps.getMutedSessionNames
-              ? deps.api.listPaneSessions(deps.getMutedSessionNames())
+              ? deps.api.listPaneSessions(mutedSessionNames)
               : deps.api.listPaneSessions()
             : deps.api.listSessions()
           : deps.api.listDashboardSessions();
       const [sessions, serverStatus] = await Promise.all([
-        loadSessions,
-        options.includeServerStatus === false
+        singleFlight.run(
+          sessionsRequestKey({
+            includePreview,
+            includePanes,
+            includeServerStatus,
+            mutedSessionNames
+          }),
+          loadSessions
+        ),
+        !includeServerStatus
           ? Promise.resolve(state.serverStatus)
-          : deps.api.getServerStatus()
+          : singleFlight.run("server-status", () => deps.api.getServerStatus())
       ]);
+      if (refreshGeneration !== sessionRefreshGeneration) return;
       persistSessionList(sessions);
       deps.pruneTabs?.(sessions.map((session) => session.name));
 
       commit({
+        ...state,
         sessions,
         serverStatus,
-        kanbanProjects: state.kanbanProjects,
-        timelineEvents: state.timelineEvents,
         loading: false,
         error: null
       });
     } catch (error) {
+      if (refreshGeneration !== sessionRefreshGeneration) return;
       commit({
         ...state,
         loading: false,
@@ -534,8 +544,12 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
   }
 
   async function refreshKanbanProjects() {
+    const refreshGeneration = (kanbanRefreshGeneration += 1);
     try {
-      const kanbanProjects = await deps.api.listKanbanProjects();
+      const kanbanProjects = await singleFlight.run("kanban", () =>
+        deps.api.listKanbanProjects()
+      );
+      if (refreshGeneration !== kanbanRefreshGeneration) return;
 
       commit({
         ...state,
@@ -544,6 +558,7 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
         error: null
       });
     } catch (error) {
+      if (refreshGeneration !== kanbanRefreshGeneration) return;
       commit({
         ...state,
         loading: false,
@@ -561,8 +576,18 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
         return;
       }
 
+      const refreshGeneration = (sessionRefreshGeneration += 1);
       try {
-        const sessions = await deps.api.listDashboardSessions(sessionNames);
+        const sessions = await singleFlight.run(
+          sessionsRequestKey({
+            includePreview: true,
+            includePanes: false,
+            includeServerStatus: false,
+            mutedSessionNames: sessionNames
+          }),
+          () => deps.api.listDashboardSessions(sessionNames)
+        );
+        if (refreshGeneration !== sessionRefreshGeneration) return;
         const refreshedByName = new Map(
           sessions.map((session) => [session.name, session])
         );
@@ -588,6 +613,7 @@ export function createDashboardStore(deps: DashboardStoreDeps) {
         });
         persistSessionList(mergedSessions);
       } catch (error) {
+        if (refreshGeneration !== sessionRefreshGeneration) return;
         commit({
           ...state,
           loading: false,

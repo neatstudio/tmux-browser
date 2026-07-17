@@ -83,10 +83,12 @@ Reconcile these slices explicitly: scalar loading/error/cursors; server status f
 
 Single-flight keys are exact: `status:<session>`, `sessions:<preview>:<panes>:<server-status>:<sorted-muted>`, `server-status`, `kanban`, and `timeline:<cursor-or-latest>:<limit>:<history-expired>`. Only identical keys coalesce. Entries clear on resolve and reject. Timeline generation/baseline merge remains authoritative so WS events received during a refresh are retained and stale generations cannot overwrite them.
 
-- [ ] Write failing equality tests for every nested slice and notification behavior.
-- [ ] Write failing success, rejection/retry, distinct-key, WS-during-refresh, and stale-generation single-flight tests.
-- [ ] Implement structural reuse and keyed single-flight.
-- [ ] Run store tests and 100/500-event microbench; require no full-slice serialization and no ordering regression.
+- [x] Write failing equality tests for every nested slice and notification behavior.
+- [x] Write failing success, rejection/retry, distinct-key, WS-during-refresh, and stale-generation single-flight tests.
+- [x] Implement structural reuse and keyed single-flight.
+- [x] Run store tests and 100/500-event microbench; require no full-slice serialization and no ordering regression.
+
+Evidence: `node scripts/bench-runtime-hotpaths.mjs --store-events 100,500 --rate 20` reported no full-slice serialization and correct newest-first ordering. The 100-event sample completed in 2.19ms (45,563 events/s) and the 500-event sample in 2.82ms (177,510 events/s), both retaining the expected latest 8 events. Focused state tests passed 79/79; the full suite passed 891/891 and the production build succeeded. The baseline's direct 30-concurrent kanban HTTP 500s are server-side and are not claimed as fixed by client single-flight.
 
 ### Task 3: Bound Prompt Detection Work
 

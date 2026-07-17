@@ -1079,6 +1079,14 @@ export async function runBenchmark(options) {
 }
 
 async function main() {
+  if (process.argv.includes("--store-events")) {
+    execFileSync(
+      process.execPath,
+      ["--import", "tsx", resolve(root, "scripts/bench-dashboard-store.ts"), ...process.argv.slice(2)],
+      { stdio: "inherit" }
+    );
+    return;
+  }
   const options = parseCliOptions(process.argv.slice(2));
   const report = await runBenchmark(options);
   const output = resolve(options.output ?? defaultOutputPath(report.environment.gitSha));
