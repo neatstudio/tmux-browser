@@ -38,7 +38,8 @@ import { TimelineStoreConflictError } from "./services/timeline/createTimelineSt
 import {
   createPreferenceStore,
   type KanbanProject,
-  type PreferenceStore
+  type PreferenceStore,
+  type Preferences
 } from "./services/preferences/createPreferenceStore.js";
 import {
   getDefaultKanbanSelectedSessionNames
@@ -672,6 +673,21 @@ export function createApp(options: {
   const hookToken = options.hookToken ?? process.env.TMUX_UI_HOOK_TOKEN ?? "";
   const app = express();
   const clientDistDir = options.clientDistDir ?? resolve(process.cwd(), "dist/client");
+  let kanbanSyncInFlight: Promise<Preferences> | null = null;
+
+  function syncKanbanProjects() {
+    if (kanbanSyncInFlight) return kanbanSyncInFlight;
+    const operation = (async () => {
+      const liveSessionNames = await listLiveSessionNames(tmuxService);
+      return preferences.syncKanbanSessions(liveSessionNames);
+    })();
+    kanbanSyncInFlight = operation;
+    const clear = () => {
+      if (kanbanSyncInFlight === operation) kanbanSyncInFlight = null;
+    };
+    void operation.then(clear, clear);
+    return operation;
+  }
 
   if (options.trustedProxy !== undefined) {
     app.set("trust proxy", options.trustedProxy);
@@ -824,8 +840,7 @@ export function createApp(options: {
 
   app.get("/api/kanban/projects", async (_req, res, next) => {
     try {
-      const liveSessionNames = await listLiveSessionNames(tmuxService);
-      const nextPreferences = await preferences.syncKanbanSessions(liveSessionNames);
+      const nextPreferences = await syncKanbanProjects();
 
       res.json({ projects: nextPreferences.kanbanProjects });
     } catch (error) {

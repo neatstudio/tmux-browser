@@ -1718,6 +1718,55 @@ describe("createApp", () => {
     ]);
   });
 
+  it("coalesces concurrent kanban project synchronization", async () => {
+    let resolveSessions!: (sessionNames: string[]) => void;
+    const sessionNames = new Promise<string[]>((resolve) => {
+      resolveSessions = resolve;
+    });
+    const listSessionNames = vi.fn(() => sessionNames);
+    const syncKanbanSessions = vi.fn().mockResolvedValue({
+      pinnedSessionNames: [],
+      mutedSessionNames: [],
+      sessionSettings: {},
+      kanbanProjects: []
+    });
+    const app = createApp({
+      preferences: {
+        getPreferences: vi.fn(),
+        setPinnedSession: vi.fn(),
+        setMutedSession: vi.fn(),
+        setSessionSettings: vi.fn(),
+        upsertKanbanProject: vi.fn(),
+        deleteKanbanProject: vi.fn(),
+        addKanbanSession: vi.fn(),
+        removeKanbanSession: vi.fn(),
+        syncKanbanSessions,
+        renameSession: vi.fn()
+      },
+      tmuxService: {
+        listSessions: vi.fn(),
+        listSessionNames,
+        getSessionStatus: vi.fn(),
+        createSession: vi.fn(),
+        renameSession: vi.fn(),
+        killSession: vi.fn(),
+        sendCommand: vi.fn(),
+        splitPane: vi.fn(),
+        selectPane: vi.fn(),
+        killPane: vi.fn()
+      }
+    });
+    const responses = Array.from({ length: 30 }, () =>
+      request(app).get("/api/kanban/projects").then((response) => response)
+    );
+    await vi.waitFor(() => expect(listSessionNames).toHaveBeenCalled());
+    resolveSessions(["build"]);
+
+    await expect(Promise.all(responses)).resolves.toHaveLength(30);
+    expect(listSessionNames).toHaveBeenCalledOnce();
+    expect(syncKanbanSessions).toHaveBeenCalledOnce();
+  });
+
   it("removes a kanban project session without killing tmux when requested", async () => {
     const preferences = {
       getPreferences: vi.fn(),
