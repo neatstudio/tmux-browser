@@ -124,9 +124,11 @@ The app-event server owns one eventHub subscription and one `JSON.stringify` per
 
 The default bridge factory owns configuration state. It marks configured only after `show-options` and every synchronous `tmux set-option` command returns status 0; throw/nonzero remains retryable. Tests instantiate a fresh factory, so no module reset hook exists. Every viewer still gets its own PTY in this phase; shared bridge fan-out is explicitly deferred because input/resize ownership requires a separate design.
 
-- [ ] Write failing watermark, recovery, hard-close, cleanup, single-serialization, configure-once, and retry tests.
-- [ ] Implement policy, event fan-out, and factory.
-- [ ] Run focused tests and confirm bounded memory under synthetic slow sockets.
+- [x] Write failing watermark, recovery, hard-close, cleanup, single-serialization, configure-once, and retry tests.
+- [x] Implement policy, event fan-out, and factory.
+- [x] Run focused tests and confirm bounded memory under synthetic slow sockets.
+
+Evidence: 25 focused WS/bridge tests passed. Synthetic sockets pause above 512KiB, retry every 16ms, resume at or below 128KiB, and close at the 1MiB hard limit with code 1013 and reason `Client too slow`; cancellation clears queued payloads and timers. The app-event server owns one hub subscription and serializes each event once. The process-scoped bridge factory configures tmux once only after `show-options` and every `set-option` returns status 0, while throws and nonzero statuses remain retryable. The full suite passed 908/908 and the server/client production build succeeded.
 
 ### Task 5: Compress And Cache Static Assets
 

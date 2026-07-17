@@ -8,18 +8,20 @@ import type {
   ServerMessage
 } from "../../shared/protocol.js";
 import {
-  createTerminalBridge,
   type CreateTerminalBridge,
   type TerminalBridge
 } from "../services/terminal/createTerminalBridge.js";
+import { defaultTerminalBridgeFactory } from "../services/terminal/createTerminalBridgeFactory.js";
 import { createBridgeRegistry } from "../services/terminal/bridgeRegistry.js";
 import { registerWebSocketRoute } from "./webSocketRouter.js";
+import { createSocketBackpressure } from "./socketBackpressure.js";
 
 type Registry = ReturnType<typeof createBridgeRegistry>;
 
 type MessageSocket = {
+  readonly bufferedAmount: number;
   send: (payload: string) => void;
-  close: () => void;
+  close: (code?: number, reason?: string) => void;
   onMessage: (handler: (payload: string) => void) => void;
   onClose: (handler: () => void) => void;
 };
@@ -36,13 +38,16 @@ function parseMessage(payload: string): ClientMessage {
 
 function adaptWebSocket(socket: WebSocket): MessageSocket {
   return {
+    get bufferedAmount() {
+      return socket.bufferedAmount;
+    },
     send(payload) {
       if (socket.readyState === socket.OPEN) {
         socket.send(payload);
       }
     },
-    close() {
-      socket.close();
+    close(code, reason) {
+      socket.close(code, reason);
     },
     onMessage(handler) {
       socket.on("message", (payload: RawData) => {
@@ -59,18 +64,26 @@ function createTestSocket(): MessageSocket & {
   receive: (message: ClientMessage) => void;
   sent: string[];
   closeCount: number;
+  closeCalls: Array<{ code?: number; reason?: string }>;
+  setBufferedAmount: (bytes: number) => void;
 } {
   const messageHandlers: Array<(payload: string) => void> = [];
   const closeHandlers: Array<() => void> = [];
   const sent: string[] = [];
   let closeCount = 0;
+  let bufferedAmount = 0;
+  const closeCalls: Array<{ code?: number; reason?: string }> = [];
 
   return {
+    get bufferedAmount() {
+      return bufferedAmount;
+    },
     send(payload) {
       sent.push(payload);
     },
-    close() {
+    close(code, reason) {
       closeCount += 1;
+      closeCalls.push({ code, reason });
       closeHandlers.forEach((handler) => handler());
     },
     onMessage(handler) {
@@ -84,13 +97,19 @@ function createTestSocket(): MessageSocket & {
       messageHandlers.forEach((handler) => handler(payload));
     },
     sent,
+    closeCalls,
+    setBufferedAmount(bytes) {
+      bufferedAmount = bytes;
+    },
     get closeCount() {
       return closeCount;
     }
   };
 }
 
-function createSocketOutputBuffer(socket: MessageSocket) {
+function createSocketOutputBuffer(
+  delivery: ReturnType<typeof createSocketBackpressure>
+) {
   let pendingOutput = "";
   let pendingTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -112,7 +131,7 @@ function createSocketOutputBuffer(socket: MessageSocket) {
 
     const output = pendingOutput;
     pendingOutput = "";
-    socket.send(serialize({ type: "output", data: output }));
+    delivery.enqueue(serialize({ type: "output", data: output }));
   }
 
   return {
@@ -139,7 +158,7 @@ export function createTerminalSocketServer(deps: {
   registry?: Registry;
 } = {}) {
   const registry = deps.registry ?? createBridgeRegistry();
-  const buildBridge = deps.createBridge ?? createTerminalBridge;
+  const buildBridge = deps.createBridge ?? defaultTerminalBridgeFactory;
 
   const connections = new Map<
     MessageSocket,
@@ -148,6 +167,7 @@ export function createTerminalSocketServer(deps: {
       sessionName: string | null;
       bridge: TerminalBridge | null;
       outputBuffer: ReturnType<typeof createSocketOutputBuffer> | null;
+      delivery: ReturnType<typeof createSocketBackpressure>;
       cleanedUp: boolean;
     }
   >();
@@ -167,6 +187,7 @@ export function createTerminalSocketServer(deps: {
 
     connection.outputBuffer?.cancel();
     connection.outputBuffer = null;
+    connection.delivery.cancel();
 
     if (connection.bridge) {
       connection.bridge.kill();
@@ -177,21 +198,24 @@ export function createTerminalSocketServer(deps: {
   function attach(socket: MessageSocket, message: AttachMessage) {
     cleanup(socket);
 
+    const connection = {
+      tabId: message.tabId,
+      sessionName: message.sessionName,
+      bridge: null as TerminalBridge | null,
+      outputBuffer: null as ReturnType<typeof createSocketOutputBuffer> | null,
+      delivery: createSocketBackpressure(socket),
+      cleanedUp: false
+    };
+    connections.set(socket, connection);
+
     const bridge = buildBridge({
       sessionName: message.sessionName,
       cols: message.cols,
       rows: message.rows
     });
 
-    const connection = {
-      tabId: message.tabId,
-      sessionName: message.sessionName,
-      bridge,
-      outputBuffer: createSocketOutputBuffer(socket),
-      cleanedUp: false
-    };
-
-    connections.set(socket, connection);
+    connection.bridge = bridge;
+    connection.outputBuffer = createSocketOutputBuffer(connection.delivery);
     registry.attach(
       { tabId: message.tabId, sessionName: message.sessionName },
       socket
@@ -203,10 +227,15 @@ export function createTerminalSocketServer(deps: {
 
     bridge.onExit(() => {
       connection.outputBuffer?.flush();
-      socket.send(serialize({ type: "session-exit" }));
+      connection.delivery.enqueue(serialize({ type: "session-exit" }));
+      const flushed = connection.delivery.flushFinal();
       cleanup(socket);
-      socket.close();
+      if (flushed) socket.close();
     });
+  }
+
+  function sendMessage(socket: MessageSocket, message: ServerMessage) {
+    connections.get(socket)?.delivery.enqueue(serialize(message));
   }
 
   function bindSocket(socket: MessageSocket) {
@@ -215,6 +244,7 @@ export function createTerminalSocketServer(deps: {
       sessionName: null,
       bridge: null,
       outputBuffer: null,
+      delivery: createSocketBackpressure(socket),
       cleanedUp: false
     });
 
@@ -233,12 +263,10 @@ export function createTerminalSocketServer(deps: {
         }
 
         if (!connection.bridge) {
-          socket.send(
-            serialize({
-              type: "error",
-              message: "Terminal not attached"
-            })
-          );
+          sendMessage(socket, {
+            type: "error",
+            message: "Terminal not attached"
+          });
           return;
         }
 
@@ -259,12 +287,10 @@ export function createTerminalSocketServer(deps: {
 
         connection.bridge.resize(message.cols, message.rows);
       } catch (error) {
-        socket.send(
-          serialize({
-            type: "error",
-            message: error instanceof Error ? error.message : "Invalid message"
-          })
-        );
+        sendMessage(socket, {
+          type: "error",
+          message: error instanceof Error ? error.message : "Invalid message"
+        });
 
         socket.close();
       }
@@ -285,8 +311,10 @@ export function createTerminalSocketServer(deps: {
     },
     notifySessionExit(sessionName: string) {
       registry.getSocketsForSession(sessionName).forEach((socket) => {
-        socket.send(serialize({ type: "session-exit" }));
-        socket.close();
+        const messageSocket = socket as MessageSocket;
+        const connection = connections.get(messageSocket);
+        connection?.delivery.enqueue(serialize({ type: "session-exit" }));
+        if (connection?.delivery.flushFinal()) messageSocket.close();
       });
     },
     testOnly: {

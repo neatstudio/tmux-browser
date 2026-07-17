@@ -8,6 +8,7 @@ import type {
 } from "../../shared/appEvents.js";
 import type { AppEventHub } from "../services/events/createAppEventHub.js";
 import { registerWebSocketRoute } from "./webSocketRouter.js";
+import { createSocketBackpressure } from "./socketBackpressure.js";
 
 const APP_EVENT_SOCKET_OPTIONS = {
   path: "/ws/events",
@@ -15,8 +16,9 @@ const APP_EVENT_SOCKET_OPTIONS = {
 } as const;
 
 type EventSocket = {
+  readonly bufferedAmount: number;
   send: (payload: string) => void;
-  close: () => void;
+  close: (code?: number, reason?: string) => void;
   onClose: (handler: () => void) => void;
 };
 
@@ -26,13 +28,16 @@ function serialize(message: AppEventSocketMessage) {
 
 function adaptWebSocket(socket: WebSocket): EventSocket {
   return {
+    get bufferedAmount() {
+      return socket.bufferedAmount;
+    },
     send(payload) {
       if (socket.readyState === socket.OPEN) {
         socket.send(payload);
       }
     },
-    close() {
-      socket.close();
+    close(code, reason) {
+      socket.close(code, reason);
     },
     onClose(handler) {
       socket.on("close", handler);
@@ -43,12 +48,17 @@ function adaptWebSocket(socket: WebSocket): EventSocket {
 function createTestSocket(): EventSocket & {
   sent: string[];
   closeCount: number;
+  setBufferedAmount: (bytes: number) => void;
 } {
   const closeHandlers: Array<() => void> = [];
   const sent: string[] = [];
   let closeCount = 0;
+  let bufferedAmount = 0;
 
   return {
+    get bufferedAmount() {
+      return bufferedAmount;
+    },
     send(payload) {
       sent.push(payload);
     },
@@ -60,20 +70,37 @@ function createTestSocket(): EventSocket & {
       closeHandlers.push(handler);
     },
     sent,
+    setBufferedAmount(bytes) {
+      bufferedAmount = bytes;
+    },
     get closeCount() {
       return closeCount;
     }
   };
 }
 
-export function createAppEventSocketServer(deps: { eventHub: AppEventHub }) {
-  function bindSocket(socket: EventSocket) {
-    socket.send(serialize({ type: "hello" }));
-    const unsubscribe = deps.eventHub.subscribe((event: AppEvent) => {
-      socket.send(serialize(event));
-    });
+export function createAppEventSocketServer(deps: {
+  eventHub: AppEventHub;
+  serializeEvent?: (event: AppEvent) => string;
+}) {
+  const sockets = new Map<
+    EventSocket,
+    ReturnType<typeof createSocketBackpressure>
+  >();
+  const serializeEvent = deps.serializeEvent ?? serialize;
+  deps.eventHub.subscribe((event: AppEvent) => {
+    const payload = serializeEvent(event);
+    sockets.forEach((delivery) => delivery.enqueue(payload));
+  });
 
-    socket.onClose(unsubscribe);
+  function bindSocket(socket: EventSocket) {
+    const delivery = createSocketBackpressure(socket);
+    sockets.set(socket, delivery);
+    delivery.enqueue(serialize({ type: "hello" }));
+    socket.onClose(() => {
+      delivery.cancel();
+      sockets.delete(socket);
+    });
   }
 
   return {

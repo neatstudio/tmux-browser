@@ -22,7 +22,7 @@ type PtyProcess = {
   onExit: (listener: () => void) => void;
 };
 
-type SpawnPty = (
+export type SpawnPty = (
   file: string,
   args: string[],
   options: {
@@ -34,7 +34,7 @@ type SpawnPty = (
   }
 ) => PtyProcess;
 
-type RunTmuxCommand = (args: string[]) => void;
+export type RunTmuxCommand = (args: string[]) => void;
 type ConfigureTmux = () => void;
 
 export type CreateTerminalBridge = (

@@ -152,6 +152,41 @@ describe("createTerminalSocketServer", () => {
     ]);
   });
 
+  it("closes a terminal viewer that exceeds the hard backpressure limit", () => {
+    vi.useFakeTimers();
+    const outputListeners: Array<(data: string) => void> = [];
+    const bridge = {
+      onData: vi.fn((listener: (data: string) => void) => outputListeners.push(listener)),
+      onExit: vi.fn(),
+      write: vi.fn(),
+      resize: vi.fn(),
+      scroll: vi.fn(),
+      clearHistory: vi.fn(),
+      kill: vi.fn()
+    };
+    const server = createTerminalSocketServer({
+      createBridge: vi.fn().mockReturnValue(bridge),
+      registry: createBridgeRegistry()
+    });
+    const socket = server.testOnly.open({
+      type: "attach",
+      tabId: "tab-slow",
+      sessionName: "build",
+      cols: 80,
+      rows: 24
+    });
+    socket.setBufferedAmount(900 * 1024);
+
+    outputListeners[0]?.("x".repeat(200 * 1024));
+    vi.advanceTimersByTime(8);
+
+    expect(socket.closeCalls).toContainEqual({
+      code: 1013,
+      reason: "Client too slow"
+    });
+    expect(bridge.kill).toHaveBeenCalledOnce();
+  });
+
   it("closes the viewer when attach fails", () => {
     const server = createTerminalSocketServer({
       createBridge: vi.fn(() => {
