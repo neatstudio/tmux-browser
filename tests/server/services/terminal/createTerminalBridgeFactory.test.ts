@@ -35,6 +35,53 @@ describe("createTerminalBridgeFactory", () => {
     expect(spawnPty).toHaveBeenCalledTimes(2);
   });
 
+  it("attaches on tmux versions without extended-keys-format support", () => {
+    const runTmuxCommandSync = vi.fn((args: string[]) => ({
+      status: args.includes("extended-keys-format") ? 1 : 0,
+      stdout: args[0] === "show-options" ? "" : undefined,
+      stderr: args.includes("extended-keys-format")
+        ? "invalid option: extended-keys-format"
+        : undefined
+    }));
+    const spawnPty = vi.fn(createPty);
+    const factory = createTerminalBridgeFactory({
+      runTmuxCommandSync,
+      spawnPty,
+      runTmuxCommand: vi.fn()
+    });
+
+    expect(() =>
+      factory({ sessionName: "legacy", cols: 80, rows: 24 })
+    ).not.toThrow();
+    expect(() =>
+      factory({ sessionName: "legacy-two", cols: 80, rows: 24 })
+    ).not.toThrow();
+
+    expect(runTmuxCommandSync).toHaveBeenCalledTimes(5);
+    expect(spawnPty).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects unrelated extended-keys-format failures", () => {
+    const runTmuxCommandSync = vi.fn((args: string[]) => ({
+      status: args.includes("extended-keys-format") ? 1 : 0,
+      stdout: args[0] === "show-options" ? "" : undefined,
+      stderr: args.includes("extended-keys-format")
+        ? "error connecting to tmux server"
+        : undefined
+    }));
+    const spawnPty = vi.fn(createPty);
+    const factory = createTerminalBridgeFactory({
+      runTmuxCommandSync,
+      spawnPty,
+      runTmuxCommand: vi.fn()
+    });
+
+    expect(() =>
+      factory({ sessionName: "broken", cols: 80, rows: 24 })
+    ).toThrow("tmux configuration failed");
+    expect(spawnPty).not.toHaveBeenCalled();
+  });
+
   it("retries the complete configuration after a nonzero result", () => {
     const runTmuxCommandSync = vi.fn()
       .mockReturnValueOnce({ status: 0, stdout: "" })

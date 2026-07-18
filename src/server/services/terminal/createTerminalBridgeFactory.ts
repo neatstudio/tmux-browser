@@ -11,6 +11,7 @@ import {
 type SyncTmuxResult = {
   status: number | null;
   stdout?: string;
+  stderr?: string;
 };
 
 type RunTmuxCommandSync = (args: string[]) => SyncTmuxResult;
@@ -28,7 +29,11 @@ const defaultRunTmuxCommandSync: RunTmuxCommandSync = (args) => {
     encoding: "utf8"
   });
   if (result.error) throw result.error;
-  return { status: result.status, stdout: result.stdout ?? "" };
+  return {
+    status: result.status,
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? ""
+  };
 };
 
 function requireSuccessfulTmuxCommand(
@@ -40,6 +45,18 @@ function requireSuccessfulTmuxCommand(
       `tmux configuration failed (${result.status ?? "no status"}): tmux ${args.join(" ")}`
     );
   }
+}
+
+function isUnsupportedOptionalTmuxCommand(
+  result: SyncTmuxResult,
+  args: string[]
+) {
+  return (
+    result.status !== 0 &&
+    args[0] === "set-option" &&
+    args[2] === "extended-keys-format" &&
+    /invalid option:\s*extended-keys-format/i.test(result.stderr ?? "")
+  );
 }
 
 export function createTerminalBridgeFactory(
@@ -55,7 +72,11 @@ export function createTerminalBridgeFactory(
     const showResult = runTmuxCommandSync(showArgs);
     requireSuccessfulTmuxCommand(showResult, showArgs);
     for (const command of getTmuxExtendedKeyConfigCommands(showResult.stdout ?? "")) {
-      requireSuccessfulTmuxCommand(runTmuxCommandSync(command), command);
+      const result = runTmuxCommandSync(command);
+
+      if (!isUnsupportedOptionalTmuxCommand(result, command)) {
+        requireSuccessfulTmuxCommand(result, command);
+      }
     }
     configured = true;
   }
