@@ -1008,7 +1008,7 @@ export function createTerminalTab(deps: {
       return;
     }
 
-    const rect = deps.container.getBoundingClientRect();
+    const rect = getTerminalViewportRect();
     const cell = getTerminalCellFromMouseEvent(event, rect, terminal.cols, terminal.rows);
 
     if (paneTextSelection) {

@@ -2785,6 +2785,115 @@ describe("createTerminalTab", () => {
     mounted.destroy();
   });
 
+  it("maps pane selection drags against the xterm viewport rect", () => {
+    const socket = {
+      send: vi.fn(),
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    };
+
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        constructor() {
+          return socket;
+        }
+      }
+    );
+
+    const container = document.createElement("div");
+    Object.defineProperty(container, "getBoundingClientRect", {
+      value: () => ({
+        left: 0,
+        top: 50,
+        width: 800,
+        height: 340,
+        right: 800,
+        bottom: 390,
+        x: 0,
+        y: 50,
+        toJSON: () => ({})
+      }),
+      configurable: true
+    });
+    const mounted = createTerminalTab({
+      container,
+      tabId: "tab-viewport-rect",
+      sessionName: "build",
+      onClosed: vi.fn(),
+      getPaneSummaries: () => [
+        createTerminalPane({
+          paneId: "%1",
+          paneIndex: 0,
+          paneActive: false,
+          paneLeft: 0,
+          paneWidth: 40
+        }),
+        createTerminalPane({
+          paneId: "%2",
+          paneIndex: 1,
+          paneActive: true,
+          paneLeft: 40,
+          paneWidth: 40
+        })
+      ]
+    });
+
+    const terminal = terminalTestState.terminals[0]?.instance;
+    terminal!.cols = 80;
+    terminal!.rows = 40;
+    const terminalElement = container.querySelector<HTMLElement>(".xterm");
+    Object.defineProperty(terminalElement, "getBoundingClientRect", {
+      value: () => ({
+        left: 0,
+        top: 50,
+        width: 800,
+        height: 240,
+        right: 800,
+        bottom: 290,
+        x: 0,
+        y: 50,
+        toJSON: () => ({})
+      }),
+      configurable: true
+    });
+
+    const mouseDown = new MouseEvent("mousedown", {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+      clientX: 460,
+      clientY: 55
+    });
+    container.dispatchEvent(mouseDown);
+    expect(mouseDown.defaultPrevented).toBe(true);
+
+    const mouseMove = new MouseEvent("mousemove", {
+      bubbles: true,
+      cancelable: true,
+      buttons: 1,
+      clientX: 580,
+      clientY: 65
+    });
+    container.dispatchEvent(mouseMove);
+    expect(mouseMove.defaultPrevented).toBe(true);
+    container.dispatchEvent(
+      new MouseEvent("mousemove", {
+        bubbles: true,
+        cancelable: true,
+        buttons: 1,
+        clientX: 580,
+        clientY: 65
+      })
+    );
+
+    expect(container.querySelectorAll(".terminal-pane-selection-line"))
+      .toHaveLength(3);
+
+    mounted.destroy();
+  });
+
   it("clears a multi-line selection that starts and ends in one pane but covers another pane", () => {
     const socket = {
       send: vi.fn(),
