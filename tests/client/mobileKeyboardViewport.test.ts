@@ -116,6 +116,7 @@ describe("mobile keyboard viewport controller", () => {
       }
     });
 
+    input.focus();
     input.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
 
     expect(scrollIntoView).toHaveBeenCalledWith({
@@ -123,5 +124,34 @@ describe("mobile keyboard viewport controller", () => {
       inline: "nearest",
       behavior: "auto"
     });
+  });
+
+  it("does not page-scroll editable fields inside the floating session menu", () => {
+    const viewport = createVisualViewport(800);
+    stubMobileWindow(viewport);
+    const panel = document.createElement("div");
+    panel.className = "session-floating-menu-panel";
+    const input = document.createElement("input");
+    const scrollIntoView = vi.fn();
+    input.scrollIntoView = scrollIntoView;
+    panel.append(input);
+    document.body.append(panel);
+
+    installMobileKeyboardViewportController({
+      root: document.documentElement,
+      requestFrame: (callback) => {
+        callback(0);
+        return 1;
+      }
+    });
+
+    input.focus();
+    input.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    viewport.height = 420;
+    viewport.dispatch("resize");
+    viewport.dispatch("scroll");
+
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(input);
   });
 });

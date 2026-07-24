@@ -4550,3 +4550,10 @@ select {
 .is-mobile-keyboard-open .hook-event-toast {
   bottom: calc(1rem + env(safe-area-inset-bottom) + var(--mobile-keyboard-inset));
 }
+
+.is-mobile-keyboard-open
+  .app-shell[data-ui-tier]
+  .session-floating-menu-panel {
+  max-height: calc(var(--mobile-visual-viewport-height) - 5rem - env(safe-area-inset-top));
+  overscroll-behavior: contain;
+}

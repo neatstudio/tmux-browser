@@ -87,6 +87,12 @@ export function installMobileKeyboardViewportController(
       return;
     }
 
+    // The floating menu owns its scroll area. Page-level centering here can
+    // fight the soft keyboard's visual viewport animation and refocus loop.
+    if (target.closest(".session-floating-menu-panel")) {
+      return;
+    }
+
     if (pendingFrame !== null) {
       cancelFrame(pendingFrame);
     }

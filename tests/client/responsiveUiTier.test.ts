@@ -1,6 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { getResponsiveUiTier } from "../../src/client/responsiveUiTier";
+import {
+  createViewportWidthChangeHandler,
+  getResponsiveUiTier
+} from "../../src/client/responsiveUiTier";
 
 describe("getResponsiveUiTier", () => {
   it("treats narrow screens as phones", () => {
@@ -13,5 +16,21 @@ describe("getResponsiveUiTier", () => {
 
   it("treats wide screens as desktop", () => {
     expect(getResponsiveUiTier(1280)).toBe("desktop");
+  });
+
+  it("ignores height-only resizes caused by a mobile soft keyboard", () => {
+    let width = 390;
+    const onWidthChange = vi.fn();
+    const handleResize = createViewportWidthChangeHandler(
+      () => width,
+      onWidthChange
+    );
+
+    handleResize();
+    expect(onWidthChange).not.toHaveBeenCalled();
+
+    width = 844;
+    handleResize();
+    expect(onWidthChange).toHaveBeenCalledTimes(1);
   });
 });

@@ -67,7 +67,10 @@ import {
   getImageFileFromFiles,
   uploadImageForSession
 } from "./imageUpload";
-import { getResponsiveUiTier } from "./responsiveUiTier";
+import {
+  createViewportWidthChangeHandler,
+  getResponsiveUiTier
+} from "./responsiveUiTier";
 import { adaptStructuredRecord } from "./structuredPresentation";
 import {
   applyStructuredActionAvailability,
@@ -2408,7 +2411,10 @@ store.subscribe(() => {
   scheduleRender();
 });
 
-window.addEventListener("resize", scheduleRender);
+window.addEventListener(
+  "resize",
+  createViewportWidthChangeHandler(() => window.innerWidth, scheduleRender)
+);
 
 {
   const initialViewRefresh = refreshCurrentViewState({ includeTimeline: false });

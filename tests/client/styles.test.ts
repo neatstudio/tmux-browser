@@ -254,6 +254,9 @@ describe("client layout styles", () => {
     expect(styles).toMatch(
       /\.is-mobile-keyboard-open\s+\.input-prompt-toast,\s*\.is-mobile-keyboard-open\s+\.hook-event-toast\s*\{[^}]*bottom:\s*calc\(1rem\s*\+\s*env\(safe-area-inset-bottom\)\s*\+\s*var\(--mobile-keyboard-inset\)\);/s
     );
+    expect(styles).toMatch(
+      /\.is-mobile-keyboard-open\s+\.app-shell\[data-ui-tier\]\s+\.session-floating-menu-panel\s*\{[^}]*max-height:\s*calc\(var\(--mobile-visual-viewport-height\)\s*-\s*5rem\s*-\s*env\(safe-area-inset-top\)\);[^}]*overscroll-behavior:\s*contain;/s
+    );
   });
 
   it("keeps structured hook event code blocks compact and collapsible", () => {
