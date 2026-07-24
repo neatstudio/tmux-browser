@@ -55,6 +55,7 @@ export function installMobileKeyboardViewportController(
   const cancelFrame = options.cancelFrame ?? win.cancelAnimationFrame.bind(win);
   const visualViewport = win.visualViewport;
   let pendingFrame: number | null = null;
+  let pendingMenuRevealFrame: number | null = null;
 
   const reset = () => {
     root.classList.remove(KEYBOARD_OPEN_CLASS);
@@ -87,8 +88,6 @@ export function installMobileKeyboardViewportController(
       return;
     }
 
-    // The floating menu owns its scroll area. Page-level centering here can
-    // fight the soft keyboard's visual viewport animation and refocus loop.
     if (target.closest(".session-floating-menu-panel")) {
       return;
     }
@@ -107,9 +106,48 @@ export function installMobileKeyboardViewportController(
     });
   };
 
-  const handleViewportChange = () => update();
+  const scheduleFocusedMenuFieldReveal = () => {
+    if (!root.classList.contains(KEYBOARD_OPEN_CLASS)) {
+      return;
+    }
+
+    const target = win.document.activeElement;
+    if (!isEditableElement(target)) {
+      return;
+    }
+
+    const panel = target.closest<HTMLElement>(".session-floating-menu-panel");
+    if (!panel) {
+      return;
+    }
+
+    if (pendingMenuRevealFrame !== null) {
+      cancelFrame(pendingMenuRevealFrame);
+    }
+
+    pendingMenuRevealFrame = requestFrame(() => {
+      pendingMenuRevealFrame = null;
+      const panelRect = panel.getBoundingClientRect();
+      const fieldRect = target.getBoundingClientRect();
+      const inset = 8;
+      const top = panelRect.top + inset;
+      const bottom = panelRect.bottom - inset;
+
+      if (fieldRect.bottom > bottom) {
+        panel.scrollTop += fieldRect.bottom - bottom;
+      } else if (fieldRect.top < top) {
+        panel.scrollTop -= top - fieldRect.top;
+      }
+    });
+  };
+
+  const handleViewportChange = () => {
+    update();
+    scheduleFocusedMenuFieldReveal();
+  };
   const handleFocusIn = (event: FocusEvent) => {
     update();
+    scheduleFocusedMenuFieldReveal();
     scheduleFocusedFieldReveal(event.target);
   };
   const handleFocusOut = () => update();
@@ -126,6 +164,10 @@ export function installMobileKeyboardViewportController(
       if (pendingFrame !== null) {
         cancelFrame(pendingFrame);
         pendingFrame = null;
+      }
+      if (pendingMenuRevealFrame !== null) {
+        cancelFrame(pendingMenuRevealFrame);
+        pendingMenuRevealFrame = null;
       }
 
       win.removeEventListener("resize", handleViewportChange);

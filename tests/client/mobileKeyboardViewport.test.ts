@@ -126,18 +126,28 @@ describe("mobile keyboard viewport controller", () => {
     });
   });
 
-  it("does not page-scroll editable fields inside the floating session menu", () => {
+  it("reveals a menu input inside the panel after the keyboard shrinks the viewport", () => {
     const viewport = createVisualViewport(800);
     stubMobileWindow(viewport);
     const panel = document.createElement("div");
     panel.className = "session-floating-menu-panel";
+    panel.getBoundingClientRect = () =>
+      ({
+        top: 0,
+        bottom: viewport.height - 80
+      }) as DOMRect;
     const input = document.createElement("input");
     const scrollIntoView = vi.fn();
     input.scrollIntoView = scrollIntoView;
+    input.getBoundingClientRect = () =>
+      ({
+        top: 370 - panel.scrollTop,
+        bottom: 400 - panel.scrollTop
+      }) as DOMRect;
     panel.append(input);
     document.body.append(panel);
 
-    installMobileKeyboardViewportController({
+    const controller = installMobileKeyboardViewportController({
       root: document.documentElement,
       requestFrame: (callback) => {
         callback(0);
@@ -147,11 +157,18 @@ describe("mobile keyboard viewport controller", () => {
 
     input.focus();
     input.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
-    viewport.height = 420;
+    viewport.height = 300;
     viewport.dispatch("resize");
     viewport.dispatch("scroll");
 
     expect(scrollIntoView).not.toHaveBeenCalled();
     expect(document.activeElement).toBe(input);
+    expect(panel.scrollTop).toBe(188);
+
+    panel.scrollTop = 0;
+    input.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    expect(panel.scrollTop).toBe(188);
+
+    controller.dispose();
   });
 });
